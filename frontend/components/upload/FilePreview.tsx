@@ -39,8 +39,8 @@ export function FilePreview({ file }: FilePreviewProps) {
           setPreview(results.data.slice(0, 5));
           setLoading(false);
         },
-        error: (error) => {
-          setErrors([error.message || "Failed to parse CSV"]);
+        error: (error: Error) => {
+          setErrors([error?.message || "Failed to parse CSV"]);
           setLoading(false);
         },
       });

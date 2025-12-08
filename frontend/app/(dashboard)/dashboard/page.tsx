@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Job } from "@/types";
 import { apiClient } from "@/lib/api";
@@ -45,7 +45,7 @@ export default function DashboardPage() {
   };
 
   // Real-time progress updates via SSE
-  const handleProgressUpdate = (progress: JobProgress) => {
+  const handleProgressUpdate = useCallback((progress: JobProgress) => {
     setJobs((prevJobs) =>
       prevJobs.map((job) =>
         job.id === progress.job_id
@@ -60,7 +60,7 @@ export default function DashboardPage() {
           : job
       )
     );
-  };
+  }, []);
 
   // Get token from cookie for SSE
   const getToken = () => {
