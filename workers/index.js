@@ -379,12 +379,12 @@ async function processJob(jobId) {
     console.log(`Job ${jobId} completed successfully!`);
     console.log(`Final results: ${finalValidCount} valid, ${finalCatchallCount} catchall`);
     
-    return {
-      status: 'completed',
-      processedCount,
-      validCount: finalValidCount,
-      catchallCount: finalCatchallCount,
-    };
+      return {
+        status: 'completed',
+        processedCount: uniquePeopleCount,
+        validCount: finalValidCount,
+        catchallCount: finalCatchallCount,
+      };
     
   } catch (error) {
     console.error(`Error processing job ${jobId}:`, error);

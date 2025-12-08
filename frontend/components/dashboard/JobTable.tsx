@@ -85,7 +85,7 @@ export function JobTable({ jobs, onDelete }: JobTableProps) {
                     />
                   </div>
                   <span className="text-xs text-gray-500 mt-1">
-                    {job.processed_leads} / {job.total_leads}
+                    {calculateProgress(job.processed_leads, job.total_leads)}%
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
