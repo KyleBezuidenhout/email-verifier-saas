@@ -58,8 +58,8 @@ export function RegisterForm() {
         company_name: formData.company_name || undefined,
       });
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Registration failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
       setLoading(false);
     }

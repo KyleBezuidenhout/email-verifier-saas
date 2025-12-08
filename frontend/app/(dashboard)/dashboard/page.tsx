@@ -28,8 +28,8 @@ export default function DashboardPage() {
       setJobs(jobList.sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ));
-    } catch (err: any) {
-      setError(err.message || "Failed to load jobs");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load jobs");
     } finally {
       setLoading(false);
     }
@@ -39,8 +39,8 @@ export default function DashboardPage() {
     try {
       await apiClient.deleteJob(jobId);
       setJobs(jobs.filter((j) => j.id !== jobId));
-    } catch (err: any) {
-      setError(err.message || "Failed to delete job");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete job");
     }
   };
 

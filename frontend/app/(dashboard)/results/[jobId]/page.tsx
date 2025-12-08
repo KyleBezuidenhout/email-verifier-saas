@@ -29,8 +29,8 @@ export default function ResultsPage() {
       ]);
       setJob(jobData);
       setLeads(leadsData);
-    } catch (err: any) {
-      setError(err.message || "Failed to load results");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load results");
     } finally {
       setLoading(false);
     }

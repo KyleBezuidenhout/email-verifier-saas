@@ -31,8 +31,8 @@ export default function UploadPage() {
         company_size: companySize || undefined,
       });
       router.push(`/dashboard?jobId=${response.job_id}`);
-    } catch (err: any) {
-      setError(err.message || "Upload failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
     }
