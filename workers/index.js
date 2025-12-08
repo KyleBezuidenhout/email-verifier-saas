@@ -651,9 +651,136 @@ async function processJobFromQueue(jobId) {
     }
     
     const jobData = jobResult.rows[0];
+    const jobType = jobData.job_type || 'enrichment'; // Default to enrichment for backward compatibility
     
     // Update job status to processing
     await updateJobStatus(jobId, 'processing');
+    
+    // ============================================
+    // VERIFICATION JOBS: Direct verification only (no permutations)
+    // ============================================
+    if (jobType === 'verification') {
+      console.log(`Verification job detected - processing leads directly (no permutations)`);
+      
+      // Get all leads for this job (no need to order by prevalence_score)
+      const leadsResult = await pgPool.query(
+        'SELECT * FROM leads WHERE job_id = $1 ORDER BY id',
+        [jobId]
+      );
+      
+      const leads = leadsResult.rows;
+      const totalLeads = leads.length;
+      
+      console.log(`Found ${totalLeads} leads to verify`);
+      
+      if (totalLeads === 0) {
+        await updateJobStatus(jobId, 'completed', {
+          completed_at: new Date(),
+        });
+        return { status: 'completed', message: 'No leads to process' };
+      }
+      
+      let processedCount = 0;
+      let validCount = 0;
+      let catchallCount = 0;
+      const finalResultIds = [];
+      
+      // Process leads in batches
+      const batchSize = 10;
+      for (let i = 0; i < leads.length; i += batchSize) {
+        const batch = leads.slice(i, i + batchSize);
+        const batchNumber = Math.floor(i / batchSize) + 1;
+        const totalBatches = Math.ceil(leads.length / batchSize);
+        
+        console.log(`\n--- Batch ${batchNumber}/${totalBatches}: Processing ${batch.length} leads in parallel ---`);
+        
+        // Process batch in parallel (respecting rate limit)
+        const batchPromises = batch.map(async (lead) => {
+          try {
+            const result = await verifyEmail(lead.email);
+            
+            await updateLeadStatus(lead.id, result.status, result.message);
+            
+            if (result.status === 'valid') {
+              validCount++;
+              finalResultIds.push(lead.id);
+            } else if (result.status === 'catchall') {
+              catchallCount++;
+              finalResultIds.push(lead.id);
+            } else if (result.status === 'invalid') {
+              finalResultIds.push(lead.id);
+            }
+            
+            processedCount++;
+          } catch (error) {
+            console.error(`Error processing lead ${lead.id}:`, error.message);
+            await updateLeadStatus(lead.id, 'error', error.message);
+            processedCount++;
+          }
+        });
+        
+        await Promise.all(batchPromises);
+        
+        // Update progress after each batch
+        const progressPercent = Math.round((processedCount / totalLeads) * 100);
+        await updateJobStatus(jobId, 'processing', {
+          processed_leads: processedCount,
+          valid_emails_found: validCount,
+          catchall_emails_found: catchallCount,
+        });
+        
+        const rlStatus = await rateLimiter.getStatus();
+        console.log(`Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Valid: ${validCount} | Catchall: ${catchallCount} | Tokens: ${rlStatus.availableTokens}/${rlStatus.maxTokens}`);
+      }
+      
+      // Mark all processed leads as final results
+      await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
+      
+      if (finalResultIds.length > 0) {
+        const placeholders = finalResultIds.map((_, i) => `$${i + 1}`).join(',');
+        await pgPool.query(
+          `UPDATE leads SET is_final_result = true WHERE id IN (${placeholders})`,
+          finalResultIds
+        );
+      }
+      
+      // Calculate cost (only charged for valid + catchall results)
+      const costInCredits = validCount + catchallCount;
+      
+      // Mark job as completed
+      await updateJobStatus(jobId, 'completed', {
+        processed_leads: processedCount,
+        valid_emails_found: validCount,
+        catchall_emails_found: catchallCount,
+        cost_in_credits: costInCredits,
+        completed_at: new Date(),
+      });
+      
+      // Deduct credits
+      if (costInCredits > 0) {
+        await pgPool.query(
+          'UPDATE users SET credits = credits - $1 WHERE id = $2',
+          [costInCredits, jobData.user_id]
+        );
+      }
+      
+      console.log(`\n========================================`);
+      console.log(`Verification job ${jobId} completed successfully!`);
+      console.log(`Final results: ${validCount} valid, ${catchallCount} catchall, ${processedCount} total processed`);
+      console.log(`========================================\n`);
+      
+      return {
+        status: 'completed',
+        processedCount: processedCount,
+        validCount: validCount,
+        catchallCount: catchallCount,
+      };
+    }
+    
+    // ============================================
+    // ENRICHMENT JOBS: Permutation logic with early exit
+    // ============================================
+    console.log(`Enrichment job detected - using permutation logic with early exit`);
     
     // Get all leads for this job
     const leadsResult = await pgPool.query(
