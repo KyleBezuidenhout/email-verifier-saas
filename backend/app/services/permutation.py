@@ -4,7 +4,7 @@ import unicodedata
 # Prevalence scores by company size (based on frequency data)
 # Higher score = higher likelihood = verified first
 # Scores are frequency_percent * 100 for integer precision
-# All 32 patterns with company-size-specific scores
+# 16 patterns only (primary set)
 
 PREVALENCE_MAP = {
     # Pattern: {company_size: score, ...}
@@ -104,102 +104,6 @@ PREVALENCE_MAP = {
         "1-50": 50, "51-200": 45, "201-500": 45, "500+": 50,
         "default": 48,  # Generic avg: 0.475%
     },
-    
-    # 17. {last}{first} = lastnamefirstname@domain (e.g., smithadam)
-    "lastnamefirstname": {
-        "1-50": 45, "51-200": 35, "201-500": 35, "500+": 40,
-        "default": 39,  # Generic avg: 0.3875%
-    },
-    
-    # 18. {first}.{l} = firstname.l@domain (e.g., adam.s)
-    "firstname.l": {
-        "1-50": 40, "51-200": 40, "201-500": 40, "500+": 45,
-        "default": 41,  # Generic avg: 0.4125%
-    },
-    
-    # 19. {l}.{first} = l.firstname@domain (e.g., s.adam)
-    "l.firstname": {
-        "1-50": 35, "51-200": 30, "201-500": 30, "500+": 35,
-        "default": 33,  # Generic avg: 0.325%
-    },
-    
-    # 20. {f}-{last} = f-lastname@domain (e.g., a-smith)
-    "f-lastname": {
-        "1-50": 30, "51-200": 25, "201-500": 25, "500+": 30,
-        "default": 28,  # Generic avg: 0.275%
-    },
-    
-    # 21. {l}-{first} = l-firstname@domain (e.g., s-adam)
-    "l-firstname": {
-        "1-50": 25, "51-200": 22, "201-500": 22, "500+": 25,
-        "default": 24,  # Generic avg: 0.235%
-    },
-    
-    # 22. {first}{f} = firstnamef@domain (e.g., adama)
-    "firstnamef": {
-        "1-50": 22, "51-200": 20, "201-500": 20, "500+": 22,
-        "default": 21,  # Generic avg: 0.21%
-    },
-    
-    # 23. {last}{l} = lastnamel@domain (e.g., smiths)
-    "lastnamel": {
-        "1-50": 20, "51-200": 18, "201-500": 18, "500+": 20,
-        "default": 19,  # Generic avg: 0.19%
-    },
-    
-    # 24. {f}.{l} = f.l@domain (e.g., a.s)
-    "f.l": {
-        "1-50": 18, "51-200": 15, "201-500": 15, "500+": 18,
-        "default": 17,  # Generic avg: 0.165%
-    },
-    
-    # 25. {f}_{l} = f_l@domain (e.g., a_s)
-    "f_l": {
-        "1-50": 15, "51-200": 12, "201-500": 12, "500+": 15,
-        "default": 14,  # Generic avg: 0.135%
-    },
-    
-    # 26. {first}-{l} = firstname-l@domain (e.g., adam-s)
-    "firstname-l": {
-        "1-50": 12, "51-200": 10, "201-500": 10, "500+": 12,
-        "default": 11,  # Generic avg: 0.11%
-    },
-    
-    # 27. {last}-{l} = lastname-l@domain (e.g., smith-s)
-    "lastname-l": {
-        "1-50": 10, "51-200": 8, "201-500": 8, "500+": 10,
-        "default": 9,  # Generic avg: 0.09%
-    },
-    
-    # 28. {l}{f} = lf@domain (e.g., sa)
-    "lf": {
-        "1-50": 8, "51-200": 6, "201-500": 6, "500+": 8,
-        "default": 7,  # Generic avg: 0.07%
-    },
-    
-    # 29. {l}_{f} = l_f@domain (e.g., s_a)
-    "l_f": {
-        "1-50": 6, "51-200": 4, "201-500": 4, "500+": 6,
-        "default": 5,  # Generic avg: 0.05%
-    },
-    
-    # 30. {l}-{f} = l-f@domain (e.g., s-a)
-    "l-f": {
-        "1-50": 4, "51-200": 2, "201-500": 2, "500+": 4,
-        "default": 3,  # Generic avg: 0.03%
-    },
-    
-    # 31. {l}.{f} = l.f@domain (e.g., s.a)
-    "l.f": {
-        "1-50": 2, "51-200": 1, "201-500": 1, "500+": 2,
-        "default": 2,  # Generic avg: 0.015%
-    },
-    
-    # 32. {f}{last}_{l} = flastname_l@domain (e.g., asmith_s)
-    "flastname_l": {
-        "1-50": 1, "51-200": 1, "201-500": 1, "500+": 1,
-        "default": 1,  # Generic avg: 0.0075%
-    },
 }
 
 
@@ -276,9 +180,9 @@ def generate_email_permutations(
     company_size: Optional[str] = None
 ) -> List[Dict[str, any]]:
     """
-    Generate all 32 email permutations with prevalence scores.
+    Generate 16 email permutations with prevalence scores.
     Permutations are returned sorted by prevalence score (highest first).
-    Patterns 1-16 are primary, patterns 17-32 are fallback.
+    Early exit on VALID, verify all 16 if catchall found.
     """
 
     first = normalize_name(first_name)
@@ -293,9 +197,8 @@ def generate_email_permutations(
     f = first[0]
     l = last[0]
 
-    # All 32 patterns matching the frequency data
+    # 16 patterns (primary set only)
     patterns = [
-        # Patterns 1-16 (Primary set)
         ("firstname", f"{first}@{domain}"),                          # 1. {first}
         ("flastname", f"{f}{last}@{domain}"),                        # 2. {f}{last}
         ("firstname.lastname", f"{first}.{last}@{domain}"),          # 3. {first}.{last}
@@ -312,24 +215,6 @@ def generate_email_permutations(
         ("firstname-lastname", f"{first}-{last}@{domain}"),          # 14. {first}-{last}
         ("lastname-firstname", f"{last}-{first}@{domain}"),          # 15. {last}-{first}
         ("fl", f"{f}{l}@{domain}"),                                  # 16. {f}{l}
-        
-        # Patterns 17-32 (Fallback set)
-        ("lastnamefirstname", f"{last}{first}@{domain}"),            # 17. {last}{first}
-        ("firstname.l", f"{first}.{l}@{domain}"),                    # 18. {first}.{l}
-        ("l.firstname", f"{l}.{first}@{domain}"),                    # 19. {l}.{first}
-        ("f-lastname", f"{f}-{last}@{domain}"),                      # 20. {f}-{last}
-        ("l-firstname", f"{l}-{first}@{domain}"),                    # 21. {l}-{first}
-        ("firstnamef", f"{first}{f}@{domain}"),                      # 22. {first}{f}
-        ("lastnamel", f"{last}{l}@{domain}"),                        # 23. {last}{l}
-        ("f.l", f"{f}.{l}@{domain}"),                                # 24. {f}.{l}
-        ("f_l", f"{f}_{l}@{domain}"),                                # 25. {f}_{l}
-        ("firstname-l", f"{first}-{l}@{domain}"),                    # 26. {first}-{l}
-        ("lastname-l", f"{last}-{l}@{domain}"),                      # 27. {last}-{l}
-        ("lf", f"{l}{f}@{domain}"),                                  # 28. {l}{f}
-        ("l_f", f"{l}_{f}@{domain}"),                                # 29. {l}_{f}
-        ("l-f", f"{l}-{f}@{domain}"),                                # 30. {l}-{f}
-        ("l.f", f"{l}.{f}@{domain}"),                                # 31. {l}.{f}
-        ("flastname_l", f"{f}{last}_{l}@{domain}"),                  # 32. {f}{last}_{l}
     ]
 
     # Build permutations with scores

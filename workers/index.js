@@ -519,7 +519,7 @@ async function markLeadAsNotFound(leadId) {
   );
 }
 
-// Process a single person's permutations with two-phase early exit (returns result object)
+// Process a single person's permutations with early exit (returns result object)
 async function processPersonWithEarlyExit(personKey, personLeads) {
   let foundValid = false;
   let bestCatchall = null;
@@ -531,14 +531,8 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
   let finalLeadId = null;
   let resultType = 'not_found';
   
-  // Split into two phases: first 16 (primary) and remaining 16 (fallback)
-  const primarySet = personLeads.slice(0, 16);  // Patterns 1-16
-  const fallbackSet = personLeads.slice(16);     // Patterns 17-32
-  
-  // ============================================
-  // PHASE 1: Try patterns 1-16 (Primary Set)
-  // ============================================
-  for (const lead of primarySet) {
+  // Process all 16 permutations one by one (in order of prevalence score)
+  for (const lead of personLeads) {
     try {
       const result = await verifyEmail(lead.email);
       apiCalls++;
@@ -547,7 +541,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
       await updateLeadStatus(lead.id, result.status, result.message);
       
       if (result.status === 'valid') {
-        // *** EARLY EXIT: Found valid email in primary set! ***
+        // *** EARLY EXIT: Found valid email! ***
         finalLeadId = lead.id;
         validFound = 1;
         foundValid = true;
@@ -557,8 +551,8 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
         const remainingPermutations = personLeads.length - permutationsVerified;
         savedCalls = remainingPermutations;
         
-        console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/16 (primary) - skipping ${remainingPermutations} remaining`);
-        break; // Stop immediately, don't try fallback set
+        console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/16 - skipping ${remainingPermutations} remaining`);
+        break; // Stop verifying this person's remaining permutations
         
       } else if (result.status === 'catchall') {
         // Track best catchall by prevalence score (higher score = better)
@@ -577,120 +571,19 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
     }
   }
   
-  // If valid found in primary set, we're done
-  if (foundValid) {
-    return {
-      personKey,
-      finalLeadId,
-      resultType,
-      validFound,
-      catchallFound,
-      apiCalls,
-      savedCalls,
-    };
-  }
-  
-  // If catchall found in primary set, verify all 16, pick best, then EXIT (don't try fallback)
-  if (bestCatchall && catchallFound > 0) {
-    finalLeadId = bestCatchall.id;
-    resultType = 'catchall';
-    savedCalls = fallbackSet.length; // Saved all fallback permutations
-    console.log(`  ~ CATCHALL selected for ${personKey} from primary set (verified all 16, skipping ${fallbackSet.length} fallback)`);
-    return {
-      personKey,
-      finalLeadId,
-      resultType,
-      validFound,
-      catchallFound,
-      apiCalls,
-      savedCalls,
-    };
-  }
-  
-  // ============================================
-  // PHASE 2: Try patterns 17-32 (Fallback Set)
-  // Only if no valid and no catchall in primary set
-  // ============================================
-  if (fallbackSet.length > 0) {
-    console.log(`  → No valid/catchall in primary set for ${personKey}, trying fallback set (17-32)...`);
-    
-    // Reset catchall tracking for fallback set
-    bestCatchall = null;
-    catchallFound = 0;
-    
-    for (const lead of fallbackSet) {
-      try {
-        const result = await verifyEmail(lead.email);
-        apiCalls++;
-        permutationsVerified++;
-        
-        await updateLeadStatus(lead.id, result.status, result.message);
-        
-        if (result.status === 'valid') {
-          // *** EARLY EXIT: Found valid email in fallback set! ***
-          finalLeadId = lead.id;
-          validFound = 1;
-          foundValid = true;
-          resultType = 'valid';
-          
-          // Calculate how many API calls we saved
-          const remainingPermutations = fallbackSet.length - (permutationsVerified - 16);
-          savedCalls = remainingPermutations;
-          
-          console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/32 (fallback) - skipping ${remainingPermutations} remaining`);
-          break; // Stop immediately
-          
-        } else if (result.status === 'catchall') {
-          // Track best catchall by prevalence score
-          if (!bestCatchall || (lead.prevalence_score || 0) > (bestCatchall.prevalence_score || 0)) {
-            bestCatchall = lead;
-          }
-          catchallFound++;
-        }
-        // If invalid or error, continue to next permutation
-        
-      } catch (error) {
-        console.error(`Error processing lead ${lead.id}:`, error.message);
-        await updateLeadStatus(lead.id, 'error', error.message);
-        apiCalls++;
-        permutationsVerified++;
-      }
-    }
-    
-    // If valid found in fallback set, we're done
-    if (foundValid) {
-      return {
-        personKey,
-        finalLeadId,
-        resultType,
-        validFound,
-        catchallFound,
-        apiCalls,
-        savedCalls,
-      };
-    }
-    
-    // If catchall found in fallback set, use it
+  // If no valid found, use best catchall or mark as not_found
+  if (!foundValid) {
     if (bestCatchall) {
       finalLeadId = bestCatchall.id;
       resultType = 'catchall';
-      console.log(`  ~ CATCHALL selected for ${personKey} from fallback set (verified ${permutationsVerified}/32)`);
-      return {
-        personKey,
-        finalLeadId,
-        resultType,
-        validFound,
-        catchallFound,
-        apiCalls,
-        savedCalls,
-      };
+      console.log(`  ~ CATCHALL selected for ${personKey} (verified all 16 permutations)`);
+    } else {
+      // No valid or catchall found - mark first lead as not_found
+      finalLeadId = personLeads[0].id;
+      resultType = 'not_found';
+      console.log(`  ✗ NOT_FOUND for ${personKey} (verified all 16 permutations)`);
     }
   }
-  
-  // No valid or catchall found in either set - mark as not_found
-  finalLeadId = personLeads[0].id;
-  resultType = 'not_found';
-  console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${permutationsVerified} permutations)`);
   
   return {
     personKey,
