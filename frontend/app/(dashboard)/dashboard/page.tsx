@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Job } from "@/types";
 import { apiClient } from "@/lib/api";
 import { JobTable } from "@/components/dashboard/JobTable";
+import { QuickStats } from "@/components/dashboard/QuickStats";
+import { SellingPoints } from "@/components/common/SellingPoints";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import Link from "next/link";
 import { useSSE } from "@/hooks/useSSE";
@@ -95,24 +97,35 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Job Dashboard</h1>
-          <p className="mt-2 text-gray-600">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Job Dashboard</h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-400">
             Manage and monitor your email verification jobs
           </p>
         </div>
         <Link
           href="/upload"
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
         >
           Upload CSV
         </Link>
       </div>
 
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
+        <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 px-4 py-3 rounded-lg text-sm">
           {error}
         </div>
       )}
+
+      {/* Quick Stats */}
+      <QuickStats jobs={jobs} />
+
+      {/* Why Choose Us Section */}
+      <div className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+          Why Choose Us?
+        </h2>
+        <SellingPoints />
+      </div>
 
       <JobTable jobs={jobs} onDelete={handleDelete} />
     </div>

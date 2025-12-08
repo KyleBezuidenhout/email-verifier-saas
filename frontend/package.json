@@ -9,11 +9,16 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@auth/prisma-adapter": "^2.11.1",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "lucide-react": "^0.556.0",
     "next": "14.0.4",
+    "next-auth": "^5.0.0-beta.25",
     "papaparse": "^5.5.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "shadcn-ui": "^0.9.5",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {

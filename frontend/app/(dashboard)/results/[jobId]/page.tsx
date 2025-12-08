@@ -44,6 +44,16 @@ export default function ResultsPage() {
   const validLeads = leads.filter((l) => l.verification_status === "valid");
   const catchallLeads = leads.filter((l) => l.verification_status === "catchall");
   const notFoundLeads = leads.filter((l) => l.verification_status === "invalid");
+  
+  const totalVerified = validLeads.length + catchallLeads.length;
+  const totalCost = job ? (job.cost_in_credits || 0) * 0.1 : 0;
+  const costPerEmail = totalVerified > 0 ? totalCost / totalVerified : 0;
+  const competitorCost = totalVerified * 0.50; // Competitors charge $0.50 per email
+  const savings = competitorCost - totalCost;
+  
+  const processingTime = job && job.completed_at && job.created_at
+    ? Math.round((new Date(job.completed_at).getTime() - new Date(job.created_at).getTime()) / 1000 / 60)
+    : 0;
 
   const downloadCSV = () => {
     const headers = ["First Name", "Last Name", "Website", "Email", "Status"];
@@ -81,7 +91,7 @@ export default function ResultsPage() {
   if (error || !job) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 px-4 py-3 rounded-lg">
           {error || "Job not found"}
         </div>
       </div>
@@ -93,68 +103,91 @@ export default function ResultsPage() {
       <div className="mb-8">
         <Link
           href="/dashboard"
-          className="text-blue-600 hover:text-blue-700 mb-4 inline-block"
+          className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-500 mb-4 inline-block"
         >
           ← Back to Dashboard
         </Link>
-        <h1 className="text-3xl font-bold text-gray-900">Results</h1>
-        <p className="mt-2 text-gray-600">Job ID: {jobId}</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Results</h1>
+        <p className="mt-2 text-gray-600 dark:text-gray-400">Job ID: {jobId}</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <p className="text-sm text-gray-500">Total Leads</p>
-          <p className="text-2xl font-bold text-gray-900">{job.total_leads}</p>
+      {/* Summary Banner */}
+      {totalVerified > 0 && (
+        <div className="mb-8 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg p-6 border border-green-200 dark:border-green-800">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                ✅ Verified {totalVerified} emails in {processingTime} minutes for ${totalCost.toFixed(2)}
+              </h2>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="text-gray-700 dark:text-gray-300">
+                  Cost per email: <strong>${costPerEmail.toFixed(2)}</strong>
+                </span>
+                {savings > 0 && (
+                  <span className="text-green-700 dark:text-green-300">
+                    💰 You saved <strong>${savings.toFixed(2)}</strong> vs competitors
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <p className="text-sm text-gray-500">Valid Emails</p>
-          <p className="text-2xl font-bold text-green-600">
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Total Leads</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{job.total_leads}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Valid Emails</p>
+          <p className="text-2xl font-bold text-green-600 dark:text-green-400">
             {validLeads.length}
           </p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <p className="text-sm text-gray-500">Catchall Emails</p>
-          <p className="text-2xl font-bold text-yellow-600">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Catchall Emails</p>
+          <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
             {catchallLeads.length}
           </p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <p className="text-sm text-gray-500">Not Found</p>
-          <p className="text-2xl font-bold text-red-600">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Not Found</p>
+          <p className="text-2xl font-bold text-red-600 dark:text-red-400">
             {notFoundLeads.length}
           </p>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex justify-between items-center mb-4">
           <div className="flex space-x-2">
             <button
               onClick={() => setFilter("all")}
-              className={`px-4 py-2 rounded-lg text-sm ${
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "all"
                   ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700"
+                  : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
               }`}
             >
               All ({leads.length})
             </button>
             <button
               onClick={() => setFilter("valid")}
-              className={`px-4 py-2 rounded-lg text-sm ${
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "valid"
                   ? "bg-green-600 text-white"
-                  : "bg-gray-100 text-gray-700"
+                  : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
               }`}
             >
               Valid ({validLeads.length})
             </button>
             <button
               onClick={() => setFilter("catchall")}
-              className={`px-4 py-2 rounded-lg text-sm ${
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "catchall"
                   ? "bg-yellow-600 text-white"
-                  : "bg-gray-100 text-gray-700"
+                  : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
               }`}
             >
               Catchall ({catchallLeads.length})
@@ -162,65 +195,65 @@ export default function ResultsPage() {
           </div>
           <button
             onClick={downloadCSV}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
           >
             Download CSV
           </button>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
                   First Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
                   Last Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
                   Website
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
                   Email
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
                   Score
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {filteredLeads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <tr key={lead.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {lead.first_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {lead.last_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                     {lead.domain}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {lead.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
                       className={`px-2 py-1 text-xs font-semibold rounded-full ${
                         lead.verification_status === "valid"
-                          ? "bg-green-100 text-green-800"
+                          ? "bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300"
                           : lead.verification_status === "catchall"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-red-100 text-red-800"
+                          ? "bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300"
+                          : "bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300"
                       }`}
                     >
                       {lead.verification_status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                     {lead.prevalence_score || "-"}
                   </td>
                 </tr>
