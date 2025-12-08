@@ -1,0 +1,275 @@
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
+from typing import Optional, List
+import csv
+import io
+import uuid
+from datetime import datetime
+
+from app.db.session import get_db
+from app.models.user import User
+from app.models.job import Job
+from app.models.lead import Lead
+from app.api.dependencies import get_current_user
+from app.schemas.job import JobResponse, JobUploadResponse, JobProgressResponse
+from app.services.permutation import generate_email_permutations, normalize_domain
+from app.core.config import settings
+from app.core.security import decode_token
+import boto3
+import redis
+import asyncio
+
+router = APIRouter()
+
+# Initialize Redis connection for job queue
+redis_client = redis.from_url(settings.REDIS_URL)
+
+# Initialize S3 client for Cloudflare R2
+s3_client = boto3.client(
+    's3',
+    endpoint_url=settings.CLOUDFLARE_R2_ENDPOINT_URL,
+    aws_access_key_id=settings.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    region_name='auto'
+)
+
+
+@router.post("/upload", response_model=JobUploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    file: UploadFile = File(...),
+    company_size: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Validate file type
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only CSV files are allowed"
+        )
+    
+    # Read and parse CSV
+    contents = await file.read()
+    csv_content = contents.decode('utf-8')
+    csv_reader = csv.DictReader(io.StringIO(csv_content))
+    
+    # Validate required columns
+    required_columns = ['first_name', 'last_name', 'website']
+    rows = list(csv_reader)
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV file is empty"
+        )
+    
+    missing_columns = [col for col in required_columns if col not in rows[0].keys()]
+    if missing_columns:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Missing required columns: {', '.join(missing_columns)}"
+        )
+    
+    # Create job
+    job = Job(
+        user_id=current_user.id,
+        status="pending",
+        original_filename=file.filename,
+        total_leads=len(rows),
+        processed_leads=0,
+        valid_emails_found=0,
+        catchall_emails_found=0,
+        cost_in_credits=0,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    
+    # Upload file to R2
+    input_file_path = f"jobs/{job.id}/input/{file.filename}"
+    try:
+        s3_client.put_object(
+            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+            Key=input_file_path,
+            Body=contents
+        )
+        job.input_file_path = input_file_path
+    except Exception as e:
+        db.delete(job)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload file: {str(e)}"
+        )
+    
+    # Create leads and generate permutations
+    leads_to_create = []
+    for row in rows:
+        first_name = row['first_name'].strip()
+        last_name = row['last_name'].strip()
+        website = row['website'].strip()
+        domain = normalize_domain(website)
+        
+        # Generate email permutations
+        permutations = generate_email_permutations(
+            first_name, last_name, domain, company_size
+        )
+        
+        # Create lead for each permutation
+        for perm in permutations:
+            lead = Lead(
+                job_id=job.id,
+                user_id=current_user.id,
+                first_name=first_name,
+                last_name=last_name,
+                domain=domain,
+                company_size=company_size,
+                email=perm['email'],
+                pattern_used=perm['pattern'],
+                prevalence_score=perm['prevalence_score'],
+                verification_status='pending',
+                is_final_result=False,
+            )
+            leads_to_create.append(lead)
+    
+    # Bulk insert leads
+    db.bulk_save_objects(leads_to_create)
+    db.commit()
+    
+    # Queue job for processing
+    try:
+        redis_client.lpush('email-verification', str(job.id))
+    except Exception as e:
+        # If Redis fails, job will remain in pending state
+        pass
+    
+    return JobUploadResponse(
+        job_id=job.id,
+        message="File uploaded successfully. Processing started."
+    )
+
+
+@router.get("", response_model=List[JobResponse])
+async def get_jobs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    jobs = db.query(Job).filter(Job.user_id == current_user.id).order_by(desc(Job.created_at)).all()
+    return [JobResponse.model_validate(job) for job in jobs]
+
+
+@router.get("/{job_id}", response_model=JobResponse)
+async def get_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+    return JobResponse.model_validate(job)
+
+
+@router.get("/{job_id}/progress")
+async def get_job_progress(
+    job_id: str,
+    token: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    # Authenticate user via token
+    if token:
+        payload = decode_token(token)
+        if payload:
+            user_id = payload.get("sub")
+            if user_id:
+                user = db.query(User).filter(User.id == user_id).first()
+                if user:
+                    job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
+                    if not job:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Job not found"
+                        )
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid token"
+                    )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token"
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token required"
+        )
+    
+    async def generate_progress():
+        while True:
+            # Get fresh job data from database
+            fresh_job = db.query(Job).filter(Job.id == job_id).first()
+            if not fresh_job:
+                break
+            
+            progress_data = JobProgressResponse(
+                job_id=fresh_job.id,
+                processed_leads=fresh_job.processed_leads,
+                total_leads=fresh_job.total_leads,
+                valid_emails_found=fresh_job.valid_emails_found,
+                catchall_emails_found=fresh_job.catchall_emails_found,
+                status=fresh_job.status,
+                progress_percentage=(fresh_job.processed_leads / fresh_job.total_leads * 100) if fresh_job.total_leads > 0 else 0
+            )
+            
+            yield f"data: {progress_data.model_dump_json()}\n\n"
+            
+            # Stop if job is completed or failed
+            if fresh_job.status in ['completed', 'failed']:
+                break
+            
+            await asyncio.sleep(1)
+    
+    return StreamingResponse(
+        generate_progress(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+    
+    # Delete associated leads (CASCADE should handle this, but being explicit)
+    db.query(Lead).filter(Lead.job_id == job.id).delete()
+    db.delete(job)
+    db.commit()
+    
+    return None
+
+
+

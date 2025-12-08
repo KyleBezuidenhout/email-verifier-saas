@@ -1,71 +1,438 @@
 const { Worker } = require('bullmq');
 const axios = require('axios');
 const redis = require('redis');
+const { Pool } = require('pg');
 require('dotenv').config();
 
-const connection = {
-  host: process.env.REDIS_URL.split('://')[1].split(':')[0] || 'localhost',
-  port: process.env.REDIS_URL.split(':')[2] || 6379,
+// Parse Redis connection
+const redisUrl = new URL(process.env.REDIS_URL);
+const redisConnection = {
+  host: redisUrl.hostname,
+  port: redisUrl.port || 6379,
+  password: redisUrl.password || undefined,
 };
 
+// PostgreSQL connection pool
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL.includes('railway') ? { rejectUnauthorized: false } : false,
+});
+
+// MailTester API configuration
+const MAILTESTER_BASE_URL = process.env.MAILTESTER_BASE_URL || 'https://happy.mailtester.ninja/ninja';
+const MAILTESTER_API_KEY = process.env.MAILTESTER_API_KEY;
+
+// Rate limiting: 170 emails per 30 seconds
+const RATE_LIMIT = {
+  max: 170,
+  window: 30000, // 30 seconds in milliseconds
+};
+
+// Track rate limit
+let requestCount = 0;
+let windowStart = Date.now();
+
+// Rate limiter function
+async function rateLimit() {
+  const now = Date.now();
+  
+  // Reset window if expired
+  if (now - windowStart >= RATE_LIMIT.window) {
+    requestCount = 0;
+    windowStart = now;
+  }
+  
+  // Wait if limit reached
+  if (requestCount >= RATE_LIMIT.max) {
+    const waitTime = RATE_LIMIT.window - (now - windowStart);
+    console.log(`Rate limit reached. Waiting ${Math.ceil(waitTime / 1000)} seconds...`);
+    await new Promise(resolve => setTimeout(resolve, waitTime + 100)); // Add 100ms buffer
+    requestCount = 0;
+    windowStart = Date.now();
+  }
+  
+  requestCount++;
+}
+
+// Verify email using MailTester API
+async function verifyEmail(email) {
+  await rateLimit();
+  
+  try {
+    const response = await axios.get(MAILTESTER_BASE_URL, {
+      params: {
+        email: email,
+        key: MAILTESTER_API_KEY,
+      },
+      timeout: 30000, // 30 second timeout
+    });
+    
+    const code = response.data?.code || 'ko';
+    const message = response.data?.message || '';
+    
+    let status = 'invalid';
+    if (code === 'ok') {
+      status = 'valid';
+    } else if (code === 'mb' || message.toLowerCase().includes('catch')) {
+      status = 'catchall';
+    }
+    
+    return {
+      status,
+      message,
+      mx: response.data?.mx || '',
+    };
+  } catch (error) {
+    console.error(`Error verifying ${email}:`, error.message);
+    // Retry once on network errors
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+      return verifyEmail(email); // Retry
+    }
+    return {
+      status: 'error',
+      message: error.message,
+    };
+  }
+}
+
+// Deduplication logic (same as backend)
+function deduplicateLeads(leads) {
+  const uniqueLeads = new Map();
+  
+  for (const lead of leads) {
+    const key = `${lead.first_name.toLowerCase()}_${lead.last_name.toLowerCase()}_${lead.domain.toLowerCase()}`;
+    
+    if (!uniqueLeads.has(key)) {
+      uniqueLeads.set(key, []);
+    }
+    uniqueLeads.get(key).push(lead);
+  }
+  
+  const finalResults = [];
+  
+  for (const [key, leadGroup] of uniqueLeads.entries()) {
+    const valid = leadGroup.filter(l => l.verification_status === 'valid');
+    const catchall = leadGroup.filter(l => l.verification_status === 'catchall');
+    
+    let best;
+    if (valid.length > 0) {
+      best = valid.reduce((max, lead) => 
+        (lead.prevalence_score || 0) > (max.prevalence_score || 0) ? lead : max
+      );
+    } else if (catchall.length > 0) {
+      best = catchall.reduce((max, lead) => 
+        (lead.prevalence_score || 0) > (max.prevalence_score || 0) ? lead : max
+      );
+    } else {
+      // No valid or catchall, mark first as not_found
+      best = {
+        ...leadGroup[0],
+        email: '',
+        verification_status: 'not_found',
+        prevalence_score: 0,
+      };
+    }
+    
+    best.is_final_result = true;
+    finalResults.push(best);
+  }
+  
+  return finalResults;
+}
+
+// Update job status in database
+async function updateJobStatus(jobId, status, updates = {}) {
+  const setClause = ['status = $1'];
+  const values = [status];
+  let paramIndex = 2;
+  
+  if (updates.processed_leads !== undefined) {
+    setClause.push(`processed_leads = $${paramIndex}`);
+    values.push(updates.processed_leads);
+    paramIndex++;
+  }
+  
+  if (updates.valid_emails_found !== undefined) {
+    setClause.push(`valid_emails_found = $${paramIndex}`);
+    values.push(updates.valid_emails_found);
+    paramIndex++;
+  }
+  
+  if (updates.catchall_emails_found !== undefined) {
+    setClause.push(`catchall_emails_found = $${paramIndex}`);
+    values.push(updates.catchall_emails_found);
+    paramIndex++;
+  }
+  
+  if (updates.completed_at !== undefined) {
+    setClause.push(`completed_at = $${paramIndex}`);
+    values.push(updates.completed_at);
+    paramIndex++;
+  }
+  
+  if (updates.cost_in_credits !== undefined) {
+    setClause.push(`cost_in_credits = $${paramIndex}`);
+    values.push(updates.cost_in_credits);
+    paramIndex++;
+  }
+  
+  values.push(jobId);
+  
+  await pgPool.query(
+    `UPDATE jobs SET ${setClause.join(', ')} WHERE id = $${paramIndex}`,
+    values
+  );
+}
+
+// Update lead verification status
+async function updateLeadStatus(leadId, status, message = '') {
+  await pgPool.query(
+    'UPDATE leads SET verification_status = $1 WHERE id = $2',
+    [status, leadId]
+  );
+}
+
+// Mark leads as final results
+async function markFinalResults(leadIds) {
+  if (leadIds.length === 0) return;
+  
+  // Get job_id from first lead
+  const jobResult = await pgPool.query('SELECT job_id FROM leads WHERE id = $1', [leadIds[0]]);
+  if (jobResult.rows.length === 0) return;
+  
+  const jobId = jobResult.rows[0].job_id;
+  
+  // First, unmark all leads for this job
+  await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
+  
+  // Mark selected leads as final
+  if (leadIds.length > 0) {
+    const placeholders = leadIds.map((_, i) => `$${i + 1}`).join(',');
+    await pgPool.query(
+      `UPDATE leads SET is_final_result = true WHERE id IN (${placeholders})`,
+      leadIds
+    );
+  }
+}
+
+// Main worker
 const worker = new Worker(
   'email-verification',
   async (job) => {
-    const { jobId, leads } = job.data;
-
+    const jobId = job.data;
     
-
-    console.log(`Processing job ${jobId} with ${leads.length} leads`);
-
+    console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
     
-
-    let processedCount = 0;
-    const totalLeads = leads.length;
-
-    
-
-    for (const lead of leads) {
-      try {
-        // Simulate verification (in production, call MailTester API)
-        const response = await axios.get(process.env.MAILTESTER_API_KEY ? 
-          `https://happy.mailtester.ninja/ninja?email=${lead.email}&key=${process.env.MAILTESTER_API_KEY}` :
-          null
-        );
-
-        
-
-        console.log(`Verified: ${lead.email}`);
-        processedCount++;
-
-        
-
-        await job.updateProgress((processedCount / totalLeads) * 100);
-      } catch (error) {
-        console.error(`Error verifying ${lead.email}:`, error.message);
+    try {
+      // Get job details from database
+      const jobResult = await pgPool.query(
+        'SELECT * FROM jobs WHERE id = $1',
+        [jobId]
+      );
+      
+      if (jobResult.rows.length === 0) {
+        throw new Error(`Job ${jobId} not found`);
       }
+      
+      const jobData = jobResult.rows[0];
+      
+      // Update job status to processing
+      await updateJobStatus(jobId, 'processing');
+      
+      // Get all leads for this job
+      const leadsResult = await pgPool.query(
+        'SELECT * FROM leads WHERE job_id = $1 ORDER BY prevalence_score DESC',
+        [jobId]
+      );
+      
+      const leads = leadsResult.rows;
+      const totalLeads = leads.length;
+      
+      console.log(`Found ${totalLeads} leads to verify`);
+      
+      if (totalLeads === 0) {
+        await updateJobStatus(jobId, 'completed', {
+          completed_at: new Date(),
+        });
+        return { status: 'completed', message: 'No leads to process' };
+      }
+      
+      let processedCount = 0;
+      let validCount = 0;
+      let catchallCount = 0;
+      
+      // Process leads in batches
+      const batchSize = 10;
+      for (let i = 0; i < leads.length; i += batchSize) {
+        const batch = leads.slice(i, i + batchSize);
+        
+        // Process batch in parallel (respecting rate limit)
+        const batchPromises = batch.map(async (lead) => {
+          try {
+            const result = await verifyEmail(lead.email);
+            
+            await updateLeadStatus(lead.id, result.status, result.message);
+            
+            if (result.status === 'valid') {
+              validCount++;
+            } else if (result.status === 'catchall') {
+              catchallCount++;
+            }
+            
+            processedCount++;
+            
+            // Update job progress every 10 leads
+            if (processedCount % 10 === 0) {
+              await updateJobStatus(jobId, 'processing', {
+                processed_leads: processedCount,
+                valid_emails_found: validCount,
+                catchall_emails_found: catchallCount,
+              });
+              
+              await job.updateProgress((processedCount / totalLeads) * 100);
+              console.log(`Progress: ${processedCount}/${totalLeads} (${Math.round(processedCount / totalLeads * 100)}%)`);
+            }
+          } catch (error) {
+            console.error(`Error processing lead ${lead.id}:`, error.message);
+            await updateLeadStatus(lead.id, 'error', error.message);
+            processedCount++;
+          }
+        });
+        
+        await Promise.all(batchPromises);
+      }
+      
+      // Final progress update
+      await updateJobStatus(jobId, 'processing', {
+        processed_leads: processedCount,
+        valid_emails_found: validCount,
+        catchall_emails_found: catchallCount,
+      });
+      
+      console.log(`Verification complete. Valid: ${validCount}, Catchall: ${catchallCount}, Processed: ${processedCount}`);
+      
+      // Apply deduplication
+      console.log('Applying deduplication...');
+      const allLeads = await pgPool.query(
+        'SELECT * FROM leads WHERE job_id = $1',
+        [jobId]
+      );
+      
+      const finalResults = deduplicateLeads(allLeads.rows);
+      
+      // Mark final results in database
+      // For not_found cases, we need to create a record or mark the first lead
+      const finalResultIds = [];
+      
+      for (const result of finalResults) {
+        if (result.id) {
+          finalResultIds.push(result.id);
+        } else if (result.verification_status === 'not_found') {
+          // For not_found, find the first lead with this name/domain and mark it
+          const notFoundLead = await pgPool.query(
+            `SELECT id FROM leads 
+             WHERE job_id = $1 
+             AND first_name = $2 
+             AND last_name = $3 
+             AND domain = $4 
+             LIMIT 1`,
+            [jobId, result.first_name, result.last_name, result.domain]
+          );
+          
+          if (notFoundLead.rows.length > 0) {
+            await pgPool.query(
+              'UPDATE leads SET email = $1, verification_status = $2, is_final_result = true WHERE id = $3',
+              ['', 'not_found', notFoundLead.rows[0].id]
+            );
+            finalResultIds.push(notFoundLead.rows[0].id);
+          }
+        }
+      }
+      
+      await markFinalResults(finalResultIds);
+      
+      // Update final counts
+      const finalValidCount = finalResults.filter(r => r.verification_status === 'valid').length;
+      const finalCatchallCount = finalResults.filter(r => r.verification_status === 'catchall').length;
+      
+      // Calculate cost (1 credit per verified email)
+      const costInCredits = finalValidCount + finalCatchallCount;
+      
+      // Mark job as completed
+      await updateJobStatus(jobId, 'completed', {
+        processed_leads: processedCount,
+        valid_emails_found: finalValidCount,
+        catchall_emails_found: finalCatchallCount,
+        cost_in_credits: costInCredits,
+        completed_at: new Date(),
+      });
+      
+      // Deduct credits from user
+      if (costInCredits > 0) {
+        await pgPool.query(
+          'UPDATE users SET credits = credits - $1 WHERE id = $2',
+          [costInCredits, jobData.user_id]
+        );
+      }
+      
+      console.log(`Job ${jobId} completed successfully!`);
+      console.log(`Final results: ${finalValidCount} valid, ${finalCatchallCount} catchall`);
+      
+      return {
+        status: 'completed',
+        processedCount,
+        validCount: finalValidCount,
+        catchallCount: finalCatchallCount,
+      };
+      
+    } catch (error) {
+      console.error(`Error processing job ${jobId}:`, error);
+      
+      // Mark job as failed
+      await updateJobStatus(jobId, 'failed');
+      
+      throw error;
     }
-
-    
-
-    return { status: 'completed', processedCount };
   },
   {
-    connection,
+    connection: redisConnection,
     limiter: {
-      max: 170,
-      duration: 30000,
+      max: 1, // Process one job at a time to respect rate limits
+      duration: 1000,
     },
-    concurrency: 5,
+    concurrency: 1, // Process one job at a time
   }
 );
 
+// Event handlers
 worker.on('completed', (job) => {
-  console.log(`Job ${job.id} completed`);
+  console.log(`\n[${new Date().toISOString()}] Job ${job.id} completed successfully`);
 });
 
 worker.on('failed', (job, err) => {
-  console.error(`Job ${job.id} failed:`, err.message);
+  console.error(`\n[${new Date().toISOString()}] Job ${job.id} failed:`, err.message);
+});
+
+worker.on('error', (err) => {
+  console.error('Worker error:', err);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  await worker.close();
+  await pgPool.end();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  await worker.close();
+  await pgPool.end();
+  process.exit(0);
 });
 
 console.log('Worker started, waiting for jobs...');
-
+console.log(`MailTester API: ${MAILTESTER_BASE_URL}`);
+console.log(`Rate limit: ${RATE_LIMIT.max} requests per ${RATE_LIMIT.window / 1000} seconds`);

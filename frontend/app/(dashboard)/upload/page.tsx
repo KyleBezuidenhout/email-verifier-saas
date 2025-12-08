@@ -1,0 +1,136 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { DropZone } from "@/components/upload/DropZone";
+import { FilePreview } from "@/components/upload/FilePreview";
+import { apiClient } from "@/lib/api";
+import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { formatFileSize } from "@/lib/utils";
+
+export default function UploadPage() {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const [companySize, setCompanySize] = useState("");
+  const router = useRouter();
+
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      setError("File size must be less than 10MB");
+      return;
+    }
+
+    setUploading(true);
+    setError("");
+
+    try {
+      const response = await apiClient.uploadFile(selectedFile, {
+        company_size: companySize || undefined,
+      });
+      router.push(`/dashboard?jobId=${response.job_id}`);
+    } catch (err: any) {
+      setError(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Upload CSV File</h1>
+        <p className="mt-2 text-gray-600">
+          Upload a CSV file with first_name, last_name, and website columns to
+          verify email addresses.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm border p-6 space-y-6">
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
+        <DropZone
+          onFileSelect={setSelectedFile}
+          selectedFile={selectedFile}
+        />
+
+        {selectedFile && (
+          <>
+            <div className="border-t pt-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                File Information
+              </h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">File name:</span>
+                  <span className="ml-2 font-medium">{selectedFile.name}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">File size:</span>
+                  <span className="ml-2 font-medium">
+                    {formatFileSize(selectedFile.size)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <FilePreview file={selectedFile} />
+
+            <div className="border-t pt-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Advanced Options
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="company-size"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
+                    Company Size (optional)
+                  </label>
+                  <select
+                    id="company-size"
+                    value={companySize}
+                    onChange={(e) => setCompanySize(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Select company size</option>
+                    <option value="1-50">1-50 employees</option>
+                    <option value="51-200">51-200 employees</option>
+                    <option value="201-500">201-500 employees</option>
+                    <option value="500+">500+ employees</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-4 pt-6 border-t">
+              <button
+                onClick={() => setSelectedFile(null)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                disabled={uploading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpload}
+                disabled={uploading}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {uploading && <LoadingSpinner size="sm" />}
+                <span>{uploading ? "Uploading..." : "Upload & Verify"}</span>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
