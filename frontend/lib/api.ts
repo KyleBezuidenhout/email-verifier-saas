@@ -16,9 +16,8 @@ class ApiClient {
     const url = `${this.baseUrl}${endpoint}`;
     const token = this.getToken();
 
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...options.headers,
     };
 
     if (token) {
