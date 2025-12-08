@@ -37,8 +37,11 @@ class ApiClient {
         // Clear token from all paths
         if (typeof window !== "undefined") {
           document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
-          // Redirect to login
-          window.location.href = "/login";
+          // Only redirect to login if we're not already on the login or register page
+          const currentPath = window.location.pathname;
+          if (currentPath !== "/login" && currentPath !== "/register") {
+            window.location.href = "/login";
+          }
         }
         throw new Error("Session expired. Please log in again.");
       }
@@ -108,8 +111,11 @@ class ApiClient {
       document.cookie = "token=; path=/; max-age=0";
       if (typeof window !== "undefined") {
         document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
-        // Redirect to login
-        window.location.href = "/login";
+        // Only redirect to login if we're not already on the login or register page
+        const currentPath = window.location.pathname;
+        if (currentPath !== "/login" && currentPath !== "/register") {
+          window.location.href = "/login";
+        }
       }
       throw new Error("Session expired. Please log in again.");
     }
