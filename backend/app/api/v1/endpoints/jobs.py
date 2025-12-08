@@ -371,8 +371,8 @@ async def delete_job(
             detail="Job not found"
         )
     
-    # Delete associated leads (CASCADE should handle this, but being explicit)
-    db.query(Lead).filter(Lead.job_id == job.id).delete()
+    # Only delete the job record, NOT the leads (keep leads forever)
+    # Leads will remain in database but job reference will be removed
     db.delete(job)
     db.commit()
     

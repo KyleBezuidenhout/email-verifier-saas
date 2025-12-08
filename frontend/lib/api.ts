@@ -36,7 +36,18 @@ class ApiClient {
       throw new Error(error.detail || "An error occurred");
     }
 
-    return response.json();
+    // Handle 204 No Content (DELETE endpoints return no body)
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    // Handle empty responses
+    const text = await response.text();
+    if (!text) {
+      return undefined as T;
+    }
+
+    return JSON.parse(text);
   }
 
   private async requestWithFile<T>(
