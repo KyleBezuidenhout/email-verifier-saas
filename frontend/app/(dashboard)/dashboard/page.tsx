@@ -6,7 +6,6 @@ import { Job } from "@/types";
 import { apiClient } from "@/lib/api";
 import { JobTable } from "@/components/dashboard/JobTable";
 import { QuickStats } from "@/components/dashboard/QuickStats";
-import { SellingPoints } from "@/components/common/SellingPoints";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import Link from "next/link";
 import { useSSE } from "@/hooks/useSSE";
@@ -118,14 +117,6 @@ export default function DashboardPage() {
 
       {/* Quick Stats */}
       <QuickStats jobs={jobs} />
-
-      {/* Why Choose Us Section */}
-      <div className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-          Why Choose Us?
-        </h2>
-        <SellingPoints />
-      </div>
 
       <JobTable jobs={jobs} onDelete={handleDelete} />
     </div>
