@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+import uuid
 
 from app.db.session import get_db
 from app.models.user import User
@@ -18,8 +19,16 @@ async def get_results(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
     # Verify job belongs to user
-    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
+    job = db.query(Job).filter(Job.id == job_uuid, Job.user_id == current_user.id).first()
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -28,7 +37,7 @@ async def get_results(
     
     # Get final results (is_final_result = True)
     leads = db.query(Lead).filter(
-        Lead.job_id == job_id,
+        Lead.job_id == job_uuid,
         Lead.is_final_result == True
     ).all()
     

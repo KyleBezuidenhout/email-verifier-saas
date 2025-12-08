@@ -246,7 +246,15 @@ async def get_job(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
+    job = db.query(Job).filter(Job.id == job_uuid, Job.user_id == current_user.id).first()
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -261,6 +269,14 @@ async def get_job_progress(
     token: str = Query(None),
     db: Session = Depends(get_db)
 ):
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
     # Authenticate user via token
     if token:
         payload = decode_token(token)
@@ -269,7 +285,7 @@ async def get_job_progress(
             if user_id:
                 user = db.query(User).filter(User.id == user_id).first()
                 if user:
-                    job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
+                    job = db.query(Job).filter(Job.id == job_uuid, Job.user_id == user.id).first()
                     if not job:
                         raise HTTPException(
                             status_code=status.HTTP_404_NOT_FOUND,
@@ -338,7 +354,15 @@ async def delete_job(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
+    job = db.query(Job).filter(Job.id == job_uuid, Job.user_id == current_user.id).first()
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -350,7 +374,8 @@ async def delete_job(
     db.delete(job)
     db.commit()
     
-    return None
+    from fastapi.responses import Response
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 
