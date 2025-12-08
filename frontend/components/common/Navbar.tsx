@@ -39,12 +39,6 @@ export function Navbar() {
                 Dashboard
               </Link>
               <Link
-                href="/upload"
-                className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity"
-              >
-                Upload
-              </Link>
-              <Link
                 href="/settings"
                 className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity"
               >
