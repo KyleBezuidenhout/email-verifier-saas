@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 
 interface NavItem {
   name: string;
-  href: string;
+  href: string | null; // null means disabled/coming soon
   icon: React.ReactNode;
 }
 
