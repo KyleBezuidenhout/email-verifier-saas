@@ -4,6 +4,7 @@ import Link from "next/link";
 import { SellingPoints, SecurityBadges } from "@/components/common/SellingPoints";
 import { Navbar } from "@/components/common/Navbar";
 import { Footer } from "@/components/common/Footer";
+import { EmailTestForm } from "./EmailTestForm";
 
 export function MarketingPage() {
   return (
@@ -11,35 +12,38 @@ export function MarketingPage() {
       <Navbar />
       <main className="flex-1">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 dark:from-blue-900 dark:via-indigo-900 dark:to-purple-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-          <div className="text-center">
-            <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
-              Find & Verify Emails
-              <br />
-              <span className="text-blue-200">10x Faster, 10x Cheaper</span>
+      <section className="relative overflow-hidden bg-gradient-to-b from-white via-blue-50 to-purple-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-purple-900/20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <div className="text-center mb-12">
+            <h1 className="text-5xl md:text-6xl font-bold text-gray-900 dark:text-white mb-4">
+              For Modern Sales Teams
             </h1>
-            <p className="text-xl md:text-2xl text-blue-100 mb-8 max-w-3xl mx-auto">
-              Process up to 250M leads in minutes. Get verified emails at $0.10 each.
-              Lightning-fast processing with bank-level security.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link
-                href="/register"
-                className="px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold text-lg hover:bg-blue-50 transition-all shadow-xl hover:shadow-2xl"
-              >
-                Get Started Free
-              </Link>
-              <Link
-                href="/login"
-                className="px-8 py-4 bg-transparent border-2 border-white text-white rounded-lg font-semibold text-lg hover:bg-white/10 transition-all"
-              >
-                Sign In
-              </Link>
+            <div className="flex justify-center mb-6">
+              <svg className="w-32 h-4" viewBox="0 0 200 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 10 Q50 5, 90 10 T170 10" stroke="#ec4899" strokeWidth="3" fill="none" strokeLinecap="round"/>
+              </svg>
             </div>
-            <p className="mt-4 text-blue-200 text-sm">
-              ✓ 10 free credits • ✓ No credit card required • ✓ Setup in 2 minutes
+            <p className="text-lg md:text-xl text-gray-700 dark:text-gray-300 max-w-2xl mx-auto">
+              Reach more targets without destroying your reputation with built-in email verification and exceptional data coverage.
             </p>
+          </div>
+
+          {/* Email Test Form */}
+          <div className="relative">
+            <div className="absolute -left-8 top-0 hidden lg:block">
+              <div className="flex flex-col items-center">
+                <Link
+                  href="/register"
+                  className="text-red-600 dark:text-red-400 font-medium text-sm mb-2 hover:text-red-700 dark:hover:text-red-300"
+                >
+                  Try it now
+                </Link>
+                <svg className="w-8 h-16 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </div>
+            <EmailTestForm />
           </div>
         </div>
       </section>

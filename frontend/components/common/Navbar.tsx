@@ -60,17 +60,53 @@ export function Navbar() {
                 </div>
               </>
             ) : (
-              <div className="hidden md:flex items-center gap-2 ml-4">
-                <span className="text-xs px-2 py-1 rounded bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
-                  🔒 Bank-level encryption
-                </span>
-                <span className="text-xs px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                  ⚡ 99.9% Uptime
-                </span>
-                <span className="text-xs px-2 py-1 rounded bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                  📈 250M+ leads
-                </span>
-              </div>
+              <>
+                <div className="hidden lg:flex items-center ml-10 space-x-6">
+                  <div className="relative group">
+                    <button className="flex items-center text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium">
+                      Products
+                      <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  </div>
+                  <Link
+                    href="/pricing"
+                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
+                  >
+                    Pricing
+                  </Link>
+                  <Link
+                    href="/integrations"
+                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
+                  >
+                    Integrations
+                  </Link>
+                  <Link
+                    href="/resources"
+                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
+                  >
+                    Resources
+                  </Link>
+                  <Link
+                    href="/docs"
+                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
+                  >
+                    Docs
+                  </Link>
+                </div>
+                <div className="hidden md:flex items-center gap-2 ml-4">
+                  <span className="text-xs px-2 py-1 rounded bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
+                    🔒 Bank-level encryption
+                  </span>
+                  <span className="text-xs px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                    ⚡ 99.9% Uptime
+                  </span>
+                  <span className="text-xs px-2 py-1 rounded bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                    📈 250M+ leads
+                  </span>
+                </div>
+              </>
             )}
           </div>
 
