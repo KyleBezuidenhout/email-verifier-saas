@@ -30,6 +30,19 @@ class ApiClient {
         headers,
       });
 
+      // Handle 401 Unauthorized - token expired or invalid
+      if (response.status === 401) {
+        // Clear invalid token
+        document.cookie = "token=; path=/; max-age=0";
+        // Clear token from all paths
+        if (typeof window !== "undefined") {
+          document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
+          // Redirect to login
+          window.location.href = "/login";
+        }
+        throw new Error("Session expired. Please log in again.");
+      }
+
       if (!response.ok) {
         const error = await response.json().catch(() => ({
           detail: response.statusText,
@@ -89,6 +102,18 @@ class ApiClient {
       body: formData,
     });
 
+    // Handle 401 Unauthorized - token expired or invalid
+    if (response.status === 401) {
+      // Clear invalid token
+      document.cookie = "token=; path=/; max-age=0";
+      if (typeof window !== "undefined") {
+        document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
+        // Redirect to login
+        window.location.href = "/login";
+      }
+      throw new Error("Session expired. Please log in again.");
+    }
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({
         detail: response.statusText,
@@ -103,7 +128,11 @@ class ApiClient {
     if (typeof document === "undefined") return null;
     const cookies = document.cookie.split(";");
     const tokenCookie = cookies.find((c) => c.trim().startsWith("token="));
-    return tokenCookie ? tokenCookie.split("=")[1] : null;
+    if (!tokenCookie) return null;
+    // Fix: Split only on first '=' to handle JWT tokens that contain '='
+    const parts = tokenCookie.trim().split("=");
+    if (parts.length < 2) return null;
+    return parts.slice(1).join("="); // Rejoin in case token contains '='
   }
 
   // Auth endpoints
