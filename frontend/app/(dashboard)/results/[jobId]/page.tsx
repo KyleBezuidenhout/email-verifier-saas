@@ -110,6 +110,21 @@ export default function ResultsPage() {
   );
   const notFoundLeads = leads.filter((l) => l.verification_status === "invalid" || l.verification_status === "not_found");
   
+  // Calculate filtered counts for display in filter buttons
+  const filteredValidLeads = filteredLeads.filter((l) => 
+    l.verification_status === "valid" || 
+    l.verification_tag === "catchall-verified" || 
+    l.verification_tag === "valid-catchall"
+  );
+  const filteredCatchallLeads = filteredLeads.filter((l) => 
+    l.verification_status === "catchall" && 
+    l.verification_tag !== "catchall-verified" && 
+    l.verification_tag !== "valid-catchall"
+  );
+  const filteredNotFoundLeads = filteredLeads.filter((l) => 
+    l.verification_status === "invalid" || l.verification_status === "not_found"
+  );
+  
   // Check if user can verify catchalls (has API key and job has catchall leads)
   const canVerifyCatchalls = user?.catchall_verifier_api_key && catchallLeads.length > 0;
   
@@ -124,19 +139,22 @@ export default function ResultsPage() {
     : 0;
 
   const downloadCSV = () => {
-    const headers = ["First Name", "Last Name", "Website", "Email", "Status", "Tag"];
+    const headers = ["First Name", "Last Name", "Website", "Email", "Status", "Tag", "MX Type"];
     const csv = [
       headers.join(","),
-      ...filteredLeads.map((lead) =>
-        [
+      ...filteredLeads.map((lead) => {
+        const mxType = getProviderFromMX(lead.mx_record, lead.mx_provider);
+        const mxTypeDisplay = mxType.charAt(0).toUpperCase() + mxType.slice(1); // Capitalize first letter
+        return [
           lead.first_name,
           lead.last_name,
           lead.domain,
           lead.email,
           lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status,
           lead.verification_tag || "",
-        ].join(",")
-      ),
+          mxTypeDisplay,
+        ].join(",");
+      }),
     ].join("\n");
 
     const blob = new Blob([csv], { type: "text/csv" });
@@ -244,7 +262,7 @@ export default function ResultsPage() {
                   : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
               }`}
             >
-              All ({leads.length})
+              All ({filteredLeads.length})
             </button>
             <button
               onClick={() => setFilter("valid")}
@@ -254,7 +272,7 @@ export default function ResultsPage() {
                   : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
               }`}
             >
-              Valid ({validLeads.length})
+              Valid ({filteredValidLeads.length})
             </button>
             <button
               onClick={() => setFilter("catchall")}
@@ -264,7 +282,7 @@ export default function ResultsPage() {
                   : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
               }`}
             >
-              Catchall ({catchallLeads.length})
+              Catchall ({filteredCatchallLeads.length})
             </button>
             <button
               onClick={() => setFilter("invalid")}
@@ -274,7 +292,7 @@ export default function ResultsPage() {
                   : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
               }`}
             >
-              Invalid ({notFoundLeads.length})
+              Invalid ({filteredNotFoundLeads.length})
             </button>
           </div>
           
@@ -400,6 +418,9 @@ export default function ResultsPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
                   Tag
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
+                  MX Type
+                </th>
               </tr>
             </thead>
             <tbody className="bg-dashbrd-card divide-y divide-dashbrd-border">
@@ -447,6 +468,12 @@ export default function ResultsPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text-muted">
                     {lead.verification_tag || "-"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text-muted">
+                    {(() => {
+                      const mxType = getProviderFromMX(lead.mx_record, lead.mx_provider);
+                      return mxType.charAt(0).toUpperCase() + mxType.slice(1); // Capitalize first letter
+                    })()}
                   </td>
                 </tr>
               ))}
