@@ -53,12 +53,15 @@ async def test_email(request: TestEmailRequest):
             detail="Could not generate email permutations"
         )
     
-    # Verify all permutations
+    # Verify all permutations (with rate limiting)
     mailtester = MailTesterClient()
     verified_leads = []
     
     try:
-        for perm in permutations:
+        # Verify permutations in batches to respect rate limits
+        # MailTester allows 170 requests per 30 seconds
+        # We'll verify with small delays between requests
+        for i, perm in enumerate(permutations):
             result = await mailtester.verify_email(perm['email'])
             
             lead_data = {
@@ -72,8 +75,10 @@ async def test_email(request: TestEmailRequest):
             }
             verified_leads.append(lead_data)
             
-            # Small delay to respect rate limits
-            await asyncio.sleep(0.2)
+            # Rate limit: 170 per 30 seconds = ~176ms between requests
+            # Add small delay to be safe (200ms = 5 requests/second max)
+            if i < len(permutations) - 1:  # Don't delay after last request
+                await asyncio.sleep(0.2)
         
         # Deduplicate to get the best result
         deduplicated = deduplicate_leads(verified_leads)
