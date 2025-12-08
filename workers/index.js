@@ -397,33 +397,39 @@ console.log('Worker started, waiting for jobs...');
 console.log(`MailTester API: ${MAILTESTER_BASE_URL}`);
 console.log(`Rate limit: ${RATE_LIMIT.max} requests per ${RATE_LIMIT.window / 1000} seconds`);
 
-// Simple Redis list poller (fallback to BullMQ)
+// Simple Redis list poller
 async function pollSimpleQueue() {
   const queueName = 'simple-email-verification-queue';
+  
+  console.log(`\n[${new Date().toISOString()}] Starting simple queue poller for: ${queueName}`);
   
   while (true) {
     try {
       // Blocking pop from Redis list (waits up to 5 seconds)
-      const jobId = await redisClient.brPop(queueName, 5);
+      const result = await redisClient.brPop(queueName, 5);
       
-      if (jobId && jobId.element) {
-        const jobIdStr = jobId.element;
-        console.log(`\n[${new Date().toISOString()}] Got job from simple queue: ${jobIdStr}`);
+      if (result && result.element) {
+        const jobIdStr = result.element;
+        console.log(`\n[${new Date().toISOString()}] ✅ Got job from queue: ${jobIdStr}`);
         
-        // Process the job (reuse the BullMQ worker logic)
-        // We'll call the processJob function directly
         try {
           await processJobFromQueue(jobIdStr);
+          console.log(`\n[${new Date().toISOString()}] ✅ Job ${jobIdStr} completed successfully`);
         } catch (error) {
-          console.error(`Error processing job ${jobIdStr} from simple queue:`, error);
+          console.error(`\n[${new Date().toISOString()}] ❌ Error processing job ${jobIdStr}:`, error.message);
+          console.error('Stack:', error.stack);
+          // Job will remain in failed state, continue processing other jobs
         }
       }
     } catch (error) {
-      if (error.code !== 'ECONNREFUSED') {
-        console.error('Error polling simple queue:', error);
+      if (error.code === 'ECONNREFUSED') {
+        console.error(`\n[${new Date().toISOString()}] ❌ Redis connection refused. Retrying in 5 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      } else {
+        console.error(`\n[${new Date().toISOString()}] ❌ Error polling queue:`, error.message);
+        console.error('Stack:', error.stack);
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-      // Wait a bit before retrying
-      await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
 }
