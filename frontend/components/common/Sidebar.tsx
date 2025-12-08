@@ -99,9 +99,7 @@ export function Sidebar() {
         {/* Navigation Items */}
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => {
-            const isDisabled = item.href === null;
-            
-            if (isDisabled) {
+            if (item.href === null) {
               return (
                 <div
                   key={item.name}
@@ -115,11 +113,12 @@ export function Sidebar() {
             }
             
             // TypeScript now knows item.href is string (not null) after the check above
-            const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
+            const href = item.href; // Type narrowing helper
+            const isActive = pathname === href || pathname?.startsWith(href + "/");
             return (
               <Link
-                key={item.href}
-                href={item.href}
+                key={href}
+                href={href}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative ${
                   isActive
                     ? "bg-dashbrd-accent/10 text-dashbrd-accent font-medium border-l-2 border-dashbrd-accent"
