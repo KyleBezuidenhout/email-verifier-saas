@@ -130,7 +130,7 @@ export function EmailTestForm() {
         {results.length >= 5 && (
           <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
             <p className="text-sm text-blue-800 dark:text-blue-300 mb-2">
-              You've reached the free test limit. Sign up for unlimited email verification!
+              You&apos;ve reached the free test limit. Sign up for unlimited email verification!
             </p>
             <Link
               href="/register"
