@@ -125,8 +125,8 @@ export default function ResultsPage() {
     l.verification_status === "invalid" || l.verification_status === "not_found"
   );
   
-  // Check if user can verify catchalls (has API key and job has catchall leads)
-  const canVerifyCatchalls = user?.catchall_verifier_api_key && catchallLeads.length > 0;
+  // Check if user can verify catchalls (job has catchall leads)
+  const canVerifyCatchalls = catchallLeads.length > 0;
   
   const totalVerified = validLeads.length; // Only count verified emails (includes valid-catchall)
   const totalCost = job ? (job.cost_in_credits || 0) * 0.1 : 0;
@@ -359,30 +359,14 @@ export default function ResultsPage() {
         <div className="flex justify-between items-center">
           <div className="flex space-x-2">
             {catchallLeads.length > 0 && (
-              <>
-                {!user?.catchall_verifier_api_key ? (
-                  <button
-                    onClick={() => {
-                      if (confirm("You need to add your Catchall Verifier API key in Settings first. Would you like to go to Settings now?")) {
-                        window.location.href = "/settings";
-                      }
-                    }}
-                    className="px-4 py-2 bg-dashbrd-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
-                    title="Add your Catchall Verifier API key in Settings to verify catchall emails"
-                  >
-                    Verify Catchalls (Add API Key)
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleVerifyCatchalls}
-                    disabled={verifyingCatchalls}
-                    className="px-4 py-2 bg-dashbrd-accent text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2"
-                  >
-                    {verifyingCatchalls && <LoadingSpinner size="sm" />}
-                    <span>{verifyingCatchalls ? "Verifying..." : "Verify Catchalls"}</span>
-                  </button>
-                )}
-              </>
+              <button
+                onClick={handleVerifyCatchalls}
+                disabled={verifyingCatchalls}
+                className="px-4 py-2 bg-dashbrd-accent text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2"
+              >
+                {verifyingCatchalls && <LoadingSpinner size="sm" />}
+                <span>{verifyingCatchalls ? "Verifying..." : "Verify Catchalls"}</span>
+              </button>
             )}
             <button
               onClick={downloadCSV}
