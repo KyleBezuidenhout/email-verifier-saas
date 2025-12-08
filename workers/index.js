@@ -492,15 +492,18 @@ async function processJobFromQueue(jobId) {
           
           await updateLeadStatus(lead.id, result.status, result.message);
           
+          // Mark this unique person as processed (regardless of result)
+          const personKey = `${lead.first_name.toLowerCase()}_${lead.last_name.toLowerCase()}_${lead.domain.toLowerCase()}`;
+          const wasNewPerson = !completedUniquePeople.has(personKey);
+          
           if (result.status === 'valid') {
             validCount++;
-            // Mark this unique person as having a valid email
-            const personKey = `${lead.first_name.toLowerCase()}_${lead.last_name.toLowerCase()}_${lead.domain.toLowerCase()}`;
             completedUniquePeople.add(personKey);
           } else if (result.status === 'catchall') {
             catchallCount++;
-            // Mark this unique person as having a catchall email
-            const personKey = `${lead.first_name.toLowerCase()}_${lead.last_name.toLowerCase()}_${lead.domain.toLowerCase()}`;
+            completedUniquePeople.add(personKey);
+          } else {
+            // Even if invalid, mark person as processed for progress tracking
             completedUniquePeople.add(personKey);
           }
           
@@ -510,8 +513,8 @@ async function processJobFromQueue(jobId) {
           const uniquePeopleProcessed = completedUniquePeople.size;
           const progressPercent = Math.round((uniquePeopleProcessed / uniquePeopleCount) * 100);
           
-          // Update job progress every 10 permutations or when unique people count changes
-          if (processedPermutations % 10 === 0 || completedUniquePeople.size > 0) {
+          // Update job progress every 10 permutations or when a new unique person is completed
+          if (processedPermutations % 10 === 0 || wasNewPerson) {
             await updateJobStatus(jobId, 'processing', {
               processed_leads: uniquePeopleProcessed, // Show unique people, not permutations
               valid_emails_found: validCount,
