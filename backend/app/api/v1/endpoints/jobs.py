@@ -640,6 +640,43 @@ async def delete_job(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/{job_id}/cancel", status_code=status.HTTP_200_OK)
+async def cancel_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Cancel a pending or processing job."""
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
+    # Verify job belongs to user
+    job = db.query(Job).filter(Job.id == job_uuid, Job.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+    
+    # Only allow cancelling pending or processing jobs
+    if job.status not in ['pending', 'processing']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel job with status: {job.status}"
+        )
+    
+    # Update job status to cancelled
+    job.status = 'cancelled'
+    db.commit()
+    
+    return {"message": "Job cancelled successfully", "job_id": str(job.id)}
+
+
 @router.get("/debug/queue-status")
 async def debug_queue_status(
     current_user: User = Depends(get_current_user),

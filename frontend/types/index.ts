@@ -13,7 +13,7 @@ export interface User {
 export interface Job {
   id: string;
   user_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   job_type?: 'enrichment' | 'verification';
   original_filename?: string;
   total_leads: number;

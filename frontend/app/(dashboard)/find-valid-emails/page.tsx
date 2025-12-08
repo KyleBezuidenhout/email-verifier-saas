@@ -59,6 +59,16 @@ export default function FindValidEmailsPage() {
     }
   };
 
+  const handleCancel = async (jobId: string) => {
+    try {
+      await apiClient.cancelJob(jobId);
+      // Reload jobs to get updated status
+      await loadJobs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to cancel job");
+    }
+  };
+
   // Upload-related handlers
   const handleMappingChange = useCallback((mapping: ColumnMapping, isValid: boolean) => {
     setColumnMapping(mapping);
@@ -275,7 +285,7 @@ export default function FindValidEmailsPage() {
       </div>
 
       {/* Job History */}
-      <JobTable jobs={jobs} onDelete={handleDelete} />
+      <JobTable jobs={jobs} onDelete={handleDelete} onCancel={handleCancel} />
 
       <SalesNavModal
         isOpen={showSalesNavModal}

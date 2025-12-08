@@ -659,6 +659,15 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
   };
 }
 
+// Helper function to check if job is cancelled
+async function isJobCancelled(jobId) {
+  const result = await pgPool.query(
+    'SELECT status FROM jobs WHERE id = $1',
+    [jobId]
+  );
+  return result.rows.length > 0 && result.rows[0].status === 'cancelled';
+}
+
 // Process job from simple queue with EARLY EXIT + PARALLEL PEOPLE optimization
 async function processJobFromQueue(jobId) {
   console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
@@ -676,6 +685,12 @@ async function processJobFromQueue(jobId) {
     
     const jobData = jobResult.rows[0];
     const jobType = jobData.job_type || 'enrichment'; // Default to enrichment for backward compatibility
+    
+    // Check if job is already cancelled before starting
+    if (jobData.status === 'cancelled') {
+      console.log(`Job ${jobId} is already cancelled, skipping...`);
+      return { status: 'cancelled', message: 'Job was cancelled' };
+    }
     
     // Update job status to processing
     await updateJobStatus(jobId, 'processing');
@@ -712,6 +727,13 @@ async function processJobFromQueue(jobId) {
       // Process leads in batches
       const batchSize = 10;
       for (let i = 0; i < leads.length; i += batchSize) {
+        // Check if job was cancelled before processing batch
+        if (await isJobCancelled(jobId)) {
+          console.log(`Job ${jobId} was cancelled, stopping processing...`);
+          await updateJobStatus(jobId, 'cancelled');
+          return { status: 'cancelled', message: 'Job was cancelled during processing' };
+        }
+        
         const batch = leads.slice(i, i + batchSize);
         const batchNumber = Math.floor(i / batchSize) + 1;
         const totalBatches = Math.ceil(leads.length / batchSize);
@@ -752,6 +774,13 @@ async function processJobFromQueue(jobId) {
         });
         
         await Promise.all(batchPromises);
+        
+        // Check if job was cancelled after batch completes
+        if (await isJobCancelled(jobId)) {
+          console.log(`Job ${jobId} was cancelled, stopping processing...`);
+          await updateJobStatus(jobId, 'cancelled');
+          return { status: 'cancelled', message: 'Job was cancelled during processing' };
+        }
         
         // Update progress after each batch
         const progressPercent = Math.round((processedCount / totalLeads) * 100);
@@ -868,6 +897,13 @@ async function processJobFromQueue(jobId) {
     const BATCH_SIZE = 10;
     
     for (let i = 0; i < peopleArray.length; i += BATCH_SIZE) {
+      // Check if job was cancelled before processing batch
+      if (await isJobCancelled(jobId)) {
+        console.log(`Job ${jobId} was cancelled, stopping processing...`);
+        await updateJobStatus(jobId, 'cancelled');
+        return { status: 'cancelled', message: 'Job was cancelled during processing' };
+      }
+      
       const batch = peopleArray.slice(i, i + BATCH_SIZE);
       const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
       const totalBatches = Math.ceil(peopleArray.length / BATCH_SIZE);
@@ -901,6 +937,13 @@ async function processJobFromQueue(jobId) {
         totalApiCalls += result.apiCalls;
         savedApiCalls += result.savedCalls;
         completedPeopleCount++;
+      }
+      
+      // Check if job was cancelled after batch completes
+      if (await isJobCancelled(jobId)) {
+        console.log(`Job ${jobId} was cancelled, stopping processing...`);
+        await updateJobStatus(jobId, 'cancelled');
+        return { status: 'cancelled', message: 'Job was cancelled during processing' };
       }
       
       // Update progress after each batch

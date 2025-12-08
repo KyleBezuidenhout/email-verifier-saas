@@ -189,6 +189,12 @@ class ApiClient {
     });
   }
 
+  async cancelJob(jobId: string): Promise<{ message: string; job_id: string }> {
+    return this.request<{ message: string; job_id: string }>(`/api/v1/jobs/${jobId}/cancel`, {
+      method: "POST",
+    });
+  }
+
   // Results endpoints
   async getResults(jobId: string): Promise<Lead[]> {
     return this.request<Lead[]>(`/api/v1/results/${jobId}`);

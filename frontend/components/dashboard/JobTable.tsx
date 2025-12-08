@@ -8,9 +8,10 @@ import { useState } from "react";
 interface JobTableProps {
   jobs: Job[];
   onDelete: (jobId: string) => void;
+  onCancel?: (jobId: string) => void;
 }
 
-export function JobTable({ jobs, onDelete }: JobTableProps) {
+export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const handleDelete = (jobId: string) => {
@@ -69,6 +70,7 @@ export function JobTable({ jobs, onDelete }: JobTableProps) {
                       job.status === "completed" ? "badge-success" :
                       job.status === "processing" ? "badge-warning" :
                       job.status === "failed" ? "badge-error" :
+                      job.status === "cancelled" ? "badge-info" :
                       "badge-info"
                     }`}
                   >
@@ -101,6 +103,14 @@ export function JobTable({ jobs, onDelete }: JobTableProps) {
                   >
                     View
                   </Link>
+                  {(job.status === 'pending' || job.status === 'processing') && onCancel && (
+                    <button
+                      onClick={() => onCancel(job.id)}
+                      className="text-dashbrd-warning hover:text-dashbrd-warning/80 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  )}
                   {deleteConfirm === job.id ? (
                     <button
                       onClick={() => handleDelete(job.id)}

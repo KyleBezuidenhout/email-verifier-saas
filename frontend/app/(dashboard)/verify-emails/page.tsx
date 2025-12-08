@@ -62,6 +62,16 @@ export default function VerifyEmailsPage() {
     }
   };
 
+  const handleCancel = async (jobId: string) => {
+    try {
+      await apiClient.cancelJob(jobId);
+      // Reload jobs to get updated status
+      await loadJobs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to cancel job");
+    }
+  };
+
   // Upload-related handlers
   const handleMappingChange = useCallback((mapping: ColumnMapping, isValid: boolean) => {
     setColumnMapping(mapping);
@@ -255,7 +265,7 @@ export default function VerifyEmailsPage() {
           Showing {filteredJobs.length} of {jobs.length} total verification jobs
         </p>
       </div>
-      <JobTable jobs={filteredJobs} onDelete={handleDelete} />
+      <JobTable jobs={filteredJobs} onDelete={handleDelete} onCancel={handleCancel} />
     </div>
   );
 }
