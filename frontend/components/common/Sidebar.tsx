@@ -48,8 +48,8 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    name: "API Docs",
-    href: "/api-docs",
+    name: "API Docs (Coming Soon)",
+    href: null, // Disabled - coming soon
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -99,7 +99,22 @@ export function Sidebar() {
         {/* Navigation Items */}
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => {
-            const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
+            const isActive = item.href && (pathname === item.href || pathname?.startsWith(item.href + "/"));
+            const isDisabled = item.href === null;
+            
+            if (isDisabled) {
+              return (
+                <div
+                  key={item.name}
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-dashbrd-text-muted/50 cursor-not-allowed opacity-60"
+                  title="Coming soon"
+                >
+                  {item.icon}
+                  <span className="text-sm">{item.name}</span>
+                </div>
+              );
+            }
+            
             return (
               <Link
                 key={item.href}
