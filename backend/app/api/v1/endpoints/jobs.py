@@ -40,6 +40,10 @@ s3_client = boto3.client(
 async def upload_file(
     file: UploadFile = File(...),
     company_size: Optional[str] = Form(None),
+    column_first_name: Optional[str] = Form(None),
+    column_last_name: Optional[str] = Form(None),
+    column_website: Optional[str] = Form(None),
+    column_company_size: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -55,8 +59,7 @@ async def upload_file(
     csv_content = contents.decode('utf-8')
     csv_reader = csv.DictReader(io.StringIO(csv_content))
     
-    # Validate required columns
-    required_columns = ['first_name', 'last_name', 'website']
+    # Get actual column names from CSV
     rows = list(csv_reader)
     if not rows:
         raise HTTPException(
@@ -64,11 +67,53 @@ async def upload_file(
             detail="CSV file is empty"
         )
     
-    missing_columns = [col for col in required_columns if col not in rows[0].keys()]
+    actual_columns = list(rows[0].keys())
+    
+    # Use provided column mappings or default to standard names
+    first_name_col = column_first_name or 'first_name'
+    last_name_col = column_last_name or 'last_name'
+    website_col = column_website or 'website'
+    company_size_col = column_company_size or 'company_size'
+    
+    # Validate that mapped columns exist in CSV
+    required_mappings = {
+        'first_name': first_name_col,
+        'last_name': last_name_col,
+        'website': website_col,
+    }
+    
+    missing_columns = []
+    for standard_name, mapped_name in required_mappings.items():
+        if mapped_name not in actual_columns:
+            missing_columns.append(f"{standard_name} (mapped to '{mapped_name}')")
+    
     if missing_columns:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Missing required columns: {', '.join(missing_columns)}"
+        )
+    
+    # Remap CSV rows to standard column names
+    remapped_rows = []
+    for row in rows:
+        remapped_row = {
+            'first_name': row.get(first_name_col, '').strip(),
+            'last_name': row.get(last_name_col, '').strip(),
+            'website': row.get(website_col, '').strip(),
+        }
+        if company_size_col in actual_columns and row.get(company_size_col):
+            remapped_row['company_size'] = row.get(company_size_col, '').strip()
+        elif company_size:
+            remapped_row['company_size'] = company_size
+        remapped_rows.append(remapped_row)
+    
+    # Filter out rows with missing required data
+    remapped_rows = [row for row in remapped_rows if row['first_name'] and row['last_name'] and row['website']]
+    
+    if not remapped_rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid rows found in CSV after mapping"
         )
     
     # Create job
@@ -76,7 +121,7 @@ async def upload_file(
         user_id=current_user.id,
         status="pending",
         original_filename=file.filename,
-        total_leads=len(rows),
+        total_leads=len(remapped_rows),
         processed_leads=0,
         valid_emails_found=0,
         catchall_emails_found=0,
@@ -105,15 +150,18 @@ async def upload_file(
     
     # Create leads and generate permutations
     leads_to_create = []
-    for row in rows:
-        first_name = row['first_name'].strip()
-        last_name = row['last_name'].strip()
-        website = row['website'].strip()
+    for row in remapped_rows:
+        first_name = row['first_name']
+        last_name = row['last_name']
+        website = row['website']
         domain = normalize_domain(website)
+        
+        # Use company_size from row if available, otherwise use form parameter
+        row_company_size = row.get('company_size') or company_size
         
         # Generate email permutations
         permutations = generate_email_permutations(
-            first_name, last_name, domain, company_size
+            first_name, last_name, domain, row_company_size
         )
         
         # Create lead for each permutation
@@ -124,7 +172,7 @@ async def upload_file(
                 first_name=first_name,
                 last_name=last_name,
                 domain=domain,
-                company_size=company_size,
+                company_size=row_company_size,
                 email=perm['email'],
                 pattern_used=perm['pattern'],
                 prevalence_score=perm['prevalence_score'],

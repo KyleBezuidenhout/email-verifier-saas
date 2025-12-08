@@ -119,7 +119,16 @@ class ApiClient {
   }
 
   // Job endpoints
-  async uploadFile(file: File, options?: { company_size?: string }): Promise<UploadResponse> {
+  async uploadFile(
+    file: File,
+    options?: {
+      company_size?: string;
+      column_first_name?: string;
+      column_last_name?: string;
+      column_website?: string;
+      column_company_size?: string;
+    }
+  ): Promise<UploadResponse> {
     return this.requestWithFile<UploadResponse>("/api/v1/jobs/upload", file, options);
   }
 
