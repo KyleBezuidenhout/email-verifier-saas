@@ -17,7 +17,11 @@ const redisClient = redis.createClient({
   url: process.env.REDIS_URL,
 });
 redisClient.on('error', (err) => console.error('Redis Client Error', err));
-redisClient.connect().catch(console.error);
+redisClient.connect().then(() => {
+  // Initialize distributed rate limiter after Redis connection is established
+  rateLimiter = new DistributedRateLimiter(redisClient, 170, 30000);
+  console.log('Distributed rate limiter initialized');
+}).catch(console.error);
 
 // PostgreSQL connection pool
 const pgPool = new Pool({
@@ -30,84 +34,91 @@ const MAILTESTER_BASE_URL = process.env.MAILTESTER_BASE_URL || 'https://happy.ma
 const MAILTESTER_API_KEY = process.env.MAILTESTER_API_KEY;
 
 // ============================================
-// SERIALIZED RATE LIMITER WITH SPACING
+// DISTRIBUTED RATE LIMITER WITH REDIS
 // ============================================
-// Ensures minimum 180ms between API calls to prevent bursting
+// Ensures rate limits are shared across all worker instances
 // 170 requests / 30 seconds = ~176ms per request
 
-class SerializedRateLimiter {
-  constructor(requestsPerWindow, windowMs) {
-    this.requestsPerWindow = requestsPerWindow;  // 170 requests
-    this.windowMs = windowMs;                     // 30000ms (30 seconds)
+class DistributedRateLimiter {
+  constructor(redisClient, requestsPerWindow, windowMs) {
+    this.redis = redisClient;
+    this.requestsPerWindow = requestsPerWindow; // 170
+    this.windowMs = windowMs; // 30000
     this.minSpacingMs = Math.ceil(windowMs / requestsPerWindow) + 10; // ~187ms
-    this.lastRequestTime = 0;
-    this.requestCount = 0;
-    this.windowStart = Date.now();
-    this.queue = [];
-    this.processing = false;
-  }
-
-  async processQueue() {
-    if (this.processing) return;
-    this.processing = true;
-
-    while (this.queue.length > 0) {
-      const now = Date.now();
-      
-      // Check if window has reset
-      if (now - this.windowStart >= this.windowMs) {
-        this.requestCount = 0;
-        this.windowStart = now;
-      }
-      
-      // Check if we've hit the window limit
-      if (this.requestCount >= this.requestsPerWindow) {
-        const waitTime = this.windowMs - (now - this.windowStart) + 100;
-        console.log(`Rate limit: Window limit reached, waiting ${Math.ceil(waitTime/1000)}s for reset...`);
-        await new Promise(r => setTimeout(r, waitTime));
-        this.requestCount = 0;
-        this.windowStart = Date.now();
-        continue;
-      }
-      
-      // Enforce minimum spacing between requests
-      const timeSinceLastRequest = now - this.lastRequestTime;
-      if (timeSinceLastRequest < this.minSpacingMs) {
-        await new Promise(r => setTimeout(r, this.minSpacingMs - timeSinceLastRequest));
-      }
-      
-      // Grant the request
-      this.lastRequestTime = Date.now();
-      this.requestCount++;
-      const resolve = this.queue.shift();
-      resolve();
-    }
-
-    this.processing = false;
+    this.key = 'mailtester:rate_limit';
   }
 
   async acquire() {
-    return new Promise((resolve) => {
-      this.queue.push(resolve);
-      this.processQueue();
-    });
+    const now = Date.now();
+    const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
+    const windowKey = `${this.key}:${windowStart}`;
+    
+    // Use Redis INCR with expiration for distributed counting
+    const count = await this.redis.incr(windowKey);
+    
+    // Set expiration on first request in window
+    if (count === 1) {
+      await this.redis.expire(windowKey, Math.ceil(this.windowMs / 1000) + 1);
+    }
+    
+    // Check if we've exceeded the limit
+    if (count > this.requestsPerWindow) {
+      // Calculate wait time until next window
+      const nextWindow = windowStart + this.windowMs;
+      const waitTime = nextWindow - Date.now() + 100; // +100ms buffer
+      
+      if (waitTime > 0) {
+        console.log(`Rate limit exceeded. Waiting ${Math.ceil(waitTime/1000)}s for next window...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        // Retry in next window
+        return this.acquire();
+      }
+    }
+    
+    // Enforce minimum spacing between requests (using Redis for coordination)
+    const lastRequestKey = `${this.key}:last_request`;
+    const lastRequestTimeStr = await this.redis.get(lastRequestKey);
+    
+    if (lastRequestTimeStr) {
+      const lastRequestTime = parseInt(lastRequestTimeStr);
+      if (!isNaN(lastRequestTime)) {
+        const timeSinceLastRequest = now - lastRequestTime;
+        if (timeSinceLastRequest < this.minSpacingMs) {
+          const waitTime = this.minSpacingMs - timeSinceLastRequest;
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
+    }
+    
+    // Update last request time
+    await this.redis.set(lastRequestKey, Date.now().toString(), 'EX', Math.ceil(this.windowMs / 1000));
   }
 
-  getStatus() {
+  async getStatus() {
+    const now = Date.now();
+    const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
+    const windowKey = `${this.key}:${windowStart}`;
+    const countStr = await this.redis.get(windowKey);
+    const count = countStr ? parseInt(countStr) : 0;
+    
     return {
-      availableTokens: this.requestsPerWindow - this.requestCount,
-      queueLength: this.queue.length,
+      availableTokens: this.requestsPerWindow - count,
       maxTokens: this.requestsPerWindow,
-      minSpacingMs: this.minSpacingMs,
+      currentCount: count,
     };
   }
 }
 
-// Create the rate limiter instance (170 per 30 seconds, ~187ms spacing)
-const rateLimiter = new SerializedRateLimiter(170, 30000);
+// Create the distributed rate limiter instance (170 per 30 seconds, ~187ms spacing)
+// Note: rateLimiter will be initialized after Redis client is connected
+let rateLimiter;
 
 // Rate limit function
 async function rateLimit() {
+  // Wait for rate limiter to be initialized if Redis connection is still pending
+  while (!rateLimiter) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
   await rateLimiter.acquire();
 }
 
@@ -492,6 +503,7 @@ async function processJob(jobId) {
 console.log('Worker started, waiting for jobs...');
 console.log(`MailTester API: ${MAILTESTER_BASE_URL}`);
 console.log(`Rate limit: 170 requests per 30 seconds (~187ms spacing between calls)`);
+console.log(`Using distributed Redis-based rate limiter for multi-worker coordination`);
 
 // Simple Redis list poller
 async function pollSimpleQueue() {
@@ -741,7 +753,7 @@ async function processJobFromQueue(jobId) {
         catchall_emails_found: catchallCount,
       });
       
-      const rlStatus = rateLimiter.getStatus();
+      const rlStatus = await rateLimiter.getStatus();
       console.log(`Progress: ${completedPeopleCount}/${uniquePeopleCount} people (${progressPercent}%) | API calls: ${totalApiCalls} | Saved: ${savedApiCalls} | Tokens: ${rlStatus.availableTokens}/${rlStatus.maxTokens}`);
     }
     
