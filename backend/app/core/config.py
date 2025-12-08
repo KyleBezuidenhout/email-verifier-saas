@@ -36,6 +36,12 @@ class Settings(BaseSettings):
 
     
 
+    # OmniVerifier
+    OMNIVERIFIER_API_KEY: str
+    OMNIVERIFIER_BASE_URL: str = "https://api.omniverifier.com"
+
+    
+
     # App
     APP_NAME: str = "Email Verifier SaaS"
     DEBUG: bool = False

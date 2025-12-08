@@ -503,20 +503,13 @@ async def verify_catchalls(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Verify catchall emails from a job using user's catchall verifier API."""
+    """Verify catchall emails from a job using OmniVerifier API."""
     try:
         job_uuid = uuid.UUID(job_id)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid job ID format"
-        )
-    
-    # Check user has catchall verifier API key
-    if not current_user.catchall_verifier_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Catchall verifier API key not configured. Please add it in settings."
         )
     
     # Get job and verify ownership
@@ -528,7 +521,6 @@ async def verify_catchalls(
         )
     
     # Get all catchall leads for this job that haven't been verified yet
-    from sqlalchemy import not_
     catchall_leads = db.query(Lead).filter(
         Lead.job_id == job_uuid,
         Lead.verification_status == "catchall",
@@ -543,25 +535,125 @@ async def verify_catchalls(
     if not catchall_leads:
         return {
             "message": "No catchall leads found for this job",
-            "verified_count": 0
+            "verified_count": 0,
+            "total_catchalls": 0
         }
     
-    # Import catchall verifier client
-    from app.services.catchall_verifier_client import CatchallVerifierClient
+    # Import OmniVerifier client
+    from app.services.omniverifier_client import OmniVerifierClient
     
-    # Initialize catchall verifier client
-    verifier = CatchallVerifierClient(current_user.catchall_verifier_api_key)
-    
+    # Initialize OmniVerifier client
+    verifier = OmniVerifierClient()
     verified_count = 0
     errors = []
+    list_id = None
     
     try:
-        # Verify each catchall email
-        for lead in catchall_leads:
+        # Step 1: Create catchall list
+        emails_list = [lead.email for lead in catchall_leads]
+        title = f"Job {job_id} Catchall Verification"
+        
+        try:
+            create_response = await verifier.create_catchall_list(
+                emails_count=len(emails_list),
+                title=title
+            )
+            list_id = create_response.get("listId") or create_response.get("id")
+            if not list_id:
+                raise Exception("Failed to get list ID from OmniVerifier response")
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create catchall list: {str(e)}"
+            )
+        
+        # Step 2: Add emails to list (batch add)
+        try:
+            await verifier.add_emails_to_list(list_id, emails_list)
+        except Exception as e:
+            errors.append(f"Failed to add emails to list: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to add emails to list: {str(e)}"
+            )
+        
+        # Step 3: Start list processing
+        try:
+            await verifier.start_list(list_id)
+        except Exception as e:
+            errors.append(f"Failed to start list: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to start list: {str(e)}"
+            )
+        
+        # Step 4: Poll for status until complete (max 5 minutes)
+        max_wait_time = 300  # 5 minutes
+        poll_interval = 3  # Poll every 3 seconds
+        start_time = time.time()
+        status_completed = False
+        
+        while True:
+            elapsed_time = time.time() - start_time
+            if elapsed_time > max_wait_time:
+                errors.append("Timeout waiting for catchall verification to complete")
+                break
+            
             try:
-                result = await verifier.verify_email(lead.email)
+                status_response = await verifier.get_list_status(list_id)
+                status = status_response.get("status", "").lower()
                 
-                if result["status"] == "valid":
+                if status in ["completed", "done", "finished"]:
+                    status_completed = True
+                    break
+                elif status == "failed":
+                    errors.append("Catchall verification failed")
+                    break
+                elif status in ["pending", "processing", "in_progress"]:
+                    # Continue polling
+                    await asyncio.sleep(poll_interval)
+                else:
+                    # Unknown status, continue polling
+                    await asyncio.sleep(poll_interval)
+            except Exception as e:
+                errors.append(f"Error checking status: {str(e)}")
+                await asyncio.sleep(poll_interval)
+        
+        if not status_completed:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Catchall verification did not complete in time"
+            )
+        
+        # Step 5: Get results
+        try:
+            results = await verifier.get_list_results(list_id)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get results: {str(e)}"
+            )
+        
+        # Step 6: Parse results and update leads
+        # Create a mapping of email to result for quick lookup
+        email_to_result = {}
+        for result in results:
+            email = result.get("email", "").lower()
+            if email:
+                email_to_result[email] = result
+        
+        # Update leads based on results
+        for lead in catchall_leads:
+            email_lower = lead.email.lower()
+            result = email_to_result.get(email_lower)
+            
+            if result:
+                # Check if email is valid according to OmniVerifier
+                # OmniVerifier may return status like "valid", "deliverable", "exists", etc.
+                status = result.get("status", "").lower()
+                is_valid = status in ["valid", "deliverable", "exists", "ok"]
+                
+                if is_valid:
                     # Update lead: status to valid, add appropriate tag based on job type
                     lead.verification_status = "valid"
                     # Use "valid-catchall" for verification jobs, "catchall-verified" for enrichment jobs
@@ -570,15 +662,6 @@ async def verify_catchalls(
                     else:
                         lead.verification_tag = "catchall-verified"
                     verified_count += 1
-                elif result["status"] == "error":
-                    errors.append(f"Error verifying {lead.email}: {result['message']}")
-                    # Don't update lead if error occurred
-                
-                # Small delay to avoid overwhelming the catchall verifier API
-                await asyncio.sleep(0.1)
-                
-            except Exception as e:
-                errors.append(f"Exception verifying {lead.email}: {str(e)}")
         
         # Commit all updates
         db.commit()
@@ -599,6 +682,14 @@ async def verify_catchalls(
             job.catchall_emails_found = catchall_count
             db.commit()
         
+    except HTTPException:
+        raise
+    except Exception as e:
+        errors.append(f"Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error during catchall verification: {str(e)}"
+        )
     finally:
         await verifier.close()
     
