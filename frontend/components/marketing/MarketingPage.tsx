@@ -11,7 +11,7 @@ export function MarketingPage() {
       <Navbar />
       <main className="flex-1 pt-[70px]">
         {/* Hero Section */}
-        <section className="bg-omni-black py-4xl px-10 md:px-16">
+        <section className="bg-omni-black py-16 md:py-24 px-6 md:px-16">
           <div className="max-w-[900px] mx-auto text-center">
             {/* Badge */}
             <div className="inline-flex items-center gap-2 bg-omni-cyan/15 px-3 py-1.5 rounded-full mb-6">
@@ -76,14 +76,14 @@ export function MarketingPage() {
         </section>
 
         {/* Try It For Yourself Section - PRESERVED AS-IS */}
-        <section className="bg-omni-black py-4xl px-10 md:px-16">
+        <section className="bg-omni-black py-16 md:py-24 px-6 md:px-16">
           <div className="max-w-7xl mx-auto">
             <EmailTestForm />
           </div>
         </section>
 
         {/* About Section */}
-        <section className="bg-omni-black py-5xl px-10 md:px-16">
+        <section className="bg-omni-black py-20 md:py-28 px-6 md:px-16">
           <div className="max-w-[900px] mx-auto text-center">
             <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-12">Our Story</h2>
             <p className="text-base md:text-lg text-omni-gray leading-relaxed mb-6">
@@ -108,7 +108,7 @@ export function MarketingPage() {
         </section>
 
         {/* Dashboard Preview Section */}
-        <section id="benefits" className="bg-omni-black py-5xl px-10 md:px-16">
+        <section id="benefits" className="bg-omni-black py-20 md:py-28 px-6 md:px-16">
           <div className="max-w-[1000px] mx-auto">
             <div className="bg-omni-dark border border-omni-border rounded-2xl p-8 overflow-hidden">
               <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-8">
@@ -154,7 +154,7 @@ export function MarketingPage() {
         </section>
 
         {/* Statistics Section */}
-        <section className="bg-omni-black py-5xl px-10 md:px-16">
+        <section className="bg-omni-black py-20 md:py-28 px-6 md:px-16">
           <div className="max-w-[1200px] mx-auto">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-16">
               <div className="text-center">
@@ -174,7 +174,7 @@ export function MarketingPage() {
         </section>
 
         {/* Features Section */}
-        <section id="features" className="bg-omni-black py-5xl px-10 md:px-16">
+        <section id="features" className="bg-omni-black py-20 md:py-28 px-6 md:px-16">
           <div className="max-w-[1200px] mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">Everything You Need to Scale</h2>
@@ -202,7 +202,7 @@ export function MarketingPage() {
         </section>
 
         {/* Process Section */}
-        <section id="process" className="bg-omni-black py-5xl px-10 md:px-16">
+        <section id="process" className="bg-omni-black py-20 md:py-28 px-6 md:px-16">
           <div className="max-w-[1200px] mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">How It Works</h2>
@@ -227,7 +227,7 @@ export function MarketingPage() {
         </section>
 
         {/* Pricing Section */}
-        <section id="pricing" className="bg-omni-black py-5xl px-10 md:px-16">
+        <section id="pricing" className="bg-omni-black py-20 md:py-28 px-6 md:px-16">
           <div className="max-w-[900px] mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">Simple, Transparent Pricing</h2>
@@ -286,7 +286,7 @@ export function MarketingPage() {
         </section>
 
         {/* Comparison Table Section */}
-        <section className="bg-omni-black py-5xl px-10 md:px-16">
+        <section className="bg-omni-black py-20 md:py-28 px-6 md:px-16">
           <div className="max-w-[1200px] mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">Compare With Competitors</h2>
@@ -325,7 +325,7 @@ export function MarketingPage() {
         </section>
 
         {/* Testimonials Section */}
-        <section id="testimonials" className="bg-omni-black py-5xl px-10 md:px-16">
+        <section id="testimonials" className="bg-omni-black py-20 md:py-28 px-6 md:px-16">
           <div className="max-w-[1200px] mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">What Our Customers Say</h2>
@@ -359,7 +359,7 @@ export function MarketingPage() {
         </section>
 
         {/* Final CTA Section */}
-        <section className="bg-omni-black py-5xl px-10 md:px-16">
+        <section className="bg-omni-black py-20 md:py-28 px-6 md:px-16">
           <div className="max-w-[800px] mx-auto text-center">
             <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">
               Ready to Scale Your Outreach?
