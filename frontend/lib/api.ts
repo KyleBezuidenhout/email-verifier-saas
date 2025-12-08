@@ -24,30 +24,41 @@ class ApiClient {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        detail: response.statusText,
-      }));
-      throw new Error(error.detail || "An error occurred");
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({
+          detail: response.statusText,
+        }));
+        throw new Error(error.detail || "An error occurred");
+      }
+
+      // Handle 204 No Content (DELETE endpoints return no body)
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      // Handle empty responses
+      const text = await response.text();
+      if (!text) {
+        return undefined as T;
+      }
+
+      return JSON.parse(text);
+    } catch (error) {
+      // Handle network errors (Failed to fetch, CORS, etc.)
+      if (error instanceof TypeError && error.message === "Failed to fetch") {
+        throw new Error(
+          `Unable to connect to backend. Please check that the API is running at ${this.baseUrl}`
+        );
+      }
+      // Re-throw other errors
+      throw error;
     }
-
-    // Handle 204 No Content (DELETE endpoints return no body)
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
-    // Handle empty responses
-    const text = await response.text();
-    if (!text) {
-      return undefined as T;
-    }
-
-    return JSON.parse(text);
   }
 
   private async requestWithFile<T>(
