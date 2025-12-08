@@ -139,7 +139,7 @@ async function rateLimit() {
   await rateLimiter.acquire();
 }
 
-// Verify email using MailTester API with retry logic
+// Verify email using MailTester API with retry logic (with rate limiting)
 async function verifyEmail(email, retryCount = 0) {
   const MAX_RETRIES = 3;
   
@@ -190,6 +190,65 @@ async function verifyEmail(email, retryCount = 0) {
       console.log(`Network error for ${email}, retrying in 2s...`);
       await new Promise(resolve => setTimeout(resolve, 2000));
       return verifyEmail(email, retryCount + 1);
+    }
+    
+    console.error(`Error verifying ${email}:`, error.message);
+    return {
+      status: 'error',
+      message: error.message,
+    };
+  }
+}
+
+// Verify email without rate limiting (for verification jobs with manual timing control)
+async function verifyEmailWithoutRateLimit(email, retryCount = 0) {
+  const MAX_RETRIES = 3;
+  
+  try {
+    const response = await axios.get(MAILTESTER_BASE_URL, {
+      params: {
+        email: email,
+        key: MAILTESTER_API_KEY,
+      },
+      timeout: 30000, // 30 second timeout
+    });
+    
+    const code = response.data?.code || 'ko';
+    const message = response.data?.message || '';
+    
+    let status = 'invalid';
+    if (code === 'ok') {
+      status = 'valid';
+    } else if (code === 'mb' || message.toLowerCase().includes('catch')) {
+      status = 'catchall';
+    }
+    
+    return {
+      status,
+      message,
+      mx: response.data?.mx || '',
+    };
+  } catch (error) {
+    // Handle 429 Too Many Requests with exponential backoff
+    if (error.response?.status === 429) {
+      if (retryCount < MAX_RETRIES) {
+        const backoffMs = Math.pow(2, retryCount + 1) * 1000; // 2s, 4s, 8s
+        console.log(`429 rate limited for ${email}, retrying in ${backoffMs/1000}s (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        return verifyEmailWithoutRateLimit(email, retryCount + 1);
+      }
+      console.error(`Max retries exceeded for ${email}`);
+      return {
+        status: 'error',
+        message: 'Rate limited - max retries exceeded',
+      };
+    }
+    
+    // Retry once on network errors
+    if ((error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') && retryCount < MAX_RETRIES) {
+      console.log(`Network error for ${email}, retrying in 2s...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return verifyEmailWithoutRateLimit(email, retryCount + 1);
     }
     
     console.error(`Error verifying ${email}:`, error.message);
@@ -724,74 +783,73 @@ async function processJobFromQueue(jobId) {
       let catchallCount = 0;
       const finalResultIds = [];
       
-      // Process leads in batches
-      const batchSize = 10;
-      for (let i = 0; i < leads.length; i += batchSize) {
-        // Check if job was cancelled before processing batch
+      // Process leads sequentially with 170ms delay between each API call (speedrun mode)
+      const DELAY_MS = 170; // Fixed delay between API calls
+      
+      console.log(`Starting speedrun verification: ${totalLeads} leads, ${DELAY_MS}ms delay between calls`);
+      
+      for (let i = 0; i < leads.length; i++) {
+        // Check if job was cancelled before processing lead
         if (await isJobCancelled(jobId)) {
           console.log(`Job ${jobId} was cancelled, stopping processing...`);
           await updateJobStatus(jobId, 'cancelled');
           return { status: 'cancelled', message: 'Job was cancelled during processing' };
         }
         
-        const batch = leads.slice(i, i + batchSize);
-        const batchNumber = Math.floor(i / batchSize) + 1;
-        const totalBatches = Math.ceil(leads.length / batchSize);
+        const lead = leads[i];
         
-        console.log(`\n--- Batch ${batchNumber}/${totalBatches}: Processing ${batch.length} leads in parallel ---`);
-        
-        // Process batch in parallel (respecting rate limit)
-        const batchPromises = batch.map(async (lead) => {
-          try {
-            // Skip leads with empty or null emails
-            if (!lead.email || lead.email.trim() === '') {
-              console.log(`Skipping lead ${lead.id} - empty email`);
-              await updateLeadStatus(lead.id, 'error', 'Empty email address');
-              processedCount++;
-              return;
-            }
-            
-            const result = await verifyEmail(lead.email);
-            
-            await updateLeadStatus(lead.id, result.status, result.message, result.mx);
-            
-            if (result.status === 'valid') {
-              validCount++;
-              finalResultIds.push(lead.id);
-            } else if (result.status === 'catchall') {
-              catchallCount++;
-              finalResultIds.push(lead.id);
-            } else if (result.status === 'invalid') {
-              finalResultIds.push(lead.id);
-            }
-            
+        try {
+          // Skip leads with empty or null emails
+          if (!lead.email || lead.email.trim() === '') {
+            console.log(`Skipping lead ${lead.id} - empty email`);
+            await updateLeadStatus(lead.id, 'error', 'Empty email address');
             processedCount++;
-          } catch (error) {
-            console.error(`Error processing lead ${lead.id}:`, error.message);
-            await updateLeadStatus(lead.id, 'error', error.message);
-            processedCount++;
+            continue;
           }
-        });
-        
-        await Promise.all(batchPromises);
-        
-        // Check if job was cancelled after batch completes
-        if (await isJobCancelled(jobId)) {
-          console.log(`Job ${jobId} was cancelled, stopping processing...`);
-          await updateJobStatus(jobId, 'cancelled');
-          return { status: 'cancelled', message: 'Job was cancelled during processing' };
+          
+          // Verify email (without rate limiter - we control timing manually)
+          const result = await verifyEmailWithoutRateLimit(lead.email);
+          
+          await updateLeadStatus(lead.id, result.status, result.message, result.mx);
+          
+          if (result.status === 'valid') {
+            validCount++;
+            finalResultIds.push(lead.id);
+          } else if (result.status === 'catchall') {
+            catchallCount++;
+            finalResultIds.push(lead.id);
+          } else if (result.status === 'invalid') {
+            finalResultIds.push(lead.id);
+          }
+          
+          processedCount++;
+          
+          // Update progress every 10 leads
+          if (processedCount % 10 === 0) {
+            const progressPercent = Math.round((processedCount / totalLeads) * 100);
+            await updateJobStatus(jobId, 'processing', {
+              processed_leads: processedCount,
+              valid_emails_found: validCount,
+              catchall_emails_found: catchallCount,
+            });
+            console.log(`Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Valid: ${validCount} | Catchall: ${catchallCount}`);
+          }
+          
+          // Wait 170ms before next API call (except for the last one)
+          if (i < leads.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+          }
+          
+        } catch (error) {
+          console.error(`Error processing lead ${lead.id}:`, error.message);
+          await updateLeadStatus(lead.id, 'error', error.message);
+          processedCount++;
+          
+          // Still wait even on error to maintain timing
+          if (i < leads.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+          }
         }
-        
-        // Update progress after each batch
-        const progressPercent = Math.round((processedCount / totalLeads) * 100);
-        await updateJobStatus(jobId, 'processing', {
-          processed_leads: processedCount,
-          valid_emails_found: validCount,
-          catchall_emails_found: catchallCount,
-        });
-        
-        const rlStatus = await rateLimiter.getStatus();
-        console.log(`Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Valid: ${validCount} | Catchall: ${catchallCount} | Tokens: ${rlStatus.availableTokens}/${rlStatus.maxTokens}`);
       }
       
       // Mark all processed leads as final results
