@@ -450,7 +450,84 @@ async function markLeadAsNotFound(leadId) {
   );
 }
 
-// Process job from simple queue with EARLY EXIT optimization
+// Process a single person's permutations with early exit (returns result object)
+async function processPersonWithEarlyExit(personKey, personLeads) {
+  let foundValid = false;
+  let bestCatchall = null;
+  let permutationsVerified = 0;
+  let apiCalls = 0;
+  let savedCalls = 0;
+  let validFound = 0;
+  let catchallFound = 0;
+  let finalLeadId = null;
+  let resultType = 'not_found';
+  
+  // Process permutations one by one (in order of prevalence score)
+  for (const lead of personLeads) {
+    try {
+      const result = await verifyEmail(lead.email);
+      apiCalls++;
+      permutationsVerified++;
+      
+      await updateLeadStatus(lead.id, result.status, result.message);
+      
+      if (result.status === 'valid') {
+        // *** EARLY EXIT: Found valid email! ***
+        finalLeadId = lead.id;
+        validFound = 1;
+        foundValid = true;
+        resultType = 'valid';
+        
+        // Calculate how many API calls we saved
+        const remainingPermutations = personLeads.length - permutationsVerified;
+        savedCalls = remainingPermutations;
+        
+        console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/${personLeads.length} - skipping ${remainingPermutations} remaining`);
+        break; // Stop verifying this person's remaining permutations
+        
+      } else if (result.status === 'catchall') {
+        // Track best catchall (we already sorted by prevalence, so first catchall is best)
+        if (!bestCatchall) {
+          bestCatchall = lead;
+        }
+        catchallFound++;
+      }
+      // If invalid or error, continue to next permutation
+      
+    } catch (error) {
+      console.error(`Error processing lead ${personLeads[0]?.id}:`, error.message);
+      await updateLeadStatus(personLeads[0]?.id, 'error', error.message);
+      apiCalls++;
+      permutationsVerified++;
+    }
+  }
+  
+  // If no valid found, use best catchall or mark as not_found
+  if (!foundValid) {
+    if (bestCatchall) {
+      finalLeadId = bestCatchall.id;
+      resultType = 'catchall';
+      console.log(`  ~ CATCHALL selected for ${personKey} (verified all ${permutationsVerified} permutations)`);
+    } else {
+      // No valid or catchall found - mark first lead as not_found
+      finalLeadId = personLeads[0].id;
+      resultType = 'not_found';
+      console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${permutationsVerified} permutations)`);
+    }
+  }
+  
+  return {
+    personKey,
+    finalLeadId,
+    resultType,
+    validFound,
+    catchallFound,
+    apiCalls,
+    savedCalls,
+  };
+}
+
+// Process job from simple queue with EARLY EXIT + PARALLEL PEOPLE optimization
 async function processJobFromQueue(jobId) {
   console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
   
@@ -492,7 +569,7 @@ async function processJobFromQueue(jobId) {
     }
     
     // ============================================
-    // EARLY EXIT OPTIMIZATION: Group by unique person
+    // EARLY EXIT + PARALLEL PEOPLE OPTIMIZATION
     // ============================================
     const leadsByPerson = new Map();
     for (const lead of leads) {
@@ -508,7 +585,10 @@ async function processJobFromQueue(jobId) {
       personLeads.sort((a, b) => (b.prevalence_score || 0) - (a.prevalence_score || 0));
     }
     
-    console.log(`Grouped into ${leadsByPerson.size} unique people`);
+    // Convert to array for batch processing
+    const peopleArray = Array.from(leadsByPerson.entries());
+    
+    console.log(`Grouped into ${peopleArray.length} unique people - processing in parallel batches of 10`);
     
     let completedPeopleCount = 0;
     let validCount = 0;
@@ -517,68 +597,46 @@ async function processJobFromQueue(jobId) {
     let savedApiCalls = 0;
     const finalResultIds = [];
     
-    // Process each person's permutations with early exit
-    for (const [personKey, personLeads] of leadsByPerson) {
-      let foundValid = false;
-      let bestCatchall = null;
-      let permutationsVerified = 0;
+    // Process people in parallel batches of 10
+    const BATCH_SIZE = 10;
+    
+    for (let i = 0; i < peopleArray.length; i += BATCH_SIZE) {
+      const batch = peopleArray.slice(i, i + BATCH_SIZE);
+      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(peopleArray.length / BATCH_SIZE);
       
-      // Process permutations one by one (in order of prevalence score)
-      for (const lead of personLeads) {
-        try {
-          const result = await verifyEmail(lead.email);
-          totalApiCalls++;
-          permutationsVerified++;
+      console.log(`\n--- Batch ${batchNumber}/${totalBatches}: Processing ${batch.length} people in parallel ---`);
+      
+      // Process all people in this batch simultaneously
+      // Each person still does early-exit internally, but multiple people run in parallel
+      const batchPromises = batch.map(([personKey, personLeads]) => 
+        processPersonWithEarlyExit(personKey, personLeads)
+      );
+      
+      // Wait for all people in batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      
+      // Aggregate results from batch
+      for (const result of batchResults) {
+        if (result.finalLeadId) {
+          finalResultIds.push(result.finalLeadId);
           
-          await updateLeadStatus(lead.id, result.status, result.message);
-          
-          if (result.status === 'valid') {
-            // *** EARLY EXIT: Found valid email! ***
-            await markLeadAsFinal(lead.id, jobId);
-            finalResultIds.push(lead.id);
-            validCount++;
-            foundValid = true;
-            
-            // Calculate how many API calls we saved
-            const remainingPermutations = personLeads.length - permutationsVerified;
-            savedApiCalls += remainingPermutations;
-            
-            console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/${personLeads.length} - skipping ${remainingPermutations} remaining`);
-            break; // Stop verifying this person's remaining permutations
-            
-          } else if (result.status === 'catchall') {
-            // Track best catchall (we already sorted by prevalence, so first catchall is best)
-            if (!bestCatchall) {
-              bestCatchall = lead;
-            }
-            catchallCount++;
+          // Mark as final immediately based on result type
+          if (result.resultType === 'valid' || result.resultType === 'catchall') {
+            await markLeadAsFinal(result.finalLeadId, jobId);
+          } else {
+            await markLeadAsNotFound(result.finalLeadId);
           }
-          // If invalid or error, continue to next permutation
-          
-        } catch (error) {
-          console.error(`Error processing lead ${lead.id}:`, error.message);
-          await updateLeadStatus(lead.id, 'error', error.message);
-          totalApiCalls++;
-          permutationsVerified++;
         }
+        
+        validCount += result.validFound;
+        catchallCount += result.catchallFound;
+        totalApiCalls += result.apiCalls;
+        savedApiCalls += result.savedCalls;
+        completedPeopleCount++;
       }
       
-      // If no valid found, use best catchall or mark as not_found
-      if (!foundValid) {
-        if (bestCatchall) {
-          await markLeadAsFinal(bestCatchall.id, jobId);
-          finalResultIds.push(bestCatchall.id);
-          console.log(`  ~ CATCHALL selected for ${personKey} (verified all ${permutationsVerified} permutations)`);
-        } else {
-          // No valid or catchall found - mark first lead as not_found
-          await markLeadAsNotFound(personLeads[0].id);
-          finalResultIds.push(personLeads[0].id);
-          console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${permutationsVerified} permutations)`);
-        }
-      }
-      
-      // Update progress after each person
-      completedPeopleCount++;
+      // Update progress after each batch
       const progressPercent = Math.round((completedPeopleCount / uniquePeopleCount) * 100);
       
       await updateJobStatus(jobId, 'processing', {
@@ -587,10 +645,7 @@ async function processJobFromQueue(jobId) {
         catchall_emails_found: catchallCount,
       });
       
-      // Log progress every 10 people or at significant milestones
-      if (completedPeopleCount % 10 === 0 || completedPeopleCount === uniquePeopleCount) {
-        console.log(`Progress: ${completedPeopleCount}/${uniquePeopleCount} people (${progressPercent}%) | API calls: ${totalApiCalls} | Saved: ${savedApiCalls}`);
-      }
+      console.log(`Progress: ${completedPeopleCount}/${uniquePeopleCount} people (${progressPercent}%) | API calls: ${totalApiCalls} | Saved: ${savedApiCalls}`);
     }
     
     // Unmark all leads first, then mark final results
@@ -605,11 +660,7 @@ async function processJobFromQueue(jobId) {
     }
     
     // Calculate cost (only charged for valid + catchall results)
-    const costInCredits = validCount + (finalResultIds.length - validCount);
-    const finalCatchallCount = finalResultIds.filter(id => {
-      const lead = leads.find(l => l.id === id);
-      return lead && lead.verification_status === 'catchall';
-    }).length;
+    const costInCredits = validCount + catchallCount;
     
     // Mark job as completed
     await updateJobStatus(jobId, 'completed', {
@@ -632,7 +683,9 @@ async function processJobFromQueue(jobId) {
     console.log(`Job ${jobId} completed successfully!`);
     console.log(`Final results: ${validCount} valid, ${catchallCount} catchall`);
     console.log(`Total API calls: ${totalApiCalls} (saved ${savedApiCalls} calls with early exit)`);
-    console.log(`Efficiency: ${Math.round((savedApiCalls / (totalApiCalls + savedApiCalls)) * 100)}% reduction in API calls`);
+    if (totalApiCalls + savedApiCalls > 0) {
+      console.log(`Efficiency: ${Math.round((savedApiCalls / (totalApiCalls + savedApiCalls)) * 100)}% reduction in API calls`);
+    }
     console.log(`========================================\n`);
     
   } catch (error) {
