@@ -1,10 +1,9 @@
 "use client";
 
-import { MarketingPage as MarketingPageComponent } from "@/components/marketing/MarketingPage";
+import Link from "next/link";
+import { SellingPoints, SecurityBadges } from "@/components/common/SellingPoints";
 
-export default function MarketingPage() {
-  return <MarketingPageComponent />;
-}
+export function MarketingPage() {
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
       {/* Hero Section */}
