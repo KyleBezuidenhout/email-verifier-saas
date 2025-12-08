@@ -45,7 +45,7 @@ export function MarketingPage() {
             </Link>
 
             {/* Supporting Features */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-10 md:gap-15 mt-12">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-10 md:gap-16 mt-12">
               <div className="flex flex-col items-center">
                 <div className="w-12 h-12 bg-omni-cyan rounded-lg flex items-center justify-center mb-3">
                   <svg className="w-6 h-6 text-omni-black" fill="currentColor" viewBox="0 0 20 20">
@@ -156,7 +156,7 @@ export function MarketingPage() {
         {/* Statistics Section */}
         <section className="bg-omni-black py-5xl px-10 md:px-16">
           <div className="max-w-[1200px] mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-15">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-16">
               <div className="text-center">
                 <div className="text-[48px] md:text-[64px] font-bold text-omni-white mb-4">250M+</div>
                 <div className="text-base md:text-lg text-omni-gray">Leads Processed</div>
