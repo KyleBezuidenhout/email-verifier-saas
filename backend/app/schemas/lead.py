@@ -17,6 +17,7 @@ class LeadResponse(BaseModel):
     verification_status: str
     verification_tag: Optional[str]
     mx_record: Optional[str]
+    mx_provider: Optional[str]
     is_final_result: bool
     created_at: str
 

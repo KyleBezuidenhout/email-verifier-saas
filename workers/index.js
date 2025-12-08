@@ -33,9 +33,30 @@ const pgPool = new Pool({
 const MAILTESTER_BASE_URL = process.env.MAILTESTER_BASE_URL || 'https://happy.mailtester.ninja/ninja';
 const MAILTESTER_API_KEY = process.env.MAILTESTER_API_KEY;
 
-// API response sampling for analysis
-let apiResponseSampleCount = 0;
-const MAX_SAMPLE_RESPONSES = 20;
+// ============================================
+// MX PROVIDER PARSING
+// ============================================
+// Extract provider category from MX hostname
+function extractProviderFromMX(mxHostname) {
+  if (!mxHostname || mxHostname.trim() === '') {
+    return 'other';
+  }
+  
+  const mxLower = mxHostname.toLowerCase();
+  
+  // Detect Outlook: *.mail.protection.outlook.com
+  if (mxLower.includes('mail.protection.outlook.com') || mxLower.includes('outlook.com')) {
+    return 'outlook';
+  }
+  
+  // Detect Google: *.google.com or *.gmail.com
+  if (mxLower.includes('.google.com') || mxLower.includes('.gmail.com')) {
+    return 'google';
+  }
+  
+  // Everything else (including custom domains, other providers, etc.)
+  return 'other';
+}
 
 // ============================================
 // DISTRIBUTED RATE LIMITER WITH REDIS
@@ -160,6 +181,7 @@ async function verifyEmail(email, retryCount = 0) {
     
     const code = response.data?.code || 'ko';
     const message = response.data?.message || '';
+    const mx = response.data?.mx || '';
     
     let status = 'invalid';
     if (code === 'ok') {
@@ -168,10 +190,14 @@ async function verifyEmail(email, retryCount = 0) {
       status = 'catchall';
     }
     
+    // Parse provider from MX record
+    const provider = extractProviderFromMX(mx);
+    
     return {
       status,
       message,
-      mx: response.data?.mx || '',
+      mx,
+      provider,
     };
   } catch (error) {
     // Handle 429 Too Many Requests with exponential backoff
@@ -217,21 +243,9 @@ async function verifyEmailWithoutRateLimit(email, retryCount = 0) {
       timeout: 30000, // 30 second timeout
     });
     
-    // Log first 20 responses for analysis
-    if (apiResponseSampleCount < MAX_SAMPLE_RESPONSES) {
-      apiResponseSampleCount++;
-      console.log(`\n=== API Response Sample #${apiResponseSampleCount} ===`);
-      console.log(`Email: ${email}`);
-      console.log(`Full Response:`, JSON.stringify(response.data, null, 2));
-      console.log(`MX field:`, response.data?.mx);
-      console.log(`Code:`, response.data?.code);
-      console.log(`Message:`, response.data?.message);
-      console.log(`All keys:`, Object.keys(response.data || {}));
-      console.log(`=== End Sample #${apiResponseSampleCount} ===\n`);
-    }
-    
     const code = response.data?.code || 'ko';
     const message = response.data?.message || '';
+    const mx = response.data?.mx || '';
     
     let status = 'invalid';
     if (code === 'ok') {
@@ -240,10 +254,14 @@ async function verifyEmailWithoutRateLimit(email, retryCount = 0) {
       status = 'catchall';
     }
     
+    // Parse provider from MX record
+    const provider = extractProviderFromMX(mx);
+    
     return {
       status,
       message,
-      mx: response.data?.mx || '',
+      mx,
+      provider,
     };
   } catch (error) {
     // Handle 429 Too Many Requests with exponential backoff
@@ -366,8 +384,13 @@ async function updateJobStatus(jobId, status, updates = {}) {
 }
 
 // Update lead verification status
-async function updateLeadStatus(leadId, status, message = '', mx = '') {
-  if (mx) {
+async function updateLeadStatus(leadId, status, message = '', mx = '', provider = '') {
+  if (mx && provider) {
+    await pgPool.query(
+      'UPDATE leads SET verification_status = $1, mx_record = $2, mx_provider = $3 WHERE id = $4',
+      [status, mx, provider, leadId]
+    );
+  } else if (mx) {
     await pgPool.query(
       'UPDATE leads SET verification_status = $1, mx_record = $2 WHERE id = $3',
       [status, mx, leadId]
@@ -458,7 +481,7 @@ async function processJob(jobId) {
         try {
           const result = await verifyEmail(lead.email);
           
-          await updateLeadStatus(lead.id, result.status, result.message, result.mx);
+          await updateLeadStatus(lead.id, result.status, result.message, result.mx, result.provider);
           
           if (result.status === 'valid') {
             validCount++;
@@ -677,7 +700,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
       apiCalls++;
       permutationsVerified++;
       
-      await updateLeadStatus(lead.id, result.status, result.message, result.mx);
+      await updateLeadStatus(lead.id, result.status, result.message, result.mx, result.provider);
       
       if (result.status === 'valid') {
         // *** EARLY EXIT: Found valid email! ***
@@ -827,7 +850,7 @@ async function processJobFromQueue(jobId) {
           // Verify email (without rate limiter - we control timing manually)
           const result = await verifyEmailWithoutRateLimit(lead.email);
           
-          await updateLeadStatus(lead.id, result.status, result.message, result.mx);
+          await updateLeadStatus(lead.id, result.status, result.message, result.mx, result.provider);
           
           if (result.status === 'valid') {
             validCount++;

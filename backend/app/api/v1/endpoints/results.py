@@ -55,6 +55,7 @@ async def get_results(
         verification_status=lead.verification_status,
         verification_tag=lead.verification_tag,
         mx_record=lead.mx_record,
+        mx_provider=lead.mx_provider,
         is_final_result=lead.is_final_result,
         created_at=lead.created_at.isoformat(),
     ) for lead in leads]

@@ -18,6 +18,7 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
+  const [mxFilters, setMxFilters] = useState<string[]>([]); // Empty = all MX, or ["outlook", "google", "other"]
   const [verifyingCatchalls, setVerifyingCatchalls] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -54,12 +55,46 @@ export default function ResultsPage() {
     }
   };
 
-  const filteredLeads =
+  // Helper function to get provider from MX record (fallback for old leads)
+  const getProviderFromMX = (mxRecord?: string, mxProvider?: string): string => {
+    // Use stored provider if available
+    if (mxProvider) return mxProvider;
+    
+    // Parse from MX record as fallback
+    if (!mxRecord || mxRecord.trim() === '') return 'other';
+    
+    const mxLower = mxRecord.toLowerCase();
+    
+    // Detect Outlook
+    if (mxLower.includes('mail.protection.outlook.com') || mxLower.includes('outlook.com')) {
+      return 'outlook';
+    }
+    
+    // Detect Google
+    if (mxLower.includes('.google.com') || mxLower.includes('.gmail.com')) {
+      return 'google';
+    }
+    
+    return 'other';
+  };
+
+  // Apply status filter first
+  const statusFilteredLeads =
     filter === "all"
       ? leads
       : filter === "valid"
       ? leads.filter((lead) => lead.verification_status === "valid" || lead.verification_tag === "valid-catchall" || lead.verification_tag === "catchall-verified")
+      : filter === "invalid"
+      ? leads.filter((lead) => lead.verification_status === "invalid" || lead.verification_status === "not_found")
       : leads.filter((lead) => lead.verification_status === filter);
+  
+  // Apply MX provider filter (if any selected)
+  const filteredLeads = mxFilters.length === 0
+    ? statusFilteredLeads
+    : statusFilteredLeads.filter((lead) => {
+        const provider = getProviderFromMX(lead.mx_record, lead.mx_provider);
+        return mxFilters.includes(provider);
+      });
 
   // Valid leads include both regular valid and catchall-verified/valid-catchall
   const validLeads = leads.filter((l) => 
@@ -194,8 +229,9 @@ export default function ResultsPage() {
       </div>
 
       <div className="bg-dashbrd-card border border-dashbrd-border rounded-lg p-6">
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex space-x-2">
+        <div className="mb-4">
+          {/* Status Filter */}
+          <div className="flex space-x-2 mb-3">
             <button
               onClick={() => setFilter("all")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
@@ -226,7 +262,80 @@ export default function ResultsPage() {
             >
               Catchall ({catchallLeads.length})
             </button>
+            <button
+              onClick={() => setFilter("invalid")}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                filter === "invalid"
+                  ? "bg-dashbrd-accent text-white font-medium"
+                  : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
+              }`}
+            >
+              Invalid ({notFoundLeads.length})
+            </button>
           </div>
+          
+          {/* MX Provider Filter */}
+          <div className="flex items-center space-x-4">
+            <span className="text-sm font-medium text-dashbrd-text-muted">MX Provider:</span>
+            <div className="flex space-x-3">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={mxFilters.includes('outlook')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setMxFilters([...mxFilters, 'outlook']);
+                    } else {
+                      setMxFilters(mxFilters.filter(f => f !== 'outlook'));
+                    }
+                  }}
+                  className="w-4 h-4 rounded border-dashbrd-border bg-dashbrd-bg text-dashbrd-accent focus:ring-dashbrd-accent"
+                />
+                <span className="text-sm text-dashbrd-text">Outlook Only</span>
+              </label>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={mxFilters.includes('google')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setMxFilters([...mxFilters, 'google']);
+                    } else {
+                      setMxFilters(mxFilters.filter(f => f !== 'google'));
+                    }
+                  }}
+                  className="w-4 h-4 rounded border-dashbrd-border bg-dashbrd-bg text-dashbrd-accent focus:ring-dashbrd-accent"
+                />
+                <span className="text-sm text-dashbrd-text">Google Only</span>
+              </label>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={mxFilters.includes('other')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setMxFilters([...mxFilters, 'other']);
+                    } else {
+                      setMxFilters(mxFilters.filter(f => f !== 'other'));
+                    }
+                  }}
+                  className="w-4 h-4 rounded border-dashbrd-border bg-dashbrd-bg text-dashbrd-accent focus:ring-dashbrd-accent"
+                />
+                <span className="text-sm text-dashbrd-text">Other MX</span>
+              </label>
+            </div>
+            {mxFilters.length > 0 && (
+              <button
+                onClick={() => setMxFilters([])}
+                className="text-xs text-dashbrd-text-muted hover:text-dashbrd-text underline"
+              >
+                Clear ({mxFilters.length})
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-between items-center">
+          <div className="flex space-x-2">
           <div className="flex space-x-2">
             {catchallLeads.length > 0 && (
               <>

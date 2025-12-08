@@ -59,12 +59,14 @@ async def run_migrations_on_startup():
         from migrate_add_verification_tag import migrate as migrate_verification_tag
         from migrate_add_job_type import migrate as migrate_job_type
         from migrate_add_mx_record import migrate as migrate_mx_record
+        from migrate_add_mx_provider import migrate as migrate_mx_provider
         
         print("Running database migrations on startup...")
         migrate_catchall_key()
         migrate_verification_tag()
         migrate_job_type()
         migrate_mx_record()
+        migrate_mx_provider()
         print("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
