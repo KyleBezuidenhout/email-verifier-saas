@@ -2,10 +2,14 @@
 
 import Link from "next/link";
 import { SellingPoints, SecurityBadges } from "@/components/common/SellingPoints";
+import { Navbar } from "@/components/common/Navbar";
+import { Footer } from "@/components/common/Footer";
 
 export function MarketingPage() {
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
+    <div className="flex flex-col min-h-screen bg-white dark:bg-gray-900">
+      <Navbar />
+      <main className="flex-1">
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 dark:from-blue-900 dark:via-indigo-900 dark:to-purple-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
@@ -184,6 +188,8 @@ export function MarketingPage() {
           </Link>
         </div>
       </section>
+      </main>
+      <Footer />
     </div>
   );
 }
