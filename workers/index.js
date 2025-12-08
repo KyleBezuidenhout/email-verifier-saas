@@ -461,20 +461,24 @@ async function processJobFromQueue(jobId) {
     );
     
     const leads = leadsResult.rows;
-    const totalLeads = leads.length;
+    const totalPermutations = leads.length;
     
-    console.log(`Found ${totalLeads} leads to verify`);
+    // Get unique people count from job (not permutations)
+    const uniquePeopleCount = jobData.total_leads;
     
-    if (totalLeads === 0) {
+    console.log(`Found ${totalPermutations} email permutations to verify for ${uniquePeopleCount} unique people`);
+    
+    if (totalPermutations === 0) {
       await updateJobStatus(jobId, 'completed', {
         completed_at: new Date(),
       });
       return { status: 'completed', message: 'No leads to process' };
     }
     
-    let processedCount = 0;
+    let processedPermutations = 0;
     let validCount = 0;
     let catchallCount = 0;
+    const completedUniquePeople = new Set(); // Track unique people completed
     
     // Process leads in batches
     const batchSize = 10;
@@ -490,40 +494,51 @@ async function processJobFromQueue(jobId) {
           
           if (result.status === 'valid') {
             validCount++;
+            // Mark this unique person as having a valid email
+            const personKey = `${lead.first_name.toLowerCase()}_${lead.last_name.toLowerCase()}_${lead.domain.toLowerCase()}`;
+            completedUniquePeople.add(personKey);
           } else if (result.status === 'catchall') {
             catchallCount++;
+            // Mark this unique person as having a catchall email
+            const personKey = `${lead.first_name.toLowerCase()}_${lead.last_name.toLowerCase()}_${lead.domain.toLowerCase()}`;
+            completedUniquePeople.add(personKey);
           }
           
-          processedCount++;
+          processedPermutations++;
           
-          // Update job progress every 10 leads
-          if (processedCount % 10 === 0) {
+          // Calculate progress based on unique people (not permutations)
+          const uniquePeopleProcessed = completedUniquePeople.size;
+          const progressPercent = Math.round((uniquePeopleProcessed / uniquePeopleCount) * 100);
+          
+          // Update job progress every 10 permutations or when unique people count changes
+          if (processedPermutations % 10 === 0 || completedUniquePeople.size > 0) {
             await updateJobStatus(jobId, 'processing', {
-              processed_leads: processedCount,
+              processed_leads: uniquePeopleProcessed, // Show unique people, not permutations
               valid_emails_found: validCount,
               catchall_emails_found: catchallCount,
             });
             
-            console.log(`Progress: ${processedCount}/${totalLeads} (${Math.round(processedCount / totalLeads * 100)}%)`);
+            console.log(`Progress: ${uniquePeopleProcessed}/${uniquePeopleCount} unique people (${progressPercent}%) - ${processedPermutations}/${totalPermutations} permutations verified`);
           }
         } catch (error) {
           console.error(`Error processing lead ${lead.id}:`, error.message);
           await updateLeadStatus(lead.id, 'error', error.message);
-          processedCount++;
+          processedPermutations++;
         }
       });
       
       await Promise.all(batchPromises);
     }
     
-    // Final progress update
+    // Final progress update - use unique people count
+    const finalUniquePeopleProcessed = completedUniquePeople.size;
     await updateJobStatus(jobId, 'processing', {
-      processed_leads: processedCount,
+      processed_leads: finalUniquePeopleProcessed,
       valid_emails_found: validCount,
       catchall_emails_found: catchallCount,
     });
     
-    console.log(`Verification complete. Valid: ${validCount}, Catchall: ${catchallCount}, Processed: ${processedCount}`);
+    console.log(`Verification complete. Valid: ${validCount}, Catchall: ${catchallCount}, Processed: ${finalUniquePeopleProcessed}/${uniquePeopleCount} unique people`);
     
     // Apply deduplication
     console.log('Applying deduplication...');
@@ -569,9 +584,9 @@ async function processJobFromQueue(jobId) {
     // Calculate cost
     const costInCredits = finalValidCount + finalCatchallCount;
     
-    // Mark job as completed
+    // Mark job as completed - use unique people count
     await updateJobStatus(jobId, 'completed', {
-      processed_leads: processedCount,
+      processed_leads: uniquePeopleCount, // All unique people completed
       valid_emails_found: finalValidCount,
       catchall_emails_found: finalCatchallCount,
       cost_in_credits: costInCredits,
