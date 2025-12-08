@@ -33,6 +33,10 @@ const pgPool = new Pool({
 const MAILTESTER_BASE_URL = process.env.MAILTESTER_BASE_URL || 'https://happy.mailtester.ninja/ninja';
 const MAILTESTER_API_KEY = process.env.MAILTESTER_API_KEY;
 
+// API response sampling for analysis
+let apiResponseSampleCount = 0;
+const MAX_SAMPLE_RESPONSES = 20;
+
 // ============================================
 // DISTRIBUTED RATE LIMITER WITH REDIS
 // ============================================
@@ -212,6 +216,19 @@ async function verifyEmailWithoutRateLimit(email, retryCount = 0) {
       },
       timeout: 30000, // 30 second timeout
     });
+    
+    // Log first 20 responses for analysis
+    if (apiResponseSampleCount < MAX_SAMPLE_RESPONSES) {
+      apiResponseSampleCount++;
+      console.log(`\n=== API Response Sample #${apiResponseSampleCount} ===`);
+      console.log(`Email: ${email}`);
+      console.log(`Full Response:`, JSON.stringify(response.data, null, 2));
+      console.log(`MX field:`, response.data?.mx);
+      console.log(`Code:`, response.data?.code);
+      console.log(`Message:`, response.data?.message);
+      console.log(`All keys:`, Object.keys(response.data || {}));
+      console.log(`=== End Sample #${apiResponseSampleCount} ===\n`);
+    }
     
     const code = response.data?.code || 'ko';
     const message = response.data?.message || '';
