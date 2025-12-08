@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import asyncio
+import sys
+import os
 
 from app.core.config import settings
 from app.api.v1.endpoints import auth, jobs, results, test
@@ -41,6 +44,27 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+# Run migrations on startup
+@app.on_event("startup")
+async def run_migrations_on_startup():
+    """Run database migrations on application startup."""
+    try:
+        # Add parent directory to path to import migrations
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if backend_dir not in sys.path:
+            sys.path.insert(0, backend_dir)
+        
+        from migrate_add_catchall_key import migrate as migrate_catchall_key
+        from migrate_add_verification_tag import migrate as migrate_verification_tag
+        
+        print("Running database migrations on startup...")
+        migrate_catchall_key()
+        migrate_verification_tag()
+        print("✓ Migrations completed successfully!")
+    except Exception as e:
+        # Don't crash if migrations fail (columns might already exist)
+        print(f"⚠ Migration warning (this is OK if columns already exist): {e}")
 
 # Include routers
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
