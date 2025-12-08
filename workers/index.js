@@ -12,6 +12,13 @@ const redisConnection = {
   password: redisUrl.password || undefined,
 };
 
+// Create Redis client for simple queue polling
+const redisClient = redis.createClient({
+  url: process.env.REDIS_URL,
+});
+redisClient.on('error', (err) => console.error('Redis Client Error', err));
+redisClient.connect().catch(console.error);
+
 // PostgreSQL connection pool
 const pgPool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -216,26 +223,22 @@ async function markFinalResults(leadIds) {
   }
 }
 
-// Main worker
-const worker = new Worker(
-  'email-verification',
-  async (job) => {
-    const jobId = job.data;
+// Process a job (extracted to be reusable)
+async function processJob(jobId) {
+  console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
+  
+  try {
+    // Get job details from database
+    const jobResult = await pgPool.query(
+      'SELECT * FROM jobs WHERE id = $1',
+      [jobId]
+    );
     
-    console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
+    if (jobResult.rows.length === 0) {
+      throw new Error(`Job ${jobId} not found`);
+    }
     
-    try {
-      // Get job details from database
-      const jobResult = await pgPool.query(
-        'SELECT * FROM jobs WHERE id = $1',
-        [jobId]
-      );
-      
-      if (jobResult.rows.length === 0) {
-        throw new Error(`Job ${jobId} not found`);
-      }
-      
-      const jobData = jobResult.rows[0];
+    const jobData = jobResult.rows[0];
       
       // Update job status to processing
       await updateJobStatus(jobId, 'processing');
@@ -436,3 +439,199 @@ process.on('SIGINT', async () => {
 console.log('Worker started, waiting for jobs...');
 console.log(`MailTester API: ${MAILTESTER_BASE_URL}`);
 console.log(`Rate limit: ${RATE_LIMIT.max} requests per ${RATE_LIMIT.window / 1000} seconds`);
+
+// Simple Redis list poller (fallback to BullMQ)
+async function pollSimpleQueue() {
+  const queueName = 'simple-email-verification-queue';
+  
+  while (true) {
+    try {
+      // Blocking pop from Redis list (waits up to 5 seconds)
+      const jobId = await redisClient.brPop(queueName, 5);
+      
+      if (jobId && jobId.element) {
+        const jobIdStr = jobId.element;
+        console.log(`\n[${new Date().toISOString()}] Got job from simple queue: ${jobIdStr}`);
+        
+        // Process the job (reuse the BullMQ worker logic)
+        // We'll call the processJob function directly
+        try {
+          await processJobFromQueue(jobIdStr);
+        } catch (error) {
+          console.error(`Error processing job ${jobIdStr} from simple queue:`, error);
+        }
+      }
+    } catch (error) {
+      if (error.code !== 'ECONNREFUSED') {
+        console.error('Error polling simple queue:', error);
+      }
+      // Wait a bit before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+}
+
+// Process job from simple queue (extracted logic)
+async function processJobFromQueue(jobId) {
+  console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
+  
+  try {
+    // Get job details from database
+    const jobResult = await pgPool.query(
+      'SELECT * FROM jobs WHERE id = $1',
+      [jobId]
+    );
+    
+    if (jobResult.rows.length === 0) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+    
+    const jobData = jobResult.rows[0];
+    
+    // Update job status to processing
+    await updateJobStatus(jobId, 'processing');
+    
+    // Get all leads for this job
+    const leadsResult = await pgPool.query(
+      'SELECT * FROM leads WHERE job_id = $1 ORDER BY prevalence_score DESC',
+      [jobId]
+    );
+    
+    const leads = leadsResult.rows;
+    const totalLeads = leads.length;
+    
+    console.log(`Found ${totalLeads} leads to verify`);
+    
+    if (totalLeads === 0) {
+      await updateJobStatus(jobId, 'completed', {
+        completed_at: new Date(),
+      });
+      return { status: 'completed', message: 'No leads to process' };
+    }
+    
+    let processedCount = 0;
+    let validCount = 0;
+    let catchallCount = 0;
+    
+    // Process leads in batches
+    const batchSize = 10;
+    for (let i = 0; i < leads.length; i += batchSize) {
+      const batch = leads.slice(i, i + batchSize);
+      
+      // Process batch in parallel (respecting rate limit)
+      const batchPromises = batch.map(async (lead) => {
+        try {
+          const result = await verifyEmail(lead.email);
+          
+          await updateLeadStatus(lead.id, result.status, result.message);
+          
+          if (result.status === 'valid') {
+            validCount++;
+          } else if (result.status === 'catchall') {
+            catchallCount++;
+          }
+          
+          processedCount++;
+          
+          // Update job progress every 10 leads
+          if (processedCount % 10 === 0) {
+            await updateJobStatus(jobId, 'processing', {
+              processed_leads: processedCount,
+              valid_emails_found: validCount,
+              catchall_emails_found: catchallCount,
+            });
+            
+            console.log(`Progress: ${processedCount}/${totalLeads} (${Math.round(processedCount / totalLeads * 100)}%)`);
+          }
+        } catch (error) {
+          console.error(`Error processing lead ${lead.id}:`, error.message);
+          await updateLeadStatus(lead.id, 'error', error.message);
+          processedCount++;
+        }
+      });
+      
+      await Promise.all(batchPromises);
+    }
+    
+    // Final progress update
+    await updateJobStatus(jobId, 'processing', {
+      processed_leads: processedCount,
+      valid_emails_found: validCount,
+      catchall_emails_found: catchallCount,
+    });
+    
+    console.log(`Verification complete. Valid: ${validCount}, Catchall: ${catchallCount}, Processed: ${processedCount}`);
+    
+    // Apply deduplication
+    console.log('Applying deduplication...');
+    const allLeads = await pgPool.query(
+      'SELECT * FROM leads WHERE job_id = $1',
+      [jobId]
+    );
+    
+    const finalResults = deduplicateLeads(allLeads.rows);
+    
+    // Mark final results
+    const finalResultIds = [];
+    for (const result of finalResults) {
+      if (result.id) {
+        finalResultIds.push(result.id);
+      } else if (result.verification_status === 'not_found') {
+        const notFoundLead = await pgPool.query(
+          `SELECT id FROM leads 
+           WHERE job_id = $1 
+           AND first_name = $2 
+           AND last_name = $3 
+           AND domain = $4 
+           LIMIT 1`,
+          [jobId, result.first_name, result.last_name, result.domain]
+        );
+        
+        if (notFoundLead.rows.length > 0) {
+          await pgPool.query(
+            'UPDATE leads SET email = $1, verification_status = $2, is_final_result = true WHERE id = $3',
+            ['', 'not_found', notFoundLead.rows[0].id]
+          );
+          finalResultIds.push(notFoundLead.rows[0].id);
+        }
+      }
+    }
+    
+    await markFinalResults(finalResultIds);
+    
+    // Update final counts
+    const finalValidCount = finalResults.filter(r => r.verification_status === 'valid').length;
+    const finalCatchallCount = finalResults.filter(r => r.verification_status === 'catchall').length;
+    
+    // Calculate cost
+    const costInCredits = finalValidCount + finalCatchallCount;
+    
+    // Mark job as completed
+    await updateJobStatus(jobId, 'completed', {
+      processed_leads: processedCount,
+      valid_emails_found: finalValidCount,
+      catchall_emails_found: finalCatchallCount,
+      cost_in_credits: costInCredits,
+      completed_at: new Date(),
+    });
+    
+    // Deduct credits
+    if (costInCredits > 0) {
+      await pgPool.query(
+        'UPDATE users SET credits = credits - $1 WHERE id = $2',
+        [costInCredits, jobData.user_id]
+      );
+    }
+    
+    console.log(`Job ${jobId} completed successfully!`);
+    console.log(`Final results: ${finalValidCount} valid, ${finalCatchallCount} catchall`);
+    
+  } catch (error) {
+    console.error(`Error processing job ${jobId}:`, error);
+    await updateJobStatus(jobId, 'failed');
+    throw error;
+  }
+}
+
+// Start simple queue poller
+pollSimpleQueue().catch(console.error);

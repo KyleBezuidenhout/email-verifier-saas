@@ -202,44 +202,14 @@ async def upload_file(
     db.bulk_save_objects(leads_to_create)
     db.commit()
     
-    # Queue job for processing using BullMQ
+    # Queue job for processing - use simple Redis list (worker will poll this)
     try:
-        if USE_BULLMQ_PACKAGE:
-            # Use BullMQ Python package
-            await bullmq_queue.add("email-verification", str(job.id))
-            print(f"Queued job {job.id} to BullMQ")
-        else:
-            # Manual BullMQ implementation
-            job_id_str = str(job.id)
-            bullmq_job_id = str(uuid.uuid4())
-            timestamp = int(time.time() * 1000)
-            
-            # BullMQ job structure
-            job_data = {
-                "id": bullmq_job_id,
-                "name": "email-verification",
-                "data": job_id_str,  # Worker expects job.data to be the job ID
-                "opts": {},
-                "timestamp": timestamp,
-                "delay": 0,
-                "priority": 0,
-                "attemptsMade": 0,
-            }
-            
-            # Store job in Redis (BullMQ format)
-            job_key = f"bull:email-verification:{bullmq_job_id}"
-            redis_client.set(job_key, json.dumps(job_data))
-            
-            # Add to waiting list
-            redis_client.lpush("bull:email-verification:wait", bullmq_job_id)
-            
-            # Add to jobs sorted set
-            redis_client.zadd("bull:email-verification:jobs", {bullmq_job_id: timestamp})
-            
-            # Add to meta (BullMQ tracks this)
-            redis_client.sadd("bull:email-verification:meta", bullmq_job_id)
-            
-            print(f"Queued job {job.id} to BullMQ (manual) with ID {bullmq_job_id}")
+        # Simple approach: push job ID to a Redis list
+        # Use a different queue name to avoid conflicts with BullMQ
+        job_id_str = str(job.id)
+        queue_name = "simple-email-verification-queue"
+        redis_client.lpush(queue_name, job_id_str)
+        print(f"✅ Queued job {job.id} to Redis queue '{queue_name}'")
     except Exception as e:
         # If Redis fails, job will remain in pending state
         print(f"Failed to queue job: {e}")
@@ -408,6 +378,36 @@ async def delete_job(
     
     from fastapi.responses import Response
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/debug/queue-status")
+async def debug_queue_status(
+    current_user: User = Depends(get_current_user),
+):
+    """Debug endpoint to check queue status"""
+    try:
+        # Check waiting jobs
+        waiting_count = redis_client.llen("bull:email-verification:wait")
+        waiting_jobs = redis_client.lrange("bull:email-verification:wait", 0, -1)
+        
+        # Check active jobs
+        active_count = redis_client.llen("bull:email-verification:active")
+        
+        # Check Redis connection
+        redis_client.ping()
+        
+        return {
+            "redis_connected": True,
+            "waiting_jobs_count": waiting_count,
+            "waiting_job_ids": [job_id.decode() if isinstance(job_id, bytes) else job_id for job_id in waiting_jobs],
+            "active_jobs_count": active_count,
+            "queue_name": "email-verification",
+        }
+    except Exception as e:
+        return {
+            "redis_connected": False,
+            "error": str(e),
+        }
 
 
 
