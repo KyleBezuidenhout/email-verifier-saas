@@ -107,6 +107,52 @@ export function MarketingPage() {
           </div>
         </section>
 
+        {/* Dashboard Preview Section */}
+        <section id="benefits" className="bg-omni-black py-5xl px-10 md:px-16">
+          <div className="max-w-[1000px] mx-auto">
+            <div className="bg-omni-dark border border-omni-border rounded-2xl p-8 overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-8">
+                {/* Sidebar */}
+                <div className="bg-omni-black rounded-xl p-4 space-y-2">
+                  <div className="px-4 py-3 text-omni-white text-sm font-medium rounded-lg bg-omni-cyan/20 text-omni-cyan">Validate</div>
+                  <div className="px-4 py-3 text-omni-gray text-sm font-medium rounded-lg hover:bg-omni-dark transition-colors cursor-pointer">Upload</div>
+                  <div className="px-4 py-3 text-omni-gray text-sm font-medium rounded-lg hover:bg-omni-dark transition-colors cursor-pointer">Credits</div>
+                  <div className="px-4 py-3 text-omni-gray text-sm font-medium rounded-lg hover:bg-omni-dark transition-colors cursor-pointer">Get Credits</div>
+                  <div className="px-4 py-3 text-omni-gray text-sm font-medium rounded-lg hover:bg-omni-dark transition-colors cursor-pointer">Referrals</div>
+                  <div className="px-4 py-3 text-omni-gray text-sm font-medium rounded-lg hover:bg-omni-dark transition-colors cursor-pointer">Settings</div>
+                </div>
+                {/* Main Content */}
+                <div>
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-bold text-omni-white">Credits</h3>
+                    <div className="flex gap-3">
+                      <button className="px-4 py-2 bg-omni-cyan text-omni-black rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+                        Upload
+                      </button>
+                      <button className="px-4 py-2 bg-omni-cyan text-omni-black rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+                        Settings
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-6 mb-6">
+                    <div className="bg-omni-black rounded-xl p-6 border border-omni-border">
+                      <div className="text-sm text-omni-gray mb-2">Available Credits</div>
+                      <div className="text-4xl font-bold text-omni-white">1,250</div>
+                    </div>
+                    <div className="bg-omni-black rounded-xl p-6 border border-omni-border">
+                      <div className="text-sm text-omni-gray mb-2">Used This Month</div>
+                      <div className="text-4xl font-bold text-omni-white">3,450</div>
+                    </div>
+                  </div>
+                  <button className="w-full bg-omni-cyan text-omni-black py-3 rounded-xl font-medium hover:opacity-90 transition-opacity">
+                    Buy More Credits
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Statistics Section */}
         <section className="bg-omni-black py-5xl px-10 md:px-16">
           <div className="max-w-[1200px] mx-auto">
@@ -187,6 +233,17 @@ export function MarketingPage() {
               <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">Simple, Transparent Pricing</h2>
               <p className="text-base md:text-lg text-omni-gray">Pay only for verified emails. No hidden fees, no subscriptions.</p>
             </div>
+            {/* Tab Toggle */}
+            <div className="flex justify-center mb-12">
+              <div className="inline-flex bg-omni-dark border border-omni-border rounded-xl p-1.5">
+                <button className="px-6 py-2 bg-omni-cyan text-omni-black rounded-lg text-sm font-medium">
+                  Standard Validation
+                </button>
+                <button className="px-6 py-2 text-omni-gray rounded-lg text-sm font-medium hover:text-omni-white transition-colors">
+                  Catchall Validation
+                </button>
+              </div>
+            </div>
             <div className="bg-omni-dark border border-omni-border rounded-2xl p-10 text-center">
               <div className="text-sm text-omni-gray mb-4">One-Time</div>
               <div className="text-[48px] md:text-[64px] font-bold text-omni-cyan mb-8">
@@ -224,6 +281,79 @@ export function MarketingPage() {
               >
                 Start Free Trial
               </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Comparison Table Section */}
+        <section className="bg-omni-black py-5xl px-10 md:px-16">
+          <div className="max-w-[1200px] mx-auto">
+            <div className="text-center mb-16">
+              <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">Compare With Competitors</h2>
+              <p className="text-base md:text-lg text-omni-gray">See how we stack up against the competition</p>
+            </div>
+            <div className="bg-omni-dark border border-omni-border rounded-2xl overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-omni-black border-b border-omni-border">
+                    <th className="px-6 py-4 text-left text-sm font-bold text-omni-white">Features</th>
+                    <th className="px-6 py-4 text-center text-sm font-bold text-omni-white">Competitor A</th>
+                    <th className="px-6 py-4 text-center text-sm font-bold text-omni-cyan bg-omni-cyan/10">EmailVerifier</th>
+                    <th className="px-6 py-4 text-center text-sm font-bold text-omni-white">Competitor B</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { feature: "Price per email", compA: "$0.50", us: "$0.10", compB: "$0.45" },
+                    { feature: "Processing Speed", compA: "Slow", us: "Fast (170/30s)", compB: "Medium" },
+                    { feature: "Max Leads", compA: "10M", us: "250M+", compB: "50M" },
+                    { feature: "API Access", compA: "✓", us: "✓", compB: "✗" },
+                    { feature: "CSV Export", compA: "✓", us: "✓", compB: "✓" },
+                    { feature: "GDPR Compliant", compA: "✓", us: "✓", compB: "✗" },
+                  ].map((row, i) => (
+                    <tr key={i} className="border-b border-omni-border last:border-0">
+                      <td className="px-6 py-4 text-sm text-omni-gray">{row.feature}</td>
+                      <td className="px-6 py-4 text-center text-sm text-omni-gray">{row.compA}</td>
+                      <td className="px-6 py-4 text-center text-sm text-omni-cyan bg-omni-cyan/10 font-medium">{row.us}</td>
+                      <td className="px-6 py-4 text-center text-sm text-omni-gray">{row.compB}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        {/* Testimonials Section */}
+        <section id="testimonials" className="bg-omni-black py-5xl px-10 md:px-16">
+          <div className="max-w-[1200px] mx-auto">
+            <div className="text-center mb-16">
+              <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">What Our Customers Say</h2>
+              <p className="text-base md:text-lg text-omni-gray">Trusted by thousands of sales teams worldwide</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
+              {[
+                { quote: "EmailVerifier has saved us thousands of dollars. The speed and accuracy are unmatched.", name: "Sarah Johnson", title: "VP of Sales, TechCorp" },
+                { quote: "We process millions of leads monthly. This platform scales effortlessly and never breaks.", name: "Michael Chen", title: "Founder, GrowthLab" },
+                { quote: "Best investment we've made for our cold outreach. ROI is incredible.", name: "Emily Rodriguez", title: "Sales Director, StartupXYZ" },
+              ].map((testimonial, i) => (
+                <div key={i} className="bg-omni-dark border border-omni-border rounded-2xl p-8">
+                  <p className="text-base text-omni-gray italic leading-relaxed mb-6">
+                    &quot;{testimonial.quote}&quot;
+                  </p>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-omni-cyan rounded-full flex items-center justify-center">
+                      <span className="text-omni-black font-bold text-lg">
+                        {testimonial.name.charAt(0)}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-omni-white">{testimonial.name}</div>
+                      <div className="text-xs text-omni-gray">{testimonial.title}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </section>
