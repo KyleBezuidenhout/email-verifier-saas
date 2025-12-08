@@ -167,14 +167,18 @@ export default function ResultsPage() {
     );
   }
 
+  // Determine back link based on job type
+  const backLink = job?.job_type === 'verification' ? '/verify-emails' : '/find-valid-emails';
+  const backLinkText = job?.job_type === 'verification' ? 'Back to Verify Emails' : 'Back to Find Valid Emails';
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
         <Link
-          href="/dashboard"
+          href={backLink}
           className="text-dashbrd-accent hover:opacity-80 transition-opacity mb-4 inline-block"
         >
-          ← Back to Dashboard
+          ← {backLinkText}
         </Link>
         <h1 className="text-3xl font-bold text-dashbrd-text">Results</h1>
         <p className="mt-2 text-dashbrd-text-muted">Job ID: {jobId}</p>

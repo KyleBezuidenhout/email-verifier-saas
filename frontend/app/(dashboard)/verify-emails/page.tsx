@@ -113,8 +113,7 @@ export default function VerifyEmailsPage() {
       // Refresh jobs list
       await loadJobs();
       
-      // Navigate to results page
-      router.push(`/results/${response.job_id}`);
+      // Don't redirect - let user stay on verify-emails page to see the job in the list
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
