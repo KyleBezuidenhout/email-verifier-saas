@@ -11,16 +11,11 @@ app = FastAPI(
     openapi_url="/api/openapi.json"
 )
 
-# CORS Middleware
+# CORS Middleware - Allow all origins for debugging
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://email-verifier-saas.vercel.app",
-        "https://email-verifier-saas-git-main-kylebezuidenhouts-projects.vercel.app",
-        "https://email-verifier-saas-kylebezuidenhouts-projects.vercel.app",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,  # Must be False when using "*"
     allow_methods=["*"],
     allow_headers=["*"],
 )
