@@ -22,11 +22,23 @@ import redis
 import asyncio
 import json
 import time
+from bullmq import Queue
 
 router = APIRouter()
 
 # Initialize Redis connection for job queue
 redis_client = redis.from_url(settings.REDIS_URL)
+
+# Parse Redis URL for BullMQ
+from urllib.parse import urlparse
+redis_url_parsed = urlparse(settings.REDIS_URL)
+
+# Initialize BullMQ queue
+bullmq_queue = Queue("email-verification", connection={
+    "host": redis_url_parsed.hostname or "localhost",
+    "port": redis_url_parsed.port or 6379,
+    "password": redis_url_parsed.password,
+})
 
 # Initialize S3 client for Cloudflare R2
 s3_client = boto3.client(
@@ -187,37 +199,12 @@ async def upload_file(
     db.bulk_save_objects(leads_to_create)
     db.commit()
     
-    # Queue job for processing using BullMQ format
+    # Queue job for processing using BullMQ
     try:
-        # BullMQ job structure - job.data should be the job ID string
-        bullmq_job_id = str(uuid.uuid4())
-        job_id_string = str(job.id)
-        
-        # BullMQ stores jobs in Redis with this structure
-        # Key: bull:email-verification:{bullmq_job_id}
-        job_key = f'bull:email-verification:{bullmq_job_id}'
-        job_value = json.dumps({
-            'id': bullmq_job_id,
-            'name': 'email-verification',
-            'data': job_id_string,  # Worker expects job.data to be the job ID
-            'opts': {},
-            'timestamp': int(time.time() * 1000),
-            'delay': 0,
-            'priority': 0,
-            'attemptsMade': 0,
-        })
-        
-        # Store job
-        redis_client.set(job_key, job_value)
-        
-        # Add to waiting list
-        redis_client.lpush('bull:email-verification:wait', bullmq_job_id)
-        
-        # Add to jobs list (sorted set)
-        redis_client.zadd('bull:email-verification:jobs', {bullmq_job_id: int(time.time() * 1000)})
-        
-        print(f"Queued job {job.id} to BullMQ with ID {bullmq_job_id}")
-        
+        # Add job to BullMQ queue - worker expects job.data to be the job ID string
+        # BullMQ Python: add(name, data, opts)
+        await bullmq_queue.add("email-verification", str(job.id))
+        print(f"Queued job {job.id} to BullMQ")
     except Exception as e:
         # If Redis fails, job will remain in pending state
         print(f"Failed to queue job: {e}")
