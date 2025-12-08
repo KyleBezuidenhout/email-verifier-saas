@@ -30,71 +30,62 @@ const MAILTESTER_BASE_URL = process.env.MAILTESTER_BASE_URL || 'https://happy.ma
 const MAILTESTER_API_KEY = process.env.MAILTESTER_API_KEY;
 
 // ============================================
-// TOKEN BUCKET RATE LIMITER (Thread-Safe)
+// SERIALIZED RATE LIMITER WITH SPACING
 // ============================================
-// Allows bursting up to 170 requests per 30 seconds
-// Uses a queue to prevent race conditions with parallel calls
+// Ensures minimum 180ms between API calls to prevent bursting
+// 170 requests / 30 seconds = ~176ms per request
 
-class TokenBucketRateLimiter {
-  constructor(maxTokens, windowMs) {
-    this.maxTokens = maxTokens;       // 170 requests
-    this.windowMs = windowMs;          // 30000ms (30 seconds)
-    this.tokens = maxTokens;           // Start with full bucket
-    this.lastRefill = Date.now();
-    this.queue = [];                   // Queue of waiting requests
-    this.processing = false;           // Lock to prevent race conditions
+class SerializedRateLimiter {
+  constructor(requestsPerWindow, windowMs) {
+    this.requestsPerWindow = requestsPerWindow;  // 170 requests
+    this.windowMs = windowMs;                     // 30000ms (30 seconds)
+    this.minSpacingMs = Math.ceil(windowMs / requestsPerWindow) + 10; // ~187ms
+    this.lastRequestTime = 0;
+    this.requestCount = 0;
+    this.windowStart = Date.now();
+    this.queue = [];
+    this.processing = false;
   }
 
-  // Refill tokens based on time elapsed
-  refillTokens() {
-    const now = Date.now();
-    const elapsed = now - this.lastRefill;
-    
-    if (elapsed >= this.windowMs) {
-      // Full window passed, refill completely
-      this.tokens = this.maxTokens;
-      this.lastRefill = now;
-    } else if (elapsed > 0) {
-      // Partial refill based on time elapsed (smooth refill)
-      const tokensToAdd = Math.floor((elapsed / this.windowMs) * this.maxTokens);
-      if (tokensToAdd > 0) {
-        this.tokens = Math.min(this.maxTokens, this.tokens + tokensToAdd);
-        this.lastRefill = now;
-      }
-    }
-  }
-
-  // Process the queue
   async processQueue() {
     if (this.processing) return;
     this.processing = true;
 
     while (this.queue.length > 0) {
-      this.refillTokens();
-
-      if (this.tokens > 0) {
-        // Have tokens available, grant one
-        this.tokens--;
-        const resolve = this.queue.shift();
-        resolve();
-      } else {
-        // No tokens, calculate wait time until next token
-        const elapsed = Date.now() - this.lastRefill;
-        const waitTime = Math.max(100, Math.ceil((this.windowMs - elapsed) / this.maxTokens));
-        
-        // Only log if we have a significant queue
-        if (this.queue.length > 5) {
-          console.log(`Rate limiter: ${this.queue.length} requests queued, waiting ${waitTime}ms for next token...`);
-        }
-        
-        await new Promise(r => setTimeout(r, waitTime));
+      const now = Date.now();
+      
+      // Check if window has reset
+      if (now - this.windowStart >= this.windowMs) {
+        this.requestCount = 0;
+        this.windowStart = now;
       }
+      
+      // Check if we've hit the window limit
+      if (this.requestCount >= this.requestsPerWindow) {
+        const waitTime = this.windowMs - (now - this.windowStart) + 100;
+        console.log(`Rate limit: Window limit reached, waiting ${Math.ceil(waitTime/1000)}s for reset...`);
+        await new Promise(r => setTimeout(r, waitTime));
+        this.requestCount = 0;
+        this.windowStart = Date.now();
+        continue;
+      }
+      
+      // Enforce minimum spacing between requests
+      const timeSinceLastRequest = now - this.lastRequestTime;
+      if (timeSinceLastRequest < this.minSpacingMs) {
+        await new Promise(r => setTimeout(r, this.minSpacingMs - timeSinceLastRequest));
+      }
+      
+      // Grant the request
+      this.lastRequestTime = Date.now();
+      this.requestCount++;
+      const resolve = this.queue.shift();
+      resolve();
     }
 
     this.processing = false;
   }
 
-  // Request a token (returns promise that resolves when token is granted)
   async acquire() {
     return new Promise((resolve) => {
       this.queue.push(resolve);
@@ -102,27 +93,28 @@ class TokenBucketRateLimiter {
     });
   }
 
-  // Get current status
   getStatus() {
-    this.refillTokens();
     return {
-      availableTokens: this.tokens,
+      availableTokens: this.requestsPerWindow - this.requestCount,
       queueLength: this.queue.length,
-      maxTokens: this.maxTokens,
+      maxTokens: this.requestsPerWindow,
+      minSpacingMs: this.minSpacingMs,
     };
   }
 }
 
-// Create the rate limiter instance
-const rateLimiter = new TokenBucketRateLimiter(170, 30000);
+// Create the rate limiter instance (170 per 30 seconds, ~187ms spacing)
+const rateLimiter = new SerializedRateLimiter(170, 30000);
 
-// Legacy function for compatibility (now uses token bucket)
+// Rate limit function
 async function rateLimit() {
   await rateLimiter.acquire();
 }
 
-// Verify email using MailTester API
-async function verifyEmail(email) {
+// Verify email using MailTester API with retry logic
+async function verifyEmail(email, retryCount = 0) {
+  const MAX_RETRIES = 3;
+  
   await rateLimit();
   
   try {
@@ -150,12 +142,29 @@ async function verifyEmail(email) {
       mx: response.data?.mx || '',
     };
   } catch (error) {
-    console.error(`Error verifying ${email}:`, error.message);
-    // Retry once on network errors
-    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-      return verifyEmail(email); // Retry
+    // Handle 429 Too Many Requests with exponential backoff
+    if (error.response?.status === 429) {
+      if (retryCount < MAX_RETRIES) {
+        const backoffMs = Math.pow(2, retryCount + 1) * 1000; // 2s, 4s, 8s
+        console.log(`429 rate limited for ${email}, retrying in ${backoffMs/1000}s (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        return verifyEmail(email, retryCount + 1);
+      }
+      console.error(`Max retries exceeded for ${email}`);
+      return {
+        status: 'error',
+        message: 'Rate limited - max retries exceeded',
+      };
     }
+    
+    // Retry once on network errors
+    if ((error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') && retryCount < MAX_RETRIES) {
+      console.log(`Network error for ${email}, retrying in 2s...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return verifyEmail(email, retryCount + 1);
+    }
+    
+    console.error(`Error verifying ${email}:`, error.message);
     return {
       status: 'error',
       message: error.message,
@@ -455,7 +464,7 @@ async function processJob(jobId) {
 
 console.log('Worker started, waiting for jobs...');
 console.log(`MailTester API: ${MAILTESTER_BASE_URL}`);
-console.log(`Rate limit: 170 requests per 30 seconds (Token Bucket)`);
+console.log(`Rate limit: 170 requests per 30 seconds (~187ms spacing between calls)`);
 
 // Simple Redis list poller
 async function pollSimpleQueue() {
