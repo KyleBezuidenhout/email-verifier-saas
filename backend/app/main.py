@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
-from app.api.v1.endpoints import auth, jobs, results
+from app.api.v1.endpoints import auth, jobs, results, test
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -46,5 +46,6 @@ async def health_check():
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/api/v1/results", tags=["results"])
+app.include_router(test.router, prefix="/api/v1", tags=["test"])
 
 

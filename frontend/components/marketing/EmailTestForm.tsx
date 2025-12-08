@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { apiClient } from "@/lib/api";
 
 interface EmailResult {
   name: string;
   company: string;
   email: string;
-  status: "valid" | "invalid" | "catchall" | "pending";
+  status: "valid" | "invalid" | "catchall" | "pending" | "not_found";
 }
 
 export function EmailTestForm() {
@@ -31,19 +32,24 @@ export function EmailTestForm() {
     setLoading(true);
     setError("");
 
-    // Simulate API call - replace with actual API call later
-    setTimeout(() => {
+    try {
+      const result = await apiClient.testEmail(name.trim(), companyWebsite.trim());
+      
       const newResult: EmailResult = {
-        name: name.trim(),
-        company: companyWebsite.trim(),
-        email: `${name.toLowerCase().replace(/\s+/g, ".")}@${companyWebsite.replace(/^https?:\/\//, "").replace(/^www\./, "")}`,
-        status: "pending", // Will be "valid", "invalid", or "catchall" when verification is implemented
+        name: result.name,
+        company: result.company,
+        email: result.email,
+        status: result.status as EmailResult["status"],
       };
+      
       setResults([...results, newResult]);
       setName("");
       setCompanyWebsite("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to find email");
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -117,9 +123,11 @@ export function EmailTestForm() {
                       ? "bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300"
                       : result.status === "catchall"
                       ? "bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300"
+                      : result.status === "not_found"
+                      ? "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300"
                       : "bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300"
                   }`}>
-                    {result.status}
+                    {result.status === "not_found" ? "not found" : result.status}
                   </span>
                 </div>
               </div>

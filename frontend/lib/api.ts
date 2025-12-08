@@ -161,6 +161,27 @@ class ApiClient {
   async getResults(jobId: string): Promise<Lead[]> {
     return this.request<Lead[]>(`/api/v1/results/${jobId}`);
   }
+
+  // Test email endpoint (public, no auth required)
+  async testEmail(name: string, companyWebsite: string): Promise<{ name: string; company: string; email: string; status: string }> {
+    const url = `${this.baseUrl}/api/v1/test-email`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, company_website: companyWebsite }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        detail: response.statusText,
+      }));
+      throw new Error(error.detail || "An error occurred");
+    }
+
+    return response.json();
+  }
 }
 
 export const apiClient = new ApiClient(API_URL);
