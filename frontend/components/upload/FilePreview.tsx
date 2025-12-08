@@ -21,11 +21,26 @@ export function FilePreview({ file }: FilePreviewProps) {
         header: true,
         skipEmptyLines: true,
         complete: (results: ParseResult<Record<string, string>>) => {
-          const requiredColumns = ["first_name", "last_name", "website"];
           const fileHeaders = results.meta.fields || [];
-          const missingColumns = requiredColumns.filter(
-            (col) => !fileHeaders.includes(col)
-          );
+          
+          // Normalize header for comparison (lowercase, remove spaces/underscores)
+          const normalizeHeader = (h: string) => h.toLowerCase().replace(/[\s_-]/g, "");
+          const normalizedHeaders = fileHeaders.map(normalizeHeader);
+          
+          // Check for required columns with flexible matching
+          const columnMappings: Record<string, string[]> = {
+            first_name: ["firstname", "first", "fname", "givenname"],
+            last_name: ["lastname", "last", "lname", "surname", "familyname"],
+            website: ["website", "domain", "companywebsite", "companydomain", "url", "companyurl"],
+          };
+          
+          const missingColumns: string[] = [];
+          for (const [required, variations] of Object.entries(columnMappings)) {
+            const found = variations.some((v) => normalizedHeaders.includes(v));
+            if (!found) {
+              missingColumns.push(required);
+            }
+          }
 
           if (missingColumns.length > 0) {
             setErrors([
