@@ -44,7 +44,7 @@ class ApiClient {
   private async requestWithFile<T>(
     endpoint: string,
     file: File,
-    additionalData?: Record<string, any>
+    additionalData?: Record<string, string | number | boolean>
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const token = this.getToken();

@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Papa from "papaparse";
+import Papa, { ParseResult } from "papaparse";
 
 interface FilePreviewProps {
   file: File;
 }
 
 export function FilePreview({ file }: FilePreviewProps) {
-  const [preview, setPreview] = useState<any[]>([]);
+  const [preview, setPreview] = useState<Record<string, string>[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
@@ -17,10 +17,10 @@ export function FilePreview({ file }: FilePreviewProps) {
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
-      Papa.parse(text, {
+      Papa.parse<Record<string, string>>(text, {
         header: true,
         skipEmptyLines: true,
-        complete: (results) => {
+        complete: (results: ParseResult<Record<string, string>>) => {
           const requiredColumns = ["first_name", "last_name", "website"];
           const fileHeaders = results.meta.fields || [];
           const missingColumns = requiredColumns.filter(
@@ -40,7 +40,7 @@ export function FilePreview({ file }: FilePreviewProps) {
           setLoading(false);
         },
         error: (error) => {
-          setErrors([error.message]);
+          setErrors([error.message || "Failed to parse CSV"]);
           setLoading(false);
         },
       });

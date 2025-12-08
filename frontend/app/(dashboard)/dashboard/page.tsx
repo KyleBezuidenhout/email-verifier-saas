@@ -55,7 +55,7 @@ export default function DashboardPage() {
               total_leads: progress.total_leads,
               valid_emails_found: progress.valid_emails_found,
               catchall_emails_found: progress.catchall_emails_found,
-              status: progress.status as any,
+              status: progress.status as 'pending' | 'processing' | 'completed' | 'failed',
             }
           : job
       )
