@@ -9,27 +9,48 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))',
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
+        // OmniVerifier Design System
+        'omni-black': '#000000',
+        'omni-dark': '#181A1A',
+        'omni-cyan': '#00D9FF',
+        'omni-white': '#FFFFFF',
+        'omni-gray': '#999999',
+        'omni-light-gray': '#CCCCCC',
+        'omni-border': '#333333',
+        // Legacy support
+        border: '#333333',
+        background: '#000000',
+        foreground: '#FFFFFF',
         primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
+          DEFAULT: '#00D9FF',
+          foreground: '#000000',
         },
         secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-          foreground: 'hsl(var(--secondary-foreground))',
+          DEFAULT: '#181A1A',
+          foreground: '#FFFFFF',
         },
         muted: {
-          DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))',
+          DEFAULT: '#999999',
+          foreground: '#CCCCCC',
         },
         accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))',
+          DEFAULT: '#00D9FF',
+          foreground: '#000000',
         },
+      },
+      fontFamily: {
+        sans: ['Inter', 'Segoe UI', 'sans-serif'],
+      },
+      spacing: {
+        'xs': '4px',
+        's': '8px',
+        'm': '12px',
+        'l': '16px',
+        'xl': '24px',
+        '2xl': '32px',
+        '3xl': '48px',
+        '4xl': '60px',
+        '5xl': '100px',
       },
     },
   },

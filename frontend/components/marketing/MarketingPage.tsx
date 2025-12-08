@@ -1,200 +1,255 @@
 "use client";
 
 import Link from "next/link";
-import { SellingPoints, SecurityBadges } from "@/components/common/SellingPoints";
+import { EmailTestForm } from "./EmailTestForm";
 import { Navbar } from "@/components/common/Navbar";
 import { Footer } from "@/components/common/Footer";
-import { EmailTestForm } from "./EmailTestForm";
 
 export function MarketingPage() {
   return (
-    <div className="flex flex-col min-h-screen bg-white dark:bg-gray-900">
+    <div className="flex flex-col min-h-screen bg-omni-black">
       <Navbar />
-      <main className="flex-1">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-white via-blue-50 to-purple-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-purple-900/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <div className="text-center mb-12">
-            <h1 className="text-5xl md:text-6xl font-bold text-gray-900 dark:text-white mb-4">
-              For Modern Sales Teams
-            </h1>
-            <div className="flex justify-center mb-6">
-              <svg className="w-32 h-4" viewBox="0 0 200 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M10 10 Q50 5, 90 10 T170 10" stroke="#ec4899" strokeWidth="3" fill="none" strokeLinecap="round"/>
+      <main className="flex-1 pt-[70px]">
+        {/* Hero Section */}
+        <section className="bg-omni-black py-4xl px-10 md:px-16">
+          <div className="max-w-[900px] mx-auto text-center">
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 bg-omni-cyan/15 px-3 py-1.5 rounded-full mb-6">
+              <svg className="w-4 h-4 text-omni-black" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
               </svg>
+              <span className="text-omni-black font-medium text-sm">New: Lightning Fast Verification</span>
             </div>
-            <p className="text-lg md:text-xl text-gray-700 dark:text-gray-300 max-w-2xl mx-auto">
-              Reach more targets without destroying your reputation with built-in email verification and exceptional data coverage.
+
+            {/* Main Headline */}
+            <h1 className="text-[48px] md:text-[64px] font-bold text-omni-white leading-[1.2] tracking-[-0.02em] mb-4">
+              Find & Verify Emails{" "}
+              <span className="text-omni-cyan">10x Faster</span>
+            </h1>
+
+            {/* Subheadline */}
+            <p className="text-base md:text-lg text-omni-gray leading-relaxed max-w-[600px] mx-auto mb-12">
+              Process up to 250M leads in minutes. Get verified emails at $0.10 each.
+              Lightning-fast processing with bank-level security.
             </p>
-          </div>
 
-          {/* Email Test Form */}
-          <div className="relative">
-            <div className="absolute -left-8 top-0 hidden lg:block">
-              <div className="flex flex-col items-center">
-                <Link
-                  href="/register"
-                  className="text-red-600 dark:text-red-400 font-medium text-sm mb-2 hover:text-red-700 dark:hover:text-red-300"
-                >
-                  Try it now
-                </Link>
-                <svg className="w-8 h-16 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </div>
-            <EmailTestForm />
-          </div>
-        </div>
-      </section>
-
-      {/* Selling Points */}
-      <section className="py-16 bg-gray-50 dark:bg-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-8">
-            Why Choose EmailVerifier?
-          </h2>
-          <SellingPoints />
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section className="py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-12">
-            Everything You Need to Scale
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-              <div className="text-4xl mb-4">⚡</div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                Lightning Fast
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Process 170 emails every 30 seconds. Get results in minutes, not hours.
-              </p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-              <div className="text-4xl mb-4">💰</div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                10x Cheaper
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Only $0.10 per verified email. Competitors charge $0.50+. Save thousands.
-              </p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-              <div className="text-4xl mb-4">📈</div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                Massive Scale
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Handle 250M+ leads effortlessly. Built for enterprise-scale operations.
-              </p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-              <div className="text-4xl mb-4">🔒</div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                Bank-Level Security
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                TLS 1.3 encryption, GDPR compliant, SOC 2 Type II certified.
-              </p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-              <div className="text-4xl mb-4">🎯</div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                Smart Permutations
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                AI-powered email pattern detection. Find the right email format automatically.
-              </p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-              <div className="text-4xl mb-4">📋</div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                SalesNav Integration
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Import directly from LinkedIn Sales Navigator. Auto-enrich with verified emails.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section className="py-16 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
-            Simple, Transparent Pricing
-          </h2>
-          <p className="text-lg text-gray-600 dark:text-gray-400 mb-8">
-            Pay only for verified emails. No hidden fees, no subscriptions.
-          </p>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-200 dark:border-gray-700">
-            <div className="text-5xl font-bold text-blue-600 dark:text-blue-400 mb-2">
-              $0.10
-            </div>
-            <div className="text-gray-600 dark:text-gray-400 mb-6">per verified email</div>
-            <div className="grid grid-cols-2 gap-4 text-left mb-8">
-              <div className="flex items-center">
-                <span className="text-green-500 mr-2">✓</span>
-                <span className="text-gray-700 dark:text-gray-300">Valid emails</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-green-500 mr-2">✓</span>
-                <span className="text-gray-700 dark:text-gray-300">Catchall detection</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-green-500 mr-2">✓</span>
-                <span className="text-gray-700 dark:text-gray-300">Real-time processing</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-green-500 mr-2">✓</span>
-                <span className="text-gray-700 dark:text-gray-300">CSV export</span>
-              </div>
-            </div>
+            {/* Primary CTA */}
             <Link
               href="/register"
-              className="block w-full px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold text-lg hover:bg-blue-700 transition-all"
+              className="inline-flex items-center gap-2 bg-omni-cyan text-omni-black px-8 py-4 rounded-xl font-medium text-base hover:opacity-90 transition-all mb-12"
             >
-              Start Free Trial
+              Get Free Credits
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+
+            {/* Supporting Features */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-10 md:gap-15 mt-12">
+              <div className="flex flex-col items-center">
+                <div className="w-12 h-12 bg-omni-cyan rounded-lg flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6 text-omni-black" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="text-omni-white font-medium text-base">Lightning Fast</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <div className="w-12 h-12 bg-omni-cyan rounded-lg flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6 text-omni-black" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z" />
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="text-omni-white font-medium text-base">10x Cheaper</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <div className="w-12 h-12 bg-omni-cyan rounded-lg flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6 text-omni-black" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="text-omni-white font-medium text-base">250M+ Capacity</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Try It For Yourself Section - PRESERVED AS-IS */}
+        <section className="bg-omni-black py-4xl px-10 md:px-16">
+          <div className="max-w-7xl mx-auto">
+            <EmailTestForm />
+          </div>
+        </section>
+
+        {/* About Section */}
+        <section className="bg-omni-black py-5xl px-10 md:px-16">
+          <div className="max-w-[900px] mx-auto text-center">
+            <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-12">Our Story</h2>
+            <p className="text-base md:text-lg text-omni-gray leading-relaxed mb-6">
+              Built by the founders of a leading email infrastructure company, we&apos;ve spent years at the intersection of email delivery and cold outreach. We&apos;ve overseen over 4M emails being sent daily, and we noticed something alarming: lead prices have skyrocketed since we started, making it increasingly difficult for founders and sales teams to scale affordably.
+            </p>
+            <p className="text-base md:text-lg text-omni-gray leading-relaxed mb-12">
+              So we took it into our own hands. We built a solution designed specifically for cold email senders—whether you&apos;re just starting out or sending millions of emails daily. EmailVerifier is the market&apos;s{" "}
+              <span className="text-omni-cyan">most affordable</span>,{" "}
+              <span className="text-omni-cyan">beginner-friendly</span>, and{" "}
+              <span className="text-omni-cyan">infinitely scalable</span> email verification platform. No complexity. No hidden costs. Just clean, verified leads.
+            </p>
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-2 bg-omni-cyan text-omni-black px-8 py-4 rounded-xl font-medium text-base hover:opacity-90 transition-all"
+            >
+              Start Verifying Today
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
             </Link>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Security */}
-      <section className="py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-8">
-            Enterprise-Grade Security
-          </h2>
-          <SecurityBadges />
-        </div>
-      </section>
+        {/* Statistics Section */}
+        <section className="bg-omni-black py-5xl px-10 md:px-16">
+          <div className="max-w-[1200px] mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-15">
+              <div className="text-center">
+                <div className="text-[48px] md:text-[64px] font-bold text-omni-white mb-4">250M+</div>
+                <div className="text-base md:text-lg text-omni-gray">Leads Processed</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[48px] md:text-[64px] font-bold text-omni-white mb-4">99.9%</div>
+                <div className="text-base md:text-lg text-omni-gray">Uptime Guarantee</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[48px] md:text-[64px] font-bold text-omni-white mb-4">$0.10</div>
+                <div className="text-base md:text-lg text-omni-gray">Per Verified Email</div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      {/* CTA */}
-      <section className="py-16 bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-900 dark:to-indigo-900">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold text-white mb-4">
-            Ready to Scale Your Outreach?
-          </h2>
-          <p className="text-xl text-blue-100 mb-8">
-            Join thousands of companies verifying millions of emails every month.
-          </p>
-          <Link
-            href="/register"
-            className="inline-block px-8 py-4 bg-white text-blue-600 rounded-lg font-semibold text-lg hover:bg-blue-50 transition-all shadow-xl"
-          >
-            Get Started Free
-          </Link>
-        </div>
-      </section>
+        {/* Features Section */}
+        <section id="features" className="bg-omni-black py-5xl px-10 md:px-16">
+          <div className="max-w-[1200px] mx-auto">
+            <div className="text-center mb-16">
+              <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">Everything You Need to Scale</h2>
+              <p className="text-base md:text-lg text-omni-gray">Powerful features for modern sales teams</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
+              {[
+                { icon: "⚡", title: "Lightning Fast", desc: "Process 170 emails every 30 seconds. Get results in minutes, not hours." },
+                { icon: "💰", title: "10x Cheaper", desc: "Only $0.10 per verified email. Competitors charge $0.50+. Save thousands." },
+                { icon: "📈", title: "Massive Scale", desc: "Handle 250M+ leads effortlessly. Built for enterprise-scale operations." },
+                { icon: "🔒", title: "Bank-Level Security", desc: "TLS 1.3 encryption, GDPR compliant, SOC 2 Type II certified." },
+                { icon: "🎯", title: "Smart Permutations", desc: "AI-powered email pattern detection. Find the right email format automatically." },
+                { icon: "📋", title: "SalesNav Integration", desc: "Import directly from LinkedIn Sales Navigator. Auto-enrich with verified emails." },
+              ].map((feature, i) => (
+                <div key={i} className="bg-omni-dark border border-omni-border rounded-2xl p-8 hover:border-omni-cyan/50 transition-all">
+                  <div className="w-12 h-12 bg-omni-cyan rounded-xl flex items-center justify-center mb-5 mx-auto">
+                    <span className="text-2xl">{feature.icon}</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-omni-white mb-4 text-center">{feature.title}</h3>
+                  <p className="text-base text-omni-gray leading-relaxed text-center">{feature.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Process Section */}
+        <section id="process" className="bg-omni-black py-5xl px-10 md:px-16">
+          <div className="max-w-[1200px] mx-auto">
+            <div className="text-center mb-16">
+              <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">How It Works</h2>
+              <p className="text-base md:text-lg text-omni-gray">Simple, fast, and reliable</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
+              {[
+                { step: "1", title: "Upload Your CSV", desc: "Upload your lead list with names and company websites. We support flexible column mapping." },
+                { step: "2", title: "We Verify Emails", desc: "Our system generates email permutations and verifies them using industry-leading validation." },
+                { step: "3", title: "Download Results", desc: "Get your verified emails instantly. Download as CSV with all verification details." },
+              ].map((step, i) => (
+                <div key={i} className="bg-omni-dark border border-omni-border rounded-2xl p-8 text-center">
+                  <div className="w-12 h-12 bg-omni-cyan rounded-xl flex items-center justify-center mb-5 mx-auto">
+                    <span className="text-omni-black font-bold text-xl">{step.step}</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-omni-white mb-4">Step {step.step}: {step.title}</h3>
+                  <p className="text-base text-omni-gray leading-relaxed">{step.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing Section */}
+        <section id="pricing" className="bg-omni-black py-5xl px-10 md:px-16">
+          <div className="max-w-[900px] mx-auto">
+            <div className="text-center mb-16">
+              <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">Simple, Transparent Pricing</h2>
+              <p className="text-base md:text-lg text-omni-gray">Pay only for verified emails. No hidden fees, no subscriptions.</p>
+            </div>
+            <div className="bg-omni-dark border border-omni-border rounded-2xl p-10 text-center">
+              <div className="text-sm text-omni-gray mb-4">One-Time</div>
+              <div className="text-[48px] md:text-[64px] font-bold text-omni-cyan mb-8">
+                $0.10<span className="text-2xl">/email</span>
+              </div>
+              <div className="space-y-4 mb-8 text-left max-w-md mx-auto">
+                <div className="flex items-center gap-3">
+                  <svg className="w-5 h-5 text-omni-cyan flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-sm text-omni-gray">Valid emails</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <svg className="w-5 h-5 text-omni-cyan flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-sm text-omni-gray">Catchall detection</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <svg className="w-5 h-5 text-omni-cyan flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-sm text-omni-gray">Real-time processing</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <svg className="w-5 h-5 text-omni-cyan flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-sm text-omni-gray">CSV export</span>
+                </div>
+              </div>
+              <Link
+                href="/register"
+                className="block w-full bg-omni-cyan text-omni-black py-4 rounded-xl font-medium text-base hover:opacity-90 transition-all"
+              >
+                Start Free Trial
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Final CTA Section */}
+        <section className="bg-omni-black py-5xl px-10 md:px-16">
+          <div className="max-w-[800px] mx-auto text-center">
+            <h2 className="text-[36px] md:text-[48px] font-bold text-omni-white mb-4">
+              Ready to Scale Your Outreach?
+            </h2>
+            <p className="text-base md:text-lg text-omni-gray mb-12">
+              Join thousands of companies verifying millions of emails every month.
+            </p>
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-2 bg-omni-cyan text-omni-black px-10 py-5 rounded-xl font-medium text-lg hover:opacity-90 transition-all"
+            >
+              Get Started Free
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+        </section>
       </main>
       <Footer />
     </div>
   );
 }
-

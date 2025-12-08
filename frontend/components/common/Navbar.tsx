@@ -11,6 +11,7 @@ export function Navbar() {
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const [showMenu, setShowMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -18,103 +19,42 @@ export function Navbar() {
   };
 
   return (
-    <nav className="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex items-center gap-4">
-            <Link href={user ? "/dashboard" : "/"} className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              EmailVerifier
-            </Link>
-            {user ? (
-              <>
-                <div className="hidden md:flex md:ml-10 md:space-x-8">
-                  <Link
-                    href="/dashboard"
-                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
-                  >
-                    Dashboard
-                  </Link>
-                  <Link
-                    href="/upload"
-                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
-                  >
-                    Upload
-                  </Link>
-                  <Link
-                    href="/settings"
-                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
-                  >
-                    Settings
-                  </Link>
-                </div>
-                <div className="hidden lg:flex items-center gap-2 ml-4">
-                  <span className="text-xs px-2 py-1 rounded bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
-                    🔒 Bank-level encryption
-                  </span>
-                  <span className="text-xs px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                    ⚡ 99.9% Uptime
-                  </span>
-                  <span className="text-xs px-2 py-1 rounded bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                    📈 250M+ leads
-                  </span>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="hidden lg:flex items-center ml-10 space-x-6">
-                  <div className="relative group">
-                    <button className="flex items-center text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium">
-                      Products
-                      <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  </div>
-                  <Link
-                    href="/pricing"
-                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
-                  >
-                    Pricing
-                  </Link>
-                  <Link
-                    href="/integrations"
-                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
-                  >
-                    Integrations
-                  </Link>
-                  <Link
-                    href="/resources"
-                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
-                  >
-                    Resources
-                  </Link>
-                  <Link
-                    href="/docs"
-                    className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-2 text-sm font-medium"
-                  >
-                    Docs
-                  </Link>
-                </div>
-                <div className="hidden md:flex items-center gap-2 ml-4">
-                  <span className="text-xs px-2 py-1 rounded bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
-                    🔒 Bank-level encryption
-                  </span>
-                  <span className="text-xs px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                    ⚡ 99.9% Uptime
-                  </span>
-                  <span className="text-xs px-2 py-1 rounded bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                    📈 250M+ leads
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-omni-black border-b border-omni-border">
+      <div className="max-w-[1280px] mx-auto px-4 md:px-16 h-[70px] flex items-center justify-between">
+        {/* Logo */}
+        <Link href={user ? "/dashboard" : "/"} className="flex items-center gap-2">
+          <span className="text-2xl font-bold text-omni-white">
+            Email<span className="text-omni-cyan">Verifier</span>
+          </span>
+        </Link>
 
-          {user ? (
+        {user ? (
+          <>
+            {/* Authenticated Navigation */}
+            <div className="hidden md:flex items-center gap-8">
+              <Link
+                href="/dashboard"
+                className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity"
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/upload"
+                className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity"
+              >
+                Upload
+              </Link>
+              <Link
+                href="/settings"
+                className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity"
+              >
+                Settings
+              </Link>
+            </div>
             <div className="flex items-center gap-4">
               <button
                 onClick={toggleTheme}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                className="p-2 rounded-lg hover:bg-omni-dark text-omni-white transition-colors"
                 aria-label="Toggle theme"
               >
                 {theme === "dark" ? (
@@ -130,35 +70,28 @@ export function Navbar() {
               <div className="relative">
                 <button
                   onClick={() => setShowMenu(!showMenu)}
-                  className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+                  className="flex items-center gap-2 text-omni-white font-medium text-sm hover:opacity-80"
                 >
-                  <span className="text-sm font-medium">{user.email}</span>
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
+                  {user.email}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-
                 {showMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50 border border-gray-200 dark:border-gray-700">
+                  <div className="absolute right-0 mt-2 w-48 bg-omni-dark border border-omni-border rounded-lg py-2 z-50">
                     <Link
                       href="/settings"
-                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="block px-4 py-2 text-sm text-omni-white hover:bg-omni-black/50"
+                      onClick={() => setShowMenu(false)}
                     >
                       Settings
                     </Link>
                     <button
-                      onClick={handleLogout}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      onClick={() => {
+                        handleLogout();
+                        setShowMenu(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-omni-white hover:bg-omni-black/50"
                     >
                       Logout
                     </button>
@@ -166,11 +99,35 @@ export function Navbar() {
                 )}
               </div>
             </div>
-          ) : (
+          </>
+        ) : (
+          <>
+            {/* Public Navigation */}
+            <div className="hidden lg:flex items-center gap-8">
+              <Link href="#features" className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity">
+                Features
+              </Link>
+              <span className="text-omni-gray">•</span>
+              <Link href="#process" className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity">
+                Process
+              </Link>
+              <span className="text-omni-gray">•</span>
+              <Link href="#benefits" className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity">
+                Benefits
+              </Link>
+              <span className="text-omni-gray">•</span>
+              <Link href="#pricing" className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity">
+                Pricing
+              </Link>
+              <span className="text-omni-gray">•</span>
+              <Link href="#testimonials" className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity">
+                Testimonials
+              </Link>
+            </div>
             <div className="flex items-center gap-4">
               <button
                 onClick={toggleTheme}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                className="p-2 rounded-lg hover:bg-omni-dark text-omni-white transition-colors hidden md:block"
                 aria-label="Toggle theme"
               >
                 {theme === "dark" ? (
@@ -185,21 +142,62 @@ export function Navbar() {
               </button>
               <Link
                 href="/login"
-                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium"
+                className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity hidden md:block"
               >
                 Sign In
               </Link>
               <Link
                 href="/register"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 font-medium"
+                className="bg-omni-cyan text-omni-black px-6 py-3 rounded-xl font-medium text-sm hover:opacity-90 transition-opacity flex items-center gap-2"
               >
-                Get Started
+                Get Free Credits
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
               </Link>
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className="md:hidden p-2 text-omni-white"
+                aria-label="Toggle menu"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {showMobileMenu ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  )}
+                </svg>
+              </button>
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
+      {/* Mobile Menu */}
+      {showMobileMenu && !user && (
+        <div className="md:hidden bg-omni-dark border-t border-omni-border">
+          <div className="px-4 py-4 space-y-3">
+            <Link href="#features" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+              Features
+            </Link>
+            <Link href="#process" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+              Process
+            </Link>
+            <Link href="#benefits" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+              Benefits
+            </Link>
+            <Link href="#pricing" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+              Pricing
+            </Link>
+            <Link href="#testimonials" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+              Testimonials
+            </Link>
+            <Link href="/login" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+              Sign In
+            </Link>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
-
