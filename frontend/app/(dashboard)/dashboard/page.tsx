@@ -1,37 +1,21 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, useMemo } from "react";
 import { Job } from "@/types";
 import { apiClient } from "@/lib/api";
-import { JobTable } from "@/components/dashboard/JobTable";
-import { QuickStats } from "@/components/dashboard/QuickStats";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
-import { DropZone } from "@/components/upload/DropZone";
-import { FilePreview, ColumnMapping } from "@/components/upload/FilePreview";
-import { VerificationModeToggle } from "@/components/upload/VerificationModeToggle";
-import { SalesNavModal } from "@/components/upload/SalesNavModal";
-import { formatFileSize } from "@/lib/utils";
-import { useSSE } from "@/hooks/useSSE";
-import { JobProgress } from "@/types";
+import { useAuth } from "@/context/AuthContext";
+
+type DateRange = "7d" | "30d" | "90d" | "all" | "custom";
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const jobId = searchParams.get("jobId");
-  
-  // Upload-related state
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
-  const [companySize, setCompanySize] = useState("");
-  const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
-  const [isMappingValid, setIsMappingValid] = useState(false);
-  const [isVerificationOnly, setIsVerificationOnly] = useState(false);
-  const [showSalesNavModal, setShowSalesNavModal] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>("30d");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
 
   useEffect(() => {
     loadJobs();
@@ -50,103 +34,51 @@ export default function DashboardPage() {
     }
   };
 
-  const handleDelete = async (jobId: string) => {
-    try {
-      await apiClient.deleteJob(jobId);
-      setJobs(jobs.filter((j) => j.id !== jobId));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete job");
-    }
-  };
-
-  // Upload-related handlers
-  const handleMappingChange = useCallback((mapping: ColumnMapping, isValid: boolean) => {
-    setColumnMapping(mapping);
-    setIsMappingValid(isValid);
-  }, []);
-
-  const handleUpload = async () => {
-    if (!selectedFile || !isMappingValid || !columnMapping) {
-      setUploadError("Please map all required columns before uploading");
-      return;
-    }
-
-    if (selectedFile.size > 10 * 1024 * 1024) {
-      setUploadError("File size must be less than 10MB");
-      return;
-    }
-
-    setUploading(true);
-    setUploadError("");
-
-    try {
-      const response = await apiClient.uploadFile(selectedFile, {
-        company_size: companySize || undefined,
-        column_first_name: columnMapping.first_name,
-        column_last_name: columnMapping.last_name,
-        column_website: columnMapping.website,
-        column_company_size: columnMapping.company_size || undefined,
+  // Filter jobs by date range
+  const filteredJobs = useMemo(() => {
+    if (dateRange === "all") return jobs;
+    
+    const now = new Date();
+    let startDate: Date;
+    
+    if (dateRange === "custom") {
+      if (!customStartDate || !customEndDate) return jobs;
+      startDate = new Date(customStartDate);
+      const endDate = new Date(customEndDate);
+      return jobs.filter(job => {
+        const jobDate = new Date(job.created_at);
+        return jobDate >= startDate && jobDate <= endDate;
       });
-      
-      // Reset upload state
-      setSelectedFile(null);
-      setColumnMapping(null);
-      setIsMappingValid(false);
-      setCompanySize("");
-      
-      // Refresh jobs list
-      await loadJobs();
-      
-      // Optionally scroll to the new job or show success message
-      router.push(`/dashboard?jobId=${response.job_id}`);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
+    } else {
+      const days = dateRange === "7d" ? 7 : dateRange === "30d" ? 30 : 90;
+      startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     }
-  };
+    
+    return jobs.filter(job => new Date(job.created_at) >= startDate);
+  }, [jobs, dateRange, customStartDate, customEndDate]);
 
-  const handleSalesNavStart = async (url: string, autoEnrich: boolean, companySize?: string) => {
-    // TODO: Implement SalesNav import
-    console.log("SalesNav import:", { url, autoEnrich, companySize });
-  };
-
-  // Real-time progress updates via SSE
-  const handleProgressUpdate = useCallback((progress: JobProgress) => {
-    setJobs((prevJobs) =>
-      prevJobs.map((job) =>
-        job.id === progress.job_id
-          ? {
-              ...job,
-              processed_leads: progress.processed_leads,
-              total_leads: progress.total_leads,
-              valid_emails_found: progress.valid_emails_found,
-              catchall_emails_found: progress.catchall_emails_found,
-              status: progress.status as 'pending' | 'processing' | 'completed' | 'failed',
-            }
-          : job
-      )
+  // Calculate stats
+  const stats = useMemo(() => {
+    const totalVerified = filteredJobs.reduce(
+      (sum, job) => sum + (job.valid_emails_found || 0) + (job.catchall_emails_found || 0),
+      0
     );
-  }, []);
-
-  // Get token from cookie for SSE
-  const getToken = () => {
-    if (typeof document === "undefined") return null;
-    const cookies = document.cookie.split(";");
-    const tokenCookie = cookies.find((c) => c.trim().startsWith("token="));
-    return tokenCookie ? tokenCookie.split("=")[1] : null;
-  };
-
-  // Connect SSE for processing jobs
-  const processingJobs = jobs.filter((j) => j.status === "processing");
-  const firstProcessingJob = processingJobs.length > 0 ? processingJobs[0] : null;
-  
-  useSSE(
-    firstProcessingJob?.id || null,
-    getToken(),
-    handleProgressUpdate,
-    (err) => console.error("SSE error:", err)
-  );
+    
+    const totalCost = filteredJobs.reduce((sum, job) => sum + (job.cost_in_credits || 0) * 0.1, 0);
+    const competitorCost = totalVerified * 0.50; // Competitors charge $0.50 per email
+    const moneySaved = competitorCost - totalCost;
+    
+    const creditsUsed = filteredJobs.reduce((sum, job) => sum + (job.cost_in_credits || 0), 0);
+    const creditsLeft = (user?.credits || 0) - creditsUsed;
+    
+    return {
+      totalVerified,
+      totalCost,
+      moneySaved,
+      creditsUsed,
+      creditsLeft: Math.max(0, creditsLeft),
+    };
+  }, [filteredJobs, user?.credits]);
 
   if (loading) {
     return (
@@ -161,10 +93,59 @@ export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-omni-white">Job Dashboard</h1>
+        <h1 className="text-3xl font-bold text-omni-white">Dashboard</h1>
         <p className="mt-2 text-omni-gray">
-          Manage and monitor your email verification jobs
+          Overview of your email verification activity
         </p>
+      </div>
+
+      {/* Date Filter */}
+      <div className="mb-6 bg-omni-dark border border-omni-border rounded-lg p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="text-sm font-medium text-omni-gray">Filter by date:</label>
+          <div className="flex gap-2">
+            {(["7d", "30d", "90d", "all"] as DateRange[]).map((range) => (
+              <button
+                key={range}
+                onClick={() => setDateRange(range)}
+                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                  dateRange === range
+                    ? "bg-omni-cyan text-omni-black font-medium"
+                    : "bg-omni-black border border-omni-border text-omni-gray hover:bg-omni-dark hover:text-omni-white"
+                }`}
+              >
+                {range === "7d" ? "Last 7 days" : range === "30d" ? "Last 30 days" : range === "90d" ? "Last 90 days" : "All time"}
+              </button>
+            ))}
+            <button
+              onClick={() => setDateRange("custom")}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                dateRange === "custom"
+                  ? "bg-omni-cyan text-omni-black font-medium"
+                  : "bg-omni-black border border-omni-border text-omni-gray hover:bg-omni-dark hover:text-omni-white"
+              }`}
+            >
+              Custom
+            </button>
+          </div>
+          {dateRange === "custom" && (
+            <div className="flex gap-2 items-center">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="px-3 py-2 border border-omni-border rounded-lg bg-omni-black text-omni-white text-sm"
+              />
+              <span className="text-omni-gray">to</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="px-3 py-2 border border-omni-border rounded-lg bg-omni-black text-omni-white text-sm"
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -173,116 +154,96 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Quick Stats */}
-      <QuickStats jobs={jobs} />
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="bg-omni-dark border border-omni-border rounded-lg p-6">
+          <p className="text-sm text-omni-gray mb-2">Money Saved vs Competitors</p>
+          <p className="text-3xl font-bold text-omni-cyan">
+            ${stats.moneySaved.toFixed(2)}
+          </p>
+          <p className="text-xs text-omni-gray mt-1">
+            Competitors would charge ${(stats.totalVerified * 0.50).toFixed(2)}
+          </p>
+        </div>
 
-      {/* Upload Section */}
-      <div className="mb-8 bg-omni-dark border border-omni-border rounded-lg p-6 space-y-6">
-        {uploadError && (
-          <div className="bg-red-900/20 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">
-            {uploadError}
-          </div>
-        )}
+        <div className="bg-omni-dark border border-omni-border rounded-lg p-6">
+          <p className="text-sm text-omni-gray mb-2">Total Valid Emails Found</p>
+          <p className="text-3xl font-bold text-omni-cyan">
+            {stats.totalVerified.toLocaleString()}
+          </p>
+          <p className="text-xs text-omni-gray mt-1">
+            {filteredJobs.length} job{filteredJobs.length !== 1 ? "s" : ""} processed
+          </p>
+        </div>
 
-        <VerificationModeToggle
-          isVerificationOnly={isVerificationOnly}
-          onToggle={setIsVerificationOnly}
-        />
+        <div className="bg-omni-dark border border-omni-border rounded-lg p-6">
+          <p className="text-sm text-omni-gray mb-2">Credit Usage</p>
+          <p className="text-3xl font-bold text-omni-cyan">
+            {stats.creditsUsed.toLocaleString()}
+          </p>
+          <p className="text-xs text-omni-gray mt-1">
+            ${stats.totalCost.toFixed(2)} spent
+          </p>
+        </div>
 
-        <DropZone
-          onFileSelect={setSelectedFile}
-          selectedFile={selectedFile}
-        />
-
-        {selectedFile && (
-          <>
-            <div className="border-t border-omni-border pt-6">
-              <h3 className="text-lg font-medium text-omni-white mb-4">
-                File Information
-              </h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-omni-gray">File name:</span>
-                  <span className="ml-2 font-medium text-omni-white">{selectedFile.name}</span>
-                </div>
-                <div>
-                  <span className="text-omni-gray">File size:</span>
-                  <span className="ml-2 font-medium text-omni-white">
-                    {formatFileSize(selectedFile.size)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
-
-            {!isVerificationOnly && (
-              <div className="border-t border-omni-border pt-6">
-                <h3 className="text-lg font-medium text-omni-white mb-4">
-                  Advanced Options
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <label
-                      htmlFor="company-size"
-                      className="block text-sm font-medium text-omni-gray mb-2"
-                    >
-                      Company Size (optional)
-                    </label>
-                    <select
-                      id="company-size"
-                      value={companySize}
-                      onChange={(e) => setCompanySize(e.target.value)}
-                      className="w-full px-4 py-2 border border-omni-border rounded-lg focus:ring-2 focus:ring-omni-cyan focus:border-omni-cyan bg-omni-black text-omni-white"
-                    >
-                      <option value="">Select company size</option>
-                      <option value="1-50">1-50 employees</option>
-                      <option value="51-200">51-200 employees</option>
-                      <option value="201-500">201-500 employees</option>
-                      <option value="500+">500+ employees</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end space-x-4 pt-6 border-t border-omni-border">
-              <button
-                onClick={() => {
-                  setSelectedFile(null);
-                  setColumnMapping(null);
-                  setIsMappingValid(false);
-                  setCompanySize("");
-                  setUploadError("");
-                }}
-                className="px-4 py-2 border border-omni-border rounded-lg text-omni-gray hover:bg-omni-dark transition-colors"
-                disabled={uploading}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpload}
-                disabled={uploading || !isMappingValid}
-                className="px-6 py-2 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 font-medium transition-opacity"
-                title={!isMappingValid ? "Please map all required columns first" : ""}
-              >
-                {uploading && <LoadingSpinner size="sm" />}
-                <span>{uploading ? "Uploading..." : "Upload & Verify"}</span>
-              </button>
-            </div>
-          </>
-        )}
+        <div className="bg-omni-dark border border-omni-border rounded-lg p-6">
+          <p className="text-sm text-omni-gray mb-2">Credits Left</p>
+          <p className="text-3xl font-bold text-omni-cyan">
+            {stats.creditsLeft.toLocaleString()}
+          </p>
+          <p className="text-xs text-omni-gray mt-1">
+            Available credits
+          </p>
+        </div>
       </div>
 
-      {/* Job History */}
-      <JobTable jobs={jobs} onDelete={handleDelete} />
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* Activity Chart Placeholder */}
+        <div className="bg-omni-dark border border-omni-border rounded-lg p-6">
+          <h3 className="text-lg font-medium text-omni-white mb-4">Activity Over Time</h3>
+          <div className="h-64 flex items-center justify-center text-omni-gray">
+            <p>Chart visualization coming soon</p>
+          </div>
+        </div>
 
-      <SalesNavModal
-        isOpen={showSalesNavModal}
-        onClose={() => setShowSalesNavModal(false)}
-        onStart={handleSalesNavStart}
-      />
+        {/* Verification Status Chart Placeholder */}
+        <div className="bg-omni-dark border border-omni-border rounded-lg p-6">
+          <h3 className="text-lg font-medium text-omni-white mb-4">Verification Status</h3>
+          <div className="h-64 flex items-center justify-center text-omni-gray">
+            <p>Chart visualization coming soon</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Activity Timeline */}
+      <div className="bg-omni-dark border border-omni-border rounded-lg p-6">
+        <h3 className="text-lg font-medium text-omni-white mb-4">Recent Activity</h3>
+        <div className="space-y-3">
+          {filteredJobs.slice(0, 10).map((job) => (
+            <div key={job.id} className="flex items-center justify-between py-2 border-b border-omni-border last:border-0">
+              <div>
+                <p className="text-sm text-omni-white">
+                  Job {job.id.slice(0, 8)}... - {job.valid_emails_found + job.catchall_emails_found} emails verified
+                </p>
+                <p className="text-xs text-omni-gray mt-1">
+                  {new Date(job.created_at).toLocaleString()}
+                </p>
+              </div>
+              <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                job.status === "completed" ? "bg-green-900/20 text-green-300 border border-green-800" :
+                job.status === "processing" ? "bg-yellow-900/20 text-yellow-300 border border-yellow-800" :
+                "bg-gray-900/20 text-gray-300 border border-gray-800"
+              }`}>
+                {job.status}
+              </span>
+            </div>
+          ))}
+          {filteredJobs.length === 0 && (
+            <p className="text-omni-gray text-center py-8">No activity in selected date range</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
-
