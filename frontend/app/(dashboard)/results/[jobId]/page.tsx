@@ -336,7 +336,6 @@ export default function ResultsPage() {
         </div>
         <div className="flex justify-between items-center">
           <div className="flex space-x-2">
-          <div className="flex space-x-2">
             {catchallLeads.length > 0 && (
               <>
                 {!user?.catchall_verifier_api_key ? (
