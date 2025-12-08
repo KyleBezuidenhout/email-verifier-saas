@@ -12,7 +12,7 @@ class Lead(Base):
     
 
     id = Column(BigInteger, primary_key=True, index=True)
-    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     first_name = Column(String(255), nullable=False)
     last_name = Column(String(255), nullable=False)
