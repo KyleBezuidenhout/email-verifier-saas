@@ -22,6 +22,7 @@ class Lead(Base):
     pattern_used = Column(String(50))
     prevalence_score = Column(Integer)
     verification_status = Column(String(50), default="pending", index=True)  # pending, valid, invalid, catchall, error
+    verification_tag = Column(String(50), nullable=True)  # catchall-verified, etc.
     is_final_result = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 

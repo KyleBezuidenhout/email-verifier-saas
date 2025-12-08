@@ -6,16 +6,19 @@ import { Lead, Job } from "@/types";
 import { apiClient } from "@/lib/api";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { formatDate } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 
 export default function ResultsPage() {
   const params = useParams();
   const jobId = params.jobId as string;
+  const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
+  const [verifyingCatchalls, setVerifyingCatchalls] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -36,14 +39,35 @@ export default function ResultsPage() {
     loadData();
   }, [loadData]);
 
+  const handleVerifyCatchalls = async () => {
+    setVerifyingCatchalls(true);
+    setError("");
+    try {
+      const result = await apiClient.verifyCatchalls(jobId);
+      // Reload data to get updated leads
+      await loadData();
+      alert(`Successfully verified ${result.verified_count} catchall emails!`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to verify catchalls");
+    } finally {
+      setVerifyingCatchalls(false);
+    }
+  };
+
   const filteredLeads =
     filter === "all"
       ? leads
+      : filter === "valid"
+      ? leads.filter((lead) => lead.verification_status === "valid")
       : leads.filter((lead) => lead.verification_status === filter);
 
+  // Valid leads include both regular valid and catchall-verified
   const validLeads = leads.filter((l) => l.verification_status === "valid");
   const catchallLeads = leads.filter((l) => l.verification_status === "catchall");
-  const notFoundLeads = leads.filter((l) => l.verification_status === "invalid");
+  const notFoundLeads = leads.filter((l) => l.verification_status === "invalid" || l.verification_status === "not_found");
+  
+  // Check if user can verify catchalls (has API key and job has catchall leads)
+  const canVerifyCatchalls = user?.catchall_verifier_api_key && catchallLeads.length > 0;
   
   const totalVerified = validLeads.length + catchallLeads.length;
   const totalCost = job ? (job.cost_in_credits || 0) * 0.1 : 0;
@@ -159,6 +183,30 @@ export default function ResultsPage() {
         </div>
       </div>
 
+      {/* Verify Catchalls Button */}
+      {canVerifyCatchalls && (
+        <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
+                Verify Catchall Emails
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Verify {catchallLeads.length} catchall emails using your catchall verifier API. Verified emails will be moved to the Valid section.
+              </p>
+            </div>
+            <button
+              onClick={handleVerifyCatchalls}
+              disabled={verifyingCatchalls}
+              className="px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+            >
+              {verifyingCatchalls && <LoadingSpinner size="sm" />}
+              <span>{verifyingCatchalls ? "Verifying..." : "Verify Catchalls"}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex justify-between items-center mb-4">
           <div className="flex space-x-2">
@@ -241,17 +289,24 @@ export default function ResultsPage() {
                     {lead.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        lead.verification_status === "valid"
-                          ? "bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300"
-                          : lead.verification_status === "catchall"
-                          ? "bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300"
-                          : "bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300"
-                      }`}
-                    >
-                      {lead.verification_status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                          lead.verification_status === "valid"
+                            ? "bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300"
+                            : lead.verification_status === "catchall"
+                            ? "bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300"
+                            : "bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300"
+                        }`}
+                      >
+                        {lead.verification_status}
+                      </span>
+                      {lead.verification_tag === "catchall-verified" && (
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300">
+                          Catchall-Verified
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                     {lead.prevalence_score || "-"}

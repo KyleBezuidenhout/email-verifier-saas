@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { apiClient } from "@/lib/api";
 
 export default function SettingsPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [catchallApiKey, setCatchallApiKey] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (user?.catchall_verifier_api_key) {
+      setCatchallApiKey(user.catchall_verifier_api_key);
+    }
+  }, [user]);
 
   const handleLogout = async () => {
     setLoading(true);
@@ -17,6 +26,23 @@ export default function SettingsPage() {
       setMessage("Failed to logout");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveCatchallKey = async () => {
+    setSaving(true);
+    setMessage("");
+    try {
+      await apiClient.updateUser({
+        catchall_verifier_api_key: catchallApiKey || undefined,
+      });
+      // Refresh user data in context
+      await refreshUser();
+      setMessage("Catchall verifier API key saved successfully!");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to save API key");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -78,6 +104,37 @@ export default function SettingsPage() {
                 Copy
               </button>
             </div>
+          </div>
+        </div>
+
+        <div className="border-t pt-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">
+            Catchall Verifier API Key (Optional)
+          </h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Catchall Verifier API Key
+              </label>
+              <input
+                type="password"
+                value={catchallApiKey}
+                onChange={(e) => setCatchallApiKey(e.target.value)}
+                placeholder="Enter your catchall verifier API key (optional)"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                Add your catchall verifier API key to verify catchall emails from your enrichment runs.
+              </p>
+            </div>
+            <button
+              onClick={handleSaveCatchallKey}
+              disabled={saving}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
+            >
+              {saving && <LoadingSpinner size="sm" />}
+              <span>Save Catchall API Key</span>
+            </button>
           </div>
         </div>
 

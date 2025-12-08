@@ -7,7 +7,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.core.config import settings
-from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserResponse
+from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserResponse, UserUpdate
 from app.api.dependencies import get_current_user
 
 router = APIRouter()
@@ -54,6 +54,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
             company_name=new_user.company_name,
             credits=new_user.credits,
             api_key=new_user.api_key,
+            catchall_verifier_api_key=new_user.catchall_verifier_api_key,
             is_active=new_user.is_active,
             created_at=new_user.created_at.isoformat(),
         )
@@ -99,6 +100,7 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
             company_name=user.company_name,
             credits=user.credits,
             api_key=user.api_key,
+            catchall_verifier_api_key=user.catchall_verifier_api_key,
             is_active=user.is_active,
             created_at=user.created_at.isoformat(),
         )
@@ -114,6 +116,34 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         company_name=current_user.company_name,
         credits=current_user.credits,
         api_key=current_user.api_key,
+        catchall_verifier_api_key=current_user.catchall_verifier_api_key,
+        is_active=current_user.is_active,
+        created_at=current_user.created_at.isoformat(),
+    )
+
+
+@router.put("/me", response_model=UserResponse)
+async def update_user_info(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update user information (currently only catchall_verifier_api_key)."""
+    # Update catchall verifier API key if provided
+    if user_update.catchall_verifier_api_key is not None:
+        current_user.catchall_verifier_api_key = user_update.catchall_verifier_api_key
+    
+    db.commit()
+    db.refresh(current_user)
+    
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        company_name=current_user.company_name,
+        credits=current_user.credits,
+        api_key=current_user.api_key,
+        catchall_verifier_api_key=current_user.catchall_verifier_api_key,
         is_active=current_user.is_active,
         created_at=current_user.created_at.isoformat(),
     )

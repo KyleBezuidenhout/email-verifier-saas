@@ -5,6 +5,7 @@ export interface User {
   company_name?: string;
   credits: number;
   api_key: string;
+  catchall_verifier_api_key?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -37,6 +38,7 @@ export interface Lead {
   pattern_used?: string;
   prevalence_score?: number;
   verification_status: 'pending' | 'valid' | 'invalid' | 'catchall' | 'error';
+  verification_tag?: string;
   is_final_result: boolean;
   created_at: string;
 }

@@ -129,6 +129,13 @@ class ApiClient {
     return this.request<User>("/api/v1/auth/me");
   }
 
+  async updateUser(data: { catchall_verifier_api_key?: string }): Promise<User> {
+    return this.request<User>("/api/v1/auth/me", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
   // Job endpoints
   async uploadFile(
     file: File,
@@ -160,6 +167,12 @@ class ApiClient {
   // Results endpoints
   async getResults(jobId: string): Promise<Lead[]> {
     return this.request<Lead[]>(`/api/v1/results/${jobId}`);
+  }
+
+  async verifyCatchalls(jobId: string): Promise<{ verified_count: number; message: string; total_catchalls: number; errors?: string[] }> {
+    return this.request(`/api/v1/jobs/${jobId}/verify-catchalls`, {
+      method: "POST",
+    });
   }
 
   // Test email endpoint (public, no auth required)

@@ -350,6 +350,109 @@ async def get_job_progress(
     )
 
 
+@router.post("/{job_id}/verify-catchalls")
+async def verify_catchalls(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Verify catchall emails from a job using user's catchall verifier API."""
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
+    # Check user has catchall verifier API key
+    if not current_user.catchall_verifier_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Catchall verifier API key not configured. Please add it in settings."
+        )
+    
+    # Get job and verify ownership
+    job = db.query(Job).filter(Job.id == job_uuid, Job.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+    
+    # Get all catchall leads for this job
+    catchall_leads = db.query(Lead).filter(
+        Lead.job_id == job_uuid,
+        Lead.verification_status == "catchall",
+        Lead.user_id == current_user.id
+    ).all()
+    
+    if not catchall_leads:
+        return {
+            "message": "No catchall leads found for this job",
+            "verified_count": 0
+        }
+    
+    # Import catchall verifier client
+    from app.services.catchall_verifier_client import CatchallVerifierClient
+    
+    # Initialize catchall verifier client
+    verifier = CatchallVerifierClient(current_user.catchall_verifier_api_key)
+    
+    verified_count = 0
+    errors = []
+    
+    try:
+        # Verify each catchall email
+        for lead in catchall_leads:
+            try:
+                result = await verifier.verify_email(lead.email)
+                
+                if result["status"] == "valid":
+                    # Update lead: status to valid, add catchall-verified tag
+                    lead.verification_status = "valid"
+                    lead.verification_tag = "catchall-verified"
+                    verified_count += 1
+                elif result["status"] == "error":
+                    errors.append(f"Error verifying {lead.email}: {result['message']}")
+                    # Don't update lead if error occurred
+                
+                # Small delay to avoid overwhelming the catchall verifier API
+                await asyncio.sleep(0.1)
+                
+            except Exception as e:
+                errors.append(f"Exception verifying {lead.email}: {str(e)}")
+        
+        # Commit all updates
+        db.commit()
+        
+        # Update job counts if needed
+        if verified_count > 0:
+            # Recalculate valid and catchall counts
+            valid_count = db.query(Lead).filter(
+                Lead.job_id == job_uuid,
+                Lead.verification_status == "valid"
+            ).count()
+            catchall_count = db.query(Lead).filter(
+                Lead.job_id == job_uuid,
+                Lead.verification_status == "catchall"
+            ).count()
+            
+            job.valid_emails_found = valid_count
+            job.catchall_emails_found = catchall_count
+            db.commit()
+        
+    finally:
+        await verifier.close()
+    
+    return {
+        "message": f"Verified {verified_count} catchall emails",
+        "verified_count": verified_count,
+        "total_catchalls": len(catchall_leads),
+        "errors": errors if errors else None
+    }
+
+
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job(
     job_id: str,

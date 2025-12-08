@@ -27,8 +27,16 @@ class UserResponse(BaseModel):
     company_name: Optional[str] = None
     credits: int
     api_key: UUID
+    catchall_verifier_api_key: Optional[str] = None
     is_active: bool
     created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class UserUpdate(BaseModel):
+    catchall_verifier_api_key: Optional[str] = None
 
     class Config:
         from_attributes = True
