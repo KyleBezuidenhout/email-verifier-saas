@@ -14,7 +14,12 @@ app = FastAPI(
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://email-verifier-saas.vercel.app"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://email-verifier-saas.vercel.app",
+        "https://email-verifier-saas-git-main-kylebezuidenhouts-projects.vercel.app",
+        "https://email-verifier-saas-kylebezuidenhouts-projects.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
