@@ -99,7 +99,6 @@ export function Sidebar() {
         {/* Navigation Items */}
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => {
-            const isActive = item.href && (pathname === item.href || pathname?.startsWith(item.href + "/"));
             const isDisabled = item.href === null;
             
             if (isDisabled) {
@@ -115,6 +114,8 @@ export function Sidebar() {
               );
             }
             
+            // TypeScript now knows item.href is string (not null) after the check above
+            const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}
