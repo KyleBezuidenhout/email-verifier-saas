@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { DropZone } from "@/components/upload/DropZone";
-import { FilePreview } from "@/components/upload/FilePreview";
+import { FilePreview, ColumnMapping } from "@/components/upload/FilePreview";
 import { apiClient } from "@/lib/api";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { formatFileSize } from "@/lib/utils";
@@ -13,10 +13,20 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [companySize, setCompanySize] = useState("");
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
+  const [isMappingValid, setIsMappingValid] = useState(false);
   const router = useRouter();
 
+  const handleMappingChange = useCallback((mapping: ColumnMapping, isValid: boolean) => {
+    setColumnMapping(mapping);
+    setIsMappingValid(isValid);
+  }, []);
+
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || !isMappingValid || !columnMapping) {
+      setError("Please map all required columns before uploading");
+      return;
+    }
 
     if (selectedFile.size > 10 * 1024 * 1024) {
       setError("File size must be less than 10MB");
@@ -29,6 +39,10 @@ export default function UploadPage() {
     try {
       const response = await apiClient.uploadFile(selectedFile, {
         company_size: companySize || undefined,
+        column_first_name: columnMapping.first_name,
+        column_last_name: columnMapping.last_name,
+        column_website: columnMapping.website,
+        column_company_size: columnMapping.company_size || undefined,
       });
       router.push(`/dashboard?jobId=${response.job_id}`);
     } catch (err) {
@@ -80,7 +94,7 @@ export default function UploadPage() {
               </div>
             </div>
 
-            <FilePreview file={selectedFile} />
+            <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
 
             <div className="border-t pt-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
@@ -120,8 +134,9 @@ export default function UploadPage() {
               </button>
               <button
                 onClick={handleUpload}
-                disabled={uploading}
+                disabled={uploading || !isMappingValid}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                title={!isMappingValid ? "Please map all required columns first" : ""}
               >
                 {uploading && <LoadingSpinner size="sm" />}
                 <span>{uploading ? "Uploading..." : "Upload & Verify"}</span>
