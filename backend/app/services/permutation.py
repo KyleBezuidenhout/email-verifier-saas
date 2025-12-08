@@ -142,6 +142,16 @@ PREVALENCE_MAP = {
         "500+": 65,        # Rank 14 (0.65%)
         "default": 58,     # Generic Rank 15 (0.58%)
     },
+    
+    # {first}.{l} = firstname.l@domain (e.g., adam.h) - RARE PATTERN
+    # Not in frequency data but some companies use it
+    "firstname.l": {
+        "1-50": 45,        # Rank 16 (rare)
+        "51-200": 45,      # Rank 16 (rare)
+        "201-500": 45,     # Rank 16 (rare)
+        "500+": 45,        # Rank 16 (rare)
+        "default": 45,     # Generic Rank 16 (rare)
+    },
 }
 
 
@@ -218,7 +228,7 @@ def generate_email_permutations(
     company_size: Optional[str] = None
 ) -> List[Dict[str, any]]:
     """
-    Generate all 15 email permutations with prevalence scores.
+    Generate all 16 email permutations with prevalence scores.
     Permutations are returned sorted by prevalence score (highest first).
     """
 
@@ -234,7 +244,7 @@ def generate_email_permutations(
     f = first[0]
     l = last[0]
 
-    # All 15 patterns matching the frequency data
+    # All 16 patterns (15 from frequency data + 1 rare pattern)
     patterns = [
         ("firstname", f"{first}@{domain}"),                    # {first}
         ("flastname", f"{f}{last}@{domain}"),                  # {f}{last}
@@ -246,11 +256,12 @@ def generate_email_permutations(
         ("firstname_lastname", f"{first}_{last}@{domain}"),    # {first}_{last}
         ("f.lastname", f"{f}.{last}@{domain}"),                # {f}.{last}
         ("firstnamelastname", f"{first}{last}@{domain}"),      # {first}{last}
-        ("lfirstname", f"{l}{first}@{domain}"),                # {l}{first} - NEW!
+        ("lfirstname", f"{l}{first}@{domain}"),                # {l}{first}
         ("lastname_firstname", f"{last}_{first}@{domain}"),    # {last}_{first}
         ("f_lastname", f"{f}_{last}@{domain}"),                # {f}_{last}
         ("firstname-lastname", f"{first}-{last}@{domain}"),    # {first}-{last}
         ("lastname-firstname", f"{last}-{first}@{domain}"),    # {last}-{first}
+        ("firstname.l", f"{first}.{l}@{domain}"),              # {first}.{l} - rare pattern (e.g., adam.h@)
     ]
 
     # Build permutations with scores
