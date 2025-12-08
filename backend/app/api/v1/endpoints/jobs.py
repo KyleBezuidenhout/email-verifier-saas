@@ -22,23 +22,26 @@ import redis
 import asyncio
 import json
 import time
-from bullmq import Queue
+from urllib.parse import urlparse
 
 router = APIRouter()
 
 # Initialize Redis connection for job queue
 redis_client = redis.from_url(settings.REDIS_URL)
 
-# Parse Redis URL for BullMQ
-from urllib.parse import urlparse
-redis_url_parsed = urlparse(settings.REDIS_URL)
-
-# Initialize BullMQ queue
-bullmq_queue = Queue("email-verification", connection={
-    "host": redis_url_parsed.hostname or "localhost",
-    "port": redis_url_parsed.port or 6379,
-    "password": redis_url_parsed.password,
-})
+# Try to use BullMQ Python package, fallback to manual implementation
+try:
+    from bullmq import Queue
+    redis_url_parsed = urlparse(settings.REDIS_URL)
+    bullmq_queue = Queue("email-verification", connection={
+        "host": redis_url_parsed.hostname or "localhost",
+        "port": redis_url_parsed.port or 6379,
+        "password": redis_url_parsed.password,
+    })
+    USE_BULLMQ_PACKAGE = True
+except ImportError:
+    USE_BULLMQ_PACKAGE = False
+    print("BullMQ package not found, using manual queue implementation")
 
 # Initialize S3 client for Cloudflare R2
 s3_client = boto3.client(
@@ -201,10 +204,42 @@ async def upload_file(
     
     # Queue job for processing using BullMQ
     try:
-        # Add job to BullMQ queue - worker expects job.data to be the job ID string
-        # BullMQ Python: add(name, data, opts)
-        await bullmq_queue.add("email-verification", str(job.id))
-        print(f"Queued job {job.id} to BullMQ")
+        if USE_BULLMQ_PACKAGE:
+            # Use BullMQ Python package
+            await bullmq_queue.add("email-verification", str(job.id))
+            print(f"Queued job {job.id} to BullMQ")
+        else:
+            # Manual BullMQ implementation
+            job_id_str = str(job.id)
+            bullmq_job_id = str(uuid.uuid4())
+            timestamp = int(time.time() * 1000)
+            
+            # BullMQ job structure
+            job_data = {
+                "id": bullmq_job_id,
+                "name": "email-verification",
+                "data": job_id_str,  # Worker expects job.data to be the job ID
+                "opts": {},
+                "timestamp": timestamp,
+                "delay": 0,
+                "priority": 0,
+                "attemptsMade": 0,
+            }
+            
+            # Store job in Redis (BullMQ format)
+            job_key = f"bull:email-verification:{bullmq_job_id}"
+            redis_client.set(job_key, json.dumps(job_data))
+            
+            # Add to waiting list
+            redis_client.lpush("bull:email-verification:wait", bullmq_job_id)
+            
+            # Add to jobs sorted set
+            redis_client.zadd("bull:email-verification:jobs", {bullmq_job_id: timestamp})
+            
+            # Add to meta (BullMQ tracks this)
+            redis_client.sadd("bull:email-verification:meta", bullmq_job_id)
+            
+            print(f"Queued job {job.id} to BullMQ (manual) with ID {bullmq_job_id}")
     except Exception as e:
         # If Redis fails, job will remain in pending state
         print(f"Failed to queue job: {e}")
@@ -223,8 +258,18 @@ async def get_jobs(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    jobs = db.query(Job).filter(Job.user_id == current_user.id).order_by(desc(Job.created_at)).all()
-    return [JobResponse.model_validate(job) for job in jobs]
+    try:
+        jobs = db.query(Job).filter(Job.user_id == current_user.id).order_by(desc(Job.created_at)).all()
+        print(f"Found {len(jobs)} jobs for user {current_user.id}")
+        return [JobResponse.model_validate(job) for job in jobs]
+    except Exception as e:
+        print(f"Error fetching jobs: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch jobs: {str(e)}"
+        )
 
 
 @router.get("/{job_id}", response_model=JobResponse)
