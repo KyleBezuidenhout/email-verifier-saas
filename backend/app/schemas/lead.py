@@ -15,9 +15,12 @@ class LeadResponse(BaseModel):
     pattern_used: Optional[str]
     prevalence_score: Optional[int]
     verification_status: str
+    verification_tag: Optional[str]
+    mx_record: Optional[str]
     is_final_result: bool
     created_at: str
 
     class Config:
         from_attributes = True
+
 

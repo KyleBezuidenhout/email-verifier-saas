@@ -40,6 +40,7 @@ export interface Lead {
   prevalence_score?: number;
   verification_status: 'pending' | 'valid' | 'invalid' | 'catchall' | 'error' | 'not_found';
   verification_tag?: string;
+  mx_record?: string;
   is_final_result: boolean;
   created_at: string;
 }

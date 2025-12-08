@@ -18,10 +18,12 @@ def run_migrations():
         # Import migrations
         from migrate_add_catchall_key import migrate as migrate_catchall_key
         from migrate_add_verification_tag import migrate as migrate_verification_tag
+        from migrate_add_mx_record import migrate as migrate_mx_record
         
         # Run migrations
         migrate_catchall_key()
         migrate_verification_tag()
+        migrate_mx_record()
         
         print("✓ All migrations completed successfully!")
         return True
@@ -32,4 +34,5 @@ def run_migrations():
 
 if __name__ == "__main__":
     run_migrations()
+
 

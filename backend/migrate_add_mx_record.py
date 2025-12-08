@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Migration script to add catchall_verifier_api_key to users table.
-This allows users to optionally add their catchall verifier API key.
+Migration script to add mx_record column to leads table.
+This allows storing MX provider information (e.g., "google", "outlook").
 Run this once after deploying the updated code.
 """
 
@@ -15,13 +15,13 @@ def migrate():
     engine = create_engine(settings.DATABASE_URL)
     
     with engine.connect() as conn:
-        # Add catchall_verifier_api_key column
+        # Add mx_record column
         try:
             conn.execute(text("""
-                ALTER TABLE users 
-                ADD COLUMN IF NOT EXISTS catchall_verifier_api_key VARCHAR(255) NULL
+                ALTER TABLE leads 
+                ADD COLUMN IF NOT EXISTS mx_record VARCHAR(255) NULL
             """))
-            print("✓ Added catchall_verifier_api_key column to users table")
+            print("✓ Added mx_record column to leads table")
         except Exception as e:
             print(f"Note: Column might already exist: {e}")
         
@@ -32,5 +32,4 @@ def migrate():
 
 if __name__ == "__main__":
     migrate()
-
 

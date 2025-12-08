@@ -53,6 +53,8 @@ async def get_results(
         pattern_used=lead.pattern_used,
         prevalence_score=lead.prevalence_score,
         verification_status=lead.verification_status,
+        verification_tag=lead.verification_tag,
+        mx_record=lead.mx_record,
         is_final_result=lead.is_final_result,
         created_at=lead.created_at.isoformat(),
     ) for lead in leads]

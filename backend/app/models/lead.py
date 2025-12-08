@@ -23,6 +23,7 @@ class Lead(Base):
     prevalence_score = Column(Integer)
     verification_status = Column(String(50), default="pending", index=True)  # pending, valid, invalid, catchall, error
     verification_tag = Column(String(50), nullable=True)  # catchall-verified, etc.
+    mx_record = Column(String(255), nullable=True)  # MX provider (e.g., "google", "outlook")
     is_final_result = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 

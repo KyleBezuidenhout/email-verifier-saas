@@ -19,8 +19,8 @@ const redisClient = redis.createClient({
 redisClient.on('error', (err) => console.error('Redis Client Error', err));
 redisClient.connect().then(() => {
   // Initialize distributed rate limiter after Redis connection is established
-  rateLimiter = new DistributedRateLimiter(redisClient, 170, 30000);
-  console.log('Distributed rate limiter initialized');
+  rateLimiter = new DistributedRateLimiter(redisClient, 165, 30000);
+  console.log('Distributed rate limiter initialized (165 requests per 30 seconds)');
 }).catch(console.error);
 
 // PostgreSQL connection pool
@@ -42,9 +42,9 @@ const MAILTESTER_API_KEY = process.env.MAILTESTER_API_KEY;
 class DistributedRateLimiter {
   constructor(redisClient, requestsPerWindow, windowMs) {
     this.redis = redisClient;
-    this.requestsPerWindow = requestsPerWindow; // 170
+    this.requestsPerWindow = requestsPerWindow; // 165
     this.windowMs = windowMs; // 30000
-    this.minSpacingMs = Math.ceil(windowMs / requestsPerWindow) + 10; // ~187ms
+    this.minSpacingMs = Math.ceil(windowMs / requestsPerWindow) + 10; // ~192ms
     this.key = 'mailtester:rate_limit';
   }
 
@@ -53,7 +53,24 @@ class DistributedRateLimiter {
     const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
     const windowKey = `${this.key}:${windowStart}`;
     
-    // Use Redis INCR with expiration for distributed counting
+    // Check current count BEFORE incrementing to prevent exceeding limit
+    const currentCountStr = await this.redis.get(windowKey);
+    const currentCount = currentCountStr ? parseInt(currentCountStr) : 0;
+    
+    // If we're at or over the limit, wait for next window
+    if (currentCount >= this.requestsPerWindow) {
+      const nextWindow = windowStart + this.windowMs;
+      const waitTime = nextWindow - Date.now() + 100; // +100ms buffer
+      
+      if (waitTime > 0) {
+        console.log(`Rate limit reached (${currentCount}/${this.requestsPerWindow}). Waiting ${Math.ceil(waitTime/1000)}s for next window...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        // Retry in next window
+        return this.acquire();
+      }
+    }
+    
+    // Now increment (we know we're under the limit)
     const count = await this.redis.incr(windowKey);
     
     // Set expiration on first request in window
@@ -61,16 +78,16 @@ class DistributedRateLimiter {
       await this.redis.expire(windowKey, Math.ceil(this.windowMs / 1000) + 1);
     }
     
-    // Check if we've exceeded the limit
+    // Double-check after increment (in case of race condition with other workers)
     if (count > this.requestsPerWindow) {
-      // Calculate wait time until next window
+      // We exceeded - decrement and wait
+      await this.redis.decr(windowKey);
       const nextWindow = windowStart + this.windowMs;
-      const waitTime = nextWindow - Date.now() + 100; // +100ms buffer
+      const waitTime = nextWindow - Date.now() + 100;
       
       if (waitTime > 0) {
-        console.log(`Rate limit exceeded. Waiting ${Math.ceil(waitTime/1000)}s for next window...`);
+        console.log(`Rate limit exceeded after increment (${count}/${this.requestsPerWindow}). Waiting ${Math.ceil(waitTime/1000)}s...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
-        // Retry in next window
         return this.acquire();
       }
     }
@@ -109,7 +126,7 @@ class DistributedRateLimiter {
   }
 }
 
-// Create the distributed rate limiter instance (170 per 30 seconds, ~187ms spacing)
+// Create the distributed rate limiter instance (165 per 30 seconds, ~192ms spacing)
 // Note: rateLimiter will be initialized after Redis client is connected
 let rateLimiter;
 
@@ -273,11 +290,18 @@ async function updateJobStatus(jobId, status, updates = {}) {
 }
 
 // Update lead verification status
-async function updateLeadStatus(leadId, status, message = '') {
-  await pgPool.query(
-    'UPDATE leads SET verification_status = $1 WHERE id = $2',
-    [status, leadId]
-  );
+async function updateLeadStatus(leadId, status, message = '', mx = '') {
+  if (mx) {
+    await pgPool.query(
+      'UPDATE leads SET verification_status = $1, mx_record = $2 WHERE id = $3',
+      [status, mx, leadId]
+    );
+  } else {
+    await pgPool.query(
+      'UPDATE leads SET verification_status = $1 WHERE id = $2',
+      [status, leadId]
+    );
+  }
 }
 
 // Mark leads as final results
@@ -358,7 +382,7 @@ async function processJob(jobId) {
         try {
           const result = await verifyEmail(lead.email);
           
-          await updateLeadStatus(lead.id, result.status, result.message);
+          await updateLeadStatus(lead.id, result.status, result.message, result.mx);
           
           if (result.status === 'valid') {
             validCount++;
@@ -502,7 +526,7 @@ async function processJob(jobId) {
 
 console.log('Worker started, waiting for jobs...');
 console.log(`MailTester API: ${MAILTESTER_BASE_URL}`);
-console.log(`Rate limit: 170 requests per 30 seconds (~187ms spacing between calls)`);
+console.log(`Rate limit: 165 requests per 30 seconds (~192ms spacing between calls)`);
 console.log(`Using distributed Redis-based rate limiter for multi-worker coordination`);
 
 // Simple Redis list poller
@@ -577,7 +601,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
       apiCalls++;
       permutationsVerified++;
       
-      await updateLeadStatus(lead.id, result.status, result.message);
+      await updateLeadStatus(lead.id, result.status, result.message, result.mx);
       
       if (result.status === 'valid') {
         // *** EARLY EXIT: Found valid email! ***
@@ -697,9 +721,17 @@ async function processJobFromQueue(jobId) {
         // Process batch in parallel (respecting rate limit)
         const batchPromises = batch.map(async (lead) => {
           try {
+            // Skip leads with empty or null emails
+            if (!lead.email || lead.email.trim() === '') {
+              console.log(`Skipping lead ${lead.id} - empty email`);
+              await updateLeadStatus(lead.id, 'error', 'Empty email address');
+              processedCount++;
+              return;
+            }
+            
             const result = await verifyEmail(lead.email);
             
-            await updateLeadStatus(lead.id, result.status, result.message);
+            await updateLeadStatus(lead.id, result.status, result.message, result.mx);
             
             if (result.status === 'valid') {
               validCount++;
