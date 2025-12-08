@@ -183,30 +183,6 @@ export default function ResultsPage() {
         </div>
       </div>
 
-      {/* Verify Catchalls Button */}
-      {canVerifyCatchalls && (
-        <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                Verify Catchall Emails
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Verify {catchallLeads.length} catchall emails using your catchall verifier API. Verified emails will be moved to the Valid section.
-              </p>
-            </div>
-            <button
-              onClick={handleVerifyCatchalls}
-              disabled={verifyingCatchalls}
-              className="px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-            >
-              {verifyingCatchalls && <LoadingSpinner size="sm" />}
-              <span>{verifyingCatchalls ? "Verifying..." : "Verify Catchalls"}</span>
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex justify-between items-center mb-4">
           <div className="flex space-x-2">
@@ -241,12 +217,40 @@ export default function ResultsPage() {
               Catchall ({catchallLeads.length})
             </button>
           </div>
-          <button
-            onClick={downloadCSV}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
-          >
-            Download CSV
-          </button>
+          <div className="flex space-x-2">
+            {catchallLeads.length > 0 && (
+              <>
+                {!user?.catchall_verifier_api_key ? (
+                  <button
+                    onClick={() => {
+                      if (confirm("You need to add your Catchall Verifier API key in Settings first. Would you like to go to Settings now?")) {
+                        window.location.href = "/settings";
+                      }
+                    }}
+                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 dark:bg-yellow-500 dark:hover:bg-yellow-600 transition-colors text-sm"
+                    title="Add your Catchall Verifier API key in Settings to verify catchall emails"
+                  >
+                    Verify Catchalls (Add API Key)
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleVerifyCatchalls}
+                    disabled={verifyingCatchalls}
+                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 dark:bg-yellow-500 dark:hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center space-x-2"
+                  >
+                    {verifyingCatchalls && <LoadingSpinner size="sm" />}
+                    <span>{verifyingCatchalls ? "Verifying..." : "Verify Catchalls"}</span>
+                  </button>
+                )}
+              </>
+            )}
+            <button
+              onClick={downloadCSV}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors text-sm"
+            >
+              Download CSV
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
