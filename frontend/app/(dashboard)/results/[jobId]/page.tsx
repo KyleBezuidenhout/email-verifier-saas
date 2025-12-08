@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Lead, Job } from "@/types";
 import { apiClient } from "@/lib/api";
@@ -17,11 +17,7 @@ export default function ResultsPage() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
 
-  useEffect(() => {
-    loadData();
-  }, [jobId]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [jobData, leadsData] = await Promise.all([
         apiClient.getJob(jobId),
@@ -34,7 +30,11 @@ export default function ResultsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const filteredLeads =
     filter === "all"
