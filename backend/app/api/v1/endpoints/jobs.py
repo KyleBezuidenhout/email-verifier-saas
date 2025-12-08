@@ -133,12 +133,12 @@ async def upload_file(
             detail="No valid rows found in CSV after mapping"
         )
     
-    # Create job
+    # Create job (initial total_leads will be updated after creating permutations)
     job = Job(
         user_id=current_user.id,
         status="pending",
         original_filename=file.filename,
-        total_leads=len(remapped_rows),
+        total_leads=0,  # Will be updated after creating all permutations
         processed_leads=0,
         valid_emails_found=0,
         catchall_emails_found=0,
@@ -200,6 +200,10 @@ async def upload_file(
     
     # Bulk insert leads
     db.bulk_save_objects(leads_to_create)
+    db.commit()
+    
+    # Update job with actual total leads (permutations, not unique people)
+    job.total_leads = len(leads_to_create)
     db.commit()
     
     # Queue job for processing - use simple Redis list (worker will poll this)
