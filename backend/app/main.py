@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.api.v1.endpoints import auth, jobs, results
@@ -11,14 +12,30 @@ app = FastAPI(
     openapi_url="/api/openapi.json"
 )
 
-# CORS Middleware - Allow all origins for debugging
+# CORS origins - explicit list
+origins = [
+    "http://localhost:3000",
+    "https://email-verifier-saas.vercel.app",
+    "https://email-verifier-saas-production.vercel.app",
+]
+
+# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,  # Must be False when using "*"
-    allow_methods=["*"],
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+# Global exception handler to ensure CORS headers on errors
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+    )
 
 # Health check endpoint
 @app.get("/health")
