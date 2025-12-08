@@ -37,7 +37,7 @@ export interface Lead {
   email: string;
   pattern_used?: string;
   prevalence_score?: number;
-  verification_status: 'pending' | 'valid' | 'invalid' | 'catchall' | 'error';
+  verification_status: 'pending' | 'valid' | 'invalid' | 'catchall' | 'error' | 'not_found';
   verification_tag?: string;
   is_final_result: boolean;
   created_at: string;
