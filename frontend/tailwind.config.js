@@ -9,33 +9,49 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // OmniVerifier Design System
-        'omni-black': '#000000',
-        'omni-dark': '#181A1A',
-        'omni-cyan': '#00D9FF',
+        // Dashbrd X Design System
+        'dashbrd': {
+          'bg': '#0D0F14',
+          'card': '#141821',
+          'card-hover': '#1A1F2C',
+          'border': '#1E2433',
+          'border-light': '#2A3142',
+          'accent': '#3B82F6',
+          'accent-glow': 'rgba(59, 130, 246, 0.2)',
+          'text': '#FFFFFF',
+          'text-muted': '#6B7280',
+          'text-subtle': '#4B5563',
+          'success': '#10B981',
+          'warning': '#F59E0B',
+          'error': '#EF4444',
+        },
+        // OmniVerifier Design System (legacy - kept for backward compatibility)
+        'omni-black': '#0D0F14',
+        'omni-dark': '#141821',
+        'omni-cyan': '#3B82F6',
         'omni-white': '#FFFFFF',
-        'omni-gray': '#999999',
-        'omni-light-gray': '#CCCCCC',
-        'omni-border': '#333333',
+        'omni-gray': '#6B7280',
+        'omni-light-gray': '#9CA3AF',
+        'omni-border': '#1E2433',
         // Legacy support
-        border: '#333333',
-        background: '#000000',
+        border: '#1E2433',
+        background: '#0D0F14',
         foreground: '#FFFFFF',
         primary: {
-          DEFAULT: '#00D9FF',
-          foreground: '#000000',
+          DEFAULT: '#3B82F6',
+          foreground: '#FFFFFF',
         },
         secondary: {
-          DEFAULT: '#181A1A',
+          DEFAULT: '#141821',
           foreground: '#FFFFFF',
         },
         muted: {
-          DEFAULT: '#999999',
-          foreground: '#CCCCCC',
+          DEFAULT: '#6B7280',
+          foreground: '#9CA3AF',
         },
         accent: {
-          DEFAULT: '#00D9FF',
-          foreground: '#000000',
+          DEFAULT: '#3B82F6',
+          foreground: '#FFFFFF',
         },
       },
       fontFamily: {

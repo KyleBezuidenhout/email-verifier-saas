@@ -6,16 +6,63 @@
 
 @layer base {
   * {
-    @apply border-omni-border;
+    @apply border-dashbrd-border;
   }
 
   body {
-    @apply bg-omni-black text-omni-white font-sans;
+    @apply bg-dashbrd-bg text-dashbrd-text font-sans;
     font-family: 'Inter', 'Segoe UI', sans-serif;
   }
 
   html {
     scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  /* Card component */
+  .dashbrd-card {
+    @apply bg-dashbrd-card border border-dashbrd-border rounded-xl;
+    transition: all 0.2s ease;
+  }
+
+  .dashbrd-card-hover {
+    @apply dashbrd-card hover:bg-dashbrd-card-hover hover:border-dashbrd-border-light;
+  }
+
+  /* Input/Select styling */
+  .dashbrd-input {
+    @apply bg-dashbrd-card border border-dashbrd-border rounded-lg px-4 py-2 text-dashbrd-text placeholder-dashbrd-text-muted;
+    @apply focus:outline-none focus:ring-2 focus:ring-dashbrd-accent focus:border-dashbrd-accent;
+    transition: all 0.2s ease;
+  }
+
+  /* Badge variations */
+  .badge-success {
+    @apply bg-dashbrd-success/20 text-dashbrd-success border border-dashbrd-success/30;
+  }
+
+  .badge-warning {
+    @apply bg-dashbrd-warning/20 text-dashbrd-warning border border-dashbrd-warning/30;
+  }
+
+  .badge-error {
+    @apply bg-dashbrd-error/20 text-dashbrd-error border border-dashbrd-error/30;
+  }
+
+  .badge-info {
+    @apply bg-dashbrd-accent/20 text-dashbrd-accent border border-dashbrd-accent/30;
+  }
+
+  /* Button styles */
+  .btn-primary {
+    @apply bg-dashbrd-accent text-white px-4 py-2 rounded-lg font-medium;
+    @apply hover:bg-dashbrd-accent/90 transition-colors;
+  }
+
+  .btn-secondary {
+    @apply bg-dashbrd-card border border-dashbrd-border text-dashbrd-text px-4 py-2 rounded-lg font-medium;
+    @apply hover:bg-dashbrd-card-hover transition-colors;
   }
 }
 
@@ -33,6 +80,11 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  /* Gradient backgrounds for charts */
+  .gradient-accent {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%);
   }
 }
 

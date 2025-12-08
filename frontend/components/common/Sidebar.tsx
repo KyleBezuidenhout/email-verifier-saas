@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 
 interface NavItem {
   name: string;
@@ -60,31 +61,44 @@ const navItems: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
+
+  // Get user initials for avatar
+  const getInitials = (name?: string, email?: string) => {
+    if (name) {
+      const parts = name.split(" ");
+      if (parts.length >= 2) {
+        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+      }
+      return name[0]?.toUpperCase() || "U";
+    }
+    return email?.[0]?.toUpperCase() || "U";
+  };
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-[250px] bg-omni-black border-r border-omni-border z-40">
+    <aside className="fixed left-0 top-0 h-screen w-[250px] bg-dashbrd-bg border-r border-dashbrd-border z-40">
       <div className="flex flex-col h-full">
         {/* Logo */}
-        <div className="p-6 border-b border-omni-border">
+        <div className="p-6 border-b border-dashbrd-border">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="text-xl font-bold text-omni-white">
-              Email<span className="text-omni-cyan">Verifier</span>
+            <span className="text-xl font-bold text-dashbrd-text">
+              Email<span className="text-dashbrd-accent">Verifier</span>
             </span>
           </Link>
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative ${
                   isActive
-                    ? "bg-omni-cyan text-omni-black font-medium"
-                    : "text-omni-gray hover:bg-omni-dark hover:text-omni-white"
+                    ? "bg-dashbrd-accent/10 text-dashbrd-accent font-medium border-l-2 border-dashbrd-accent"
+                    : "text-dashbrd-text-muted hover:bg-dashbrd-card hover:text-dashbrd-text"
                 }`}
               >
                 {item.icon}
@@ -93,6 +107,25 @@ export function Sidebar() {
             );
           })}
         </nav>
+
+        {/* User Profile Section */}
+        {user && (
+          <div className="p-4 border-t border-dashbrd-border">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-dashbrd-card border border-dashbrd-border">
+              <div className="w-10 h-10 rounded-full bg-dashbrd-accent/20 flex items-center justify-center text-dashbrd-accent font-semibold text-sm">
+                {getInitials(user.full_name, user.email)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-dashbrd-text truncate">
+                  {user.full_name || "User"}
+                </p>
+                <p className="text-xs text-dashbrd-text-muted truncate">
+                  {user.email}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   );

@@ -12,11 +12,11 @@ export default function DashboardLayout({
 }) {
   return (
     <ProtectedRoute>
-      <div className="min-h-screen flex">
+      <div className="min-h-screen flex bg-dashbrd-bg">
         <Sidebar />
         <div className="flex-1 flex flex-col ml-[250px]">
           <Header />
-          <main className="flex-1">{children}</main>
+          <main className="flex-1 bg-dashbrd-bg">{children}</main>
           <Footer />
         </div>
       </div>

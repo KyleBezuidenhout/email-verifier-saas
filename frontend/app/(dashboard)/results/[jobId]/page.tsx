@@ -127,28 +127,28 @@ export default function ResultsPage() {
       <div className="mb-8">
         <Link
           href="/dashboard"
-          className="text-omni-cyan hover:opacity-80 transition-opacity mb-4 inline-block"
+          className="text-dashbrd-accent hover:opacity-80 transition-opacity mb-4 inline-block"
         >
           ← Back to Dashboard
         </Link>
-        <h1 className="text-3xl font-bold text-omni-white">Results</h1>
-        <p className="mt-2 text-omni-gray">Job ID: {jobId}</p>
+        <h1 className="text-3xl font-bold text-dashbrd-text">Results</h1>
+        <p className="mt-2 text-dashbrd-text-muted">Job ID: {jobId}</p>
       </div>
 
       {/* Summary Banner */}
       {totalVerified > 0 && (
-        <div className="mb-8 bg-omni-dark border border-omni-border rounded-lg p-6">
+        <div className="mb-8 bg-dashbrd-card border border-dashbrd-border rounded-lg p-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-omni-white mb-2">
+              <h2 className="text-2xl font-bold text-dashbrd-text mb-2">
                 ✅ Verified {totalVerified} emails in {processingTime} minutes for ${totalCost.toFixed(2)}
               </h2>
               <div className="flex flex-wrap gap-4 text-sm">
-                <span className="text-omni-gray">
-                  Cost per email: <strong className="text-omni-white">${costPerEmail.toFixed(2)}</strong>
+                <span className="text-dashbrd-text-muted">
+                  Cost per email: <strong className="text-dashbrd-text">${costPerEmail.toFixed(2)}</strong>
                 </span>
                 {savings > 0 && (
-                  <span className="text-omni-cyan">
+                  <span className="text-dashbrd-accent">
                     💰 You saved <strong>${savings.toFixed(2)}</strong> vs competitors
                   </span>
                 )}
@@ -159,39 +159,39 @@ export default function ResultsPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-omni-dark border border-omni-border p-6 rounded-lg">
-          <p className="text-sm text-omni-gray">Total Leads</p>
-          <p className="text-2xl font-bold text-omni-white">{job.total_leads}</p>
+        <div className="bg-dashbrd-card border border-dashbrd-border p-6 rounded-lg">
+          <p className="text-sm text-dashbrd-text-muted">Total Leads</p>
+          <p className="text-2xl font-bold text-dashbrd-text">{job.total_leads}</p>
         </div>
-        <div className="bg-omni-dark border border-omni-border p-6 rounded-lg">
-          <p className="text-sm text-omni-gray">Valid Emails</p>
-          <p className="text-2xl font-bold text-omni-cyan">
+        <div className="bg-dashbrd-card border border-dashbrd-border p-6 rounded-lg">
+          <p className="text-sm text-dashbrd-text-muted">Valid Emails</p>
+          <p className="text-2xl font-bold text-dashbrd-accent">
             {validLeads.length}
           </p>
         </div>
-        <div className="bg-omni-dark border border-omni-border p-6 rounded-lg">
-          <p className="text-sm text-omni-gray">Catchall Emails</p>
-          <p className="text-2xl font-bold text-omni-cyan">
+        <div className="bg-dashbrd-card border border-dashbrd-border p-6 rounded-lg">
+          <p className="text-sm text-dashbrd-text-muted">Catchall Emails</p>
+          <p className="text-2xl font-bold text-dashbrd-accent">
             {catchallLeads.length}
           </p>
         </div>
-        <div className="bg-omni-dark border border-omni-border p-6 rounded-lg">
-          <p className="text-sm text-omni-gray">Not Found</p>
+        <div className="bg-dashbrd-card border border-dashbrd-border p-6 rounded-lg">
+          <p className="text-sm text-dashbrd-text-muted">Not Found</p>
           <p className="text-2xl font-bold text-red-400">
             {notFoundLeads.length}
           </p>
         </div>
       </div>
 
-      <div className="bg-omni-dark border border-omni-border rounded-lg p-6">
+      <div className="bg-dashbrd-card border border-dashbrd-border rounded-lg p-6">
         <div className="flex justify-between items-center mb-4">
           <div className="flex space-x-2">
             <button
               onClick={() => setFilter("all")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "all"
-                  ? "bg-omni-cyan text-omni-black font-medium"
-                  : "bg-omni-black border border-omni-border text-omni-gray hover:bg-omni-dark"
+                  ? "bg-dashbrd-accent text-white font-medium"
+                  : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
               }`}
             >
               All ({leads.length})
@@ -200,8 +200,8 @@ export default function ResultsPage() {
               onClick={() => setFilter("valid")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "valid"
-                  ? "bg-omni-cyan text-omni-black font-medium"
-                  : "bg-omni-black border border-omni-border text-omni-gray hover:bg-omni-dark"
+                  ? "bg-dashbrd-accent text-white font-medium"
+                  : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
               }`}
             >
               Valid ({validLeads.length})
@@ -210,8 +210,8 @@ export default function ResultsPage() {
               onClick={() => setFilter("catchall")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "catchall"
-                  ? "bg-omni-cyan text-omni-black font-medium"
-                  : "bg-omni-black border border-omni-border text-omni-gray hover:bg-omni-dark"
+                  ? "bg-dashbrd-accent text-white font-medium"
+                  : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
               }`}
             >
               Catchall ({catchallLeads.length})
@@ -227,7 +227,7 @@ export default function ResultsPage() {
                         window.location.href = "/settings";
                       }
                     }}
-                    className="px-4 py-2 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
+                    className="px-4 py-2 bg-dashbrd-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
                     title="Add your Catchall Verifier API key in Settings to verify catchall emails"
                   >
                     Verify Catchalls (Add API Key)
@@ -236,7 +236,7 @@ export default function ResultsPage() {
                   <button
                     onClick={handleVerifyCatchalls}
                     disabled={verifyingCatchalls}
-                    className="px-4 py-2 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2"
+                    className="px-4 py-2 bg-dashbrd-accent text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2"
                   >
                     {verifyingCatchalls && <LoadingSpinner size="sm" />}
                     <span>{verifyingCatchalls ? "Verifying..." : "Verify Catchalls"}</span>
@@ -246,7 +246,7 @@ export default function ResultsPage() {
             )}
             <button
               onClick={downloadCSV}
-              className="px-4 py-2 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
+              className="px-4 py-2 bg-dashbrd-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
             >
               Download CSV
             </button>
@@ -255,41 +255,41 @@ export default function ResultsPage() {
 
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-omni-border">
-            <thead className="bg-omni-dark">
+            <thead className="bg-dashbrd-card">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
                   First Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
                   Last Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
                   Website
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
                   Email
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
                   Score
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-omni-black divide-y divide-omni-border">
+            <tbody className="bg-dashbrd-card divide-y divide-omni-border">
               {filteredLeads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-omni-dark transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-white">
+                <tr key={lead.id} className="hover:bg-dashbrd-card transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text">
                     {lead.first_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-white">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text">
                     {lead.last_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-gray">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text-muted">
                     {lead.domain}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-white">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text">
                     {lead.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -306,13 +306,13 @@ export default function ResultsPage() {
                         {lead.verification_status}
                       </span>
                       {lead.verification_tag === "catchall-verified" && (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-omni-cyan/20 text-omni-cyan border border-omni-cyan/30">
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-dashbrd-accent/20 text-dashbrd-accent border border-omni-cyan/30">
                           Catchall-Verified
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-gray">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text-muted">
                     {lead.prevalence_score || "-"}
                   </td>
                 </tr>

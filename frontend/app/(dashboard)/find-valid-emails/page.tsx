@@ -161,8 +161,8 @@ export default function FindValidEmailsPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-omni-white">Find Valid Emails</h1>
-        <p className="mt-2 text-omni-gray">
+        <h1 className="text-3xl font-bold text-dashbrd-text">Find Valid Emails</h1>
+        <p className="mt-2 text-dashbrd-text-muted">
           Manage and monitor your email verification jobs
         </p>
       </div>
@@ -177,9 +177,9 @@ export default function FindValidEmailsPage() {
       <QuickStats jobs={jobs} />
 
       {/* Upload Section */}
-      <div className="mb-8 bg-omni-dark border border-omni-border rounded-lg p-6 space-y-6">
+      <div className="mb-8 dashbrd-card p-6 space-y-6">
         {uploadError && (
-          <div className="bg-red-900/20 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">
+          <div className="badge-error px-4 py-3 rounded-lg text-sm">
             {uploadError}
           </div>
         )}
@@ -196,18 +196,18 @@ export default function FindValidEmailsPage() {
 
         {selectedFile && (
           <>
-            <div className="border-t border-omni-border pt-6">
-              <h3 className="text-lg font-medium text-omni-white mb-4">
+            <div className="border-t border-dashbrd-border pt-6">
+              <h3 className="text-lg font-medium text-dashbrd-text mb-4">
                 File Information
               </h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-omni-gray">File name:</span>
-                  <span className="ml-2 font-medium text-omni-white">{selectedFile.name}</span>
+                  <span className="text-dashbrd-text-muted">File name:</span>
+                  <span className="ml-2 font-medium text-dashbrd-text">{selectedFile.name}</span>
                 </div>
                 <div>
-                  <span className="text-omni-gray">File size:</span>
-                  <span className="ml-2 font-medium text-omni-white">
+                  <span className="text-dashbrd-text-muted">File size:</span>
+                  <span className="ml-2 font-medium text-dashbrd-text">
                     {formatFileSize(selectedFile.size)}
                   </span>
                 </div>
@@ -217,15 +217,15 @@ export default function FindValidEmailsPage() {
             <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
 
             {!isVerificationOnly && (
-              <div className="border-t border-omni-border pt-6">
-                <h3 className="text-lg font-medium text-omni-white mb-4">
+              <div className="border-t border-dashbrd-border pt-6">
+                <h3 className="text-lg font-medium text-dashbrd-text mb-4">
                   Advanced Options
                 </h3>
                 <div className="space-y-4">
                   <div>
                     <label
                       htmlFor="company-size"
-                      className="block text-sm font-medium text-omni-gray mb-2"
+                      className="block text-sm font-medium text-dashbrd-text-muted mb-2"
                     >
                       Company Size (optional)
                     </label>
@@ -233,7 +233,7 @@ export default function FindValidEmailsPage() {
                       id="company-size"
                       value={companySize}
                       onChange={(e) => setCompanySize(e.target.value)}
-                      className="w-full px-4 py-2 border border-omni-border rounded-lg focus:ring-2 focus:ring-omni-cyan focus:border-omni-cyan bg-omni-black text-omni-white"
+                      className="dashbrd-input w-full"
                     >
                       <option value="">Select company size</option>
                       <option value="1-50">1-50 employees</option>
@@ -246,7 +246,7 @@ export default function FindValidEmailsPage() {
               </div>
             )}
 
-            <div className="flex justify-end space-x-4 pt-6 border-t border-omni-border">
+            <div className="flex justify-end space-x-4 pt-6 border-t border-dashbrd-border">
               <button
                 onClick={() => {
                   setSelectedFile(null);
@@ -255,7 +255,7 @@ export default function FindValidEmailsPage() {
                   setCompanySize("");
                   setUploadError("");
                 }}
-                className="px-4 py-2 border border-omni-border rounded-lg text-omni-gray hover:bg-omni-dark transition-colors"
+                className="btn-secondary"
                 disabled={uploading}
               >
                 Cancel
@@ -263,7 +263,7 @@ export default function FindValidEmailsPage() {
               <button
                 onClick={handleUpload}
                 disabled={uploading || !isMappingValid}
-                className="px-6 py-2 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 font-medium transition-opacity"
+                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                 title={!isMappingValid ? "Please map all required columns first" : ""}
               >
                 {uploading && <LoadingSpinner size="sm" />}

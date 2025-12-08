@@ -28,36 +28,36 @@ export function QuickStats({ jobs }: QuickStatsProps) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-        <div className="text-sm text-gray-600 dark:text-gray-400">Total Verified</div>
-        <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+      <div className="dashbrd-card-hover p-4">
+        <div className="text-sm text-dashbrd-text-muted">Total Verified</div>
+        <div className="text-2xl font-bold text-dashbrd-text mt-1">
           {totalVerified.toLocaleString()}
         </div>
-        <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">emails found</div>
+        <div className="text-xs text-dashbrd-text-muted mt-1">emails found</div>
       </div>
       
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-        <div className="text-sm text-gray-600 dark:text-gray-400">Total Cost</div>
-        <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+      <div className="dashbrd-card-hover p-4">
+        <div className="text-sm text-dashbrd-text-muted">Total Cost</div>
+        <div className="text-2xl font-bold text-dashbrd-text mt-1">
           ${totalCost.toFixed(2)}
         </div>
-        <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">spent</div>
+        <div className="text-xs text-dashbrd-text-muted mt-1">spent</div>
       </div>
       
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-        <div className="text-sm text-gray-600 dark:text-gray-400">Avg Speed</div>
-        <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+      <div className="dashbrd-card-hover p-4">
+        <div className="text-sm text-dashbrd-text-muted">Avg Speed</div>
+        <div className="text-2xl font-bold text-dashbrd-text mt-1">
           {avgProcessingTime > 0 ? `${avgProcessingTime.toFixed(1)}` : "—"}
         </div>
-        <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">minutes per job</div>
+        <div className="text-xs text-dashbrd-text-muted mt-1">minutes per job</div>
       </div>
       
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-        <div className="text-sm text-gray-600 dark:text-gray-400">Uptime</div>
-        <div className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">
+      <div className="dashbrd-card-hover p-4">
+        <div className="text-sm text-dashbrd-text-muted">Uptime</div>
+        <div className="text-2xl font-bold text-dashbrd-success mt-1">
           99.9%
         </div>
-        <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">guaranteed</div>
+        <div className="text-xs text-dashbrd-text-muted mt-1">guaranteed</div>
       </div>
     </div>
   );

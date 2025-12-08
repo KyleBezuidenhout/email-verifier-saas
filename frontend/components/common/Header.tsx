@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
 import { useTheme } from "@/components/common/ThemeProvider";
 
@@ -10,6 +10,7 @@ export function Header() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
   const [showMenu, setShowMenu] = useState(false);
 
   const handleLogout = async () => {
@@ -21,16 +22,60 @@ export function Header() {
     return null; // Don't show header for non-authenticated users
   }
 
-  return (
-    <header className="h-[70px] bg-omni-black border-b border-omni-border flex items-center justify-between px-6">
-      {/* Logo - can be empty or minimal since sidebar has logo */}
-      <div className="flex-1"></div>
+  // Get page title from pathname
+  const getPageTitle = () => {
+    const pathMap: Record<string, string> = {
+      "/dashboard": "Dashboard",
+      "/find-valid-emails": "Find Valid Emails",
+      "/sales-nav-scraper": "Sales Nav Scraper",
+      "/verify-emails": "Verify Emails",
+      "/settings": "Settings",
+    };
+    
+    for (const [path, title] of Object.entries(pathMap)) {
+      if (pathname === path || pathname?.startsWith(path + "/")) {
+        return title;
+      }
+    }
+    return "Dashboard";
+  };
 
-      {/* Right side: Theme toggle and User menu */}
-      <div className="flex items-center gap-4">
+  // Get user initials for avatar
+  const getInitials = (name?: string, email?: string) => {
+    if (name) {
+      const parts = name.split(" ");
+      if (parts.length >= 2) {
+        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+      }
+      return name[0]?.toUpperCase() || "U";
+    }
+    return email?.[0]?.toUpperCase() || "U";
+  };
+
+  return (
+    <header className="h-[70px] bg-dashbrd-bg border-b border-dashbrd-border flex items-center justify-between px-6">
+      {/* Page Title / Breadcrumb */}
+      <div className="flex-1">
+        <h1 className="text-lg font-semibold text-dashbrd-text">
+          {getPageTitle()}
+        </h1>
+      </div>
+
+      {/* Right side: Notifications, Theme toggle, and User menu */}
+      <div className="flex items-center gap-3">
+        {/* Notification bell placeholder */}
+        <button
+          className="p-2 rounded-lg hover:bg-dashbrd-card text-dashbrd-text-muted hover:text-dashbrd-text transition-colors relative"
+          aria-label="Notifications"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+        </button>
+
         <button
           onClick={toggleTheme}
-          className="p-2 rounded-lg hover:bg-omni-dark text-omni-white transition-colors"
+          className="p-2 rounded-lg hover:bg-dashbrd-card text-dashbrd-text-muted hover:text-dashbrd-text transition-colors"
           aria-label="Toggle theme"
         >
           {theme === "dark" ? (
@@ -43,21 +88,31 @@ export function Header() {
             </svg>
           )}
         </button>
+
         <div className="relative">
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="flex items-center gap-2 text-omni-white font-medium text-sm hover:opacity-80"
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-dashbrd-card transition-colors"
           >
-            {user.email}
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-8 h-8 rounded-full bg-dashbrd-accent/20 flex items-center justify-center text-dashbrd-accent font-semibold text-xs">
+              {getInitials(user.full_name, user.email)}
+            </div>
+            <span className="text-sm font-medium text-dashbrd-text hidden md:block">
+              {user.full_name || user.email.split("@")[0]}
+            </span>
+            <svg className="w-4 h-4 text-dashbrd-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
           {showMenu && (
-            <div className="absolute right-0 mt-2 w-48 bg-omni-dark border border-omni-border rounded-lg py-2 z-50">
+            <div className="absolute right-0 mt-2 w-56 bg-dashbrd-card border border-dashbrd-border rounded-xl py-2 z-50 shadow-lg">
+              <div className="px-4 py-3 border-b border-dashbrd-border">
+                <p className="text-sm font-medium text-dashbrd-text">{user.full_name || "User"}</p>
+                <p className="text-xs text-dashbrd-text-muted mt-0.5">{user.email}</p>
+              </div>
               <Link
                 href="/settings"
-                className="block px-4 py-2 text-sm text-omni-white hover:bg-omni-black/50"
+                className="block px-4 py-2 text-sm text-dashbrd-text hover:bg-dashbrd-card-hover transition-colors"
                 onClick={() => setShowMenu(false)}
               >
                 Settings
@@ -67,7 +122,7 @@ export function Header() {
                   handleLogout();
                   setShowMenu(false);
                 }}
-                className="block w-full text-left px-4 py-2 text-sm text-omni-white hover:bg-omni-black/50"
+                className="block w-full text-left px-4 py-2 text-sm text-dashbrd-error hover:bg-dashbrd-card-hover transition-colors"
               >
                 Logout
               </button>
