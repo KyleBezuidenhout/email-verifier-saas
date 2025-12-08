@@ -29,6 +29,8 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     new_user = User(
         email=user_data.email,
         hashed_password=hashed_password,
+        full_name=user_data.full_name,
+        company_name=user_data.company_name,
         credits=10,  # Default credits
     )
     
@@ -48,6 +50,8 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
         user=UserResponse(
             id=new_user.id,
             email=new_user.email,
+            full_name=new_user.full_name,
+            company_name=new_user.company_name,
             credits=new_user.credits,
             api_key=new_user.api_key,
             is_active=new_user.is_active,
@@ -91,6 +95,8 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
         user=UserResponse(
             id=user.id,
             email=user.email,
+            full_name=user.full_name,
+            company_name=user.company_name,
             credits=user.credits,
             api_key=user.api_key,
             is_active=user.is_active,
@@ -104,6 +110,8 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return UserResponse(
         id=current_user.id,
         email=current_user.email,
+        full_name=current_user.full_name,
+        company_name=current_user.company_name,
         credits=current_user.credits,
         api_key=current_user.api_key,
         is_active=current_user.is_active,

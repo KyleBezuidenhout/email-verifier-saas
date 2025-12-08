@@ -23,6 +23,8 @@ class Token(BaseModel):
 class UserResponse(BaseModel):
     id: UUID
     email: str
+    full_name: Optional[str] = None
+    company_name: Optional[str] = None
     credits: int
     api_key: UUID
     is_active: bool
