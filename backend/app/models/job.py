@@ -14,6 +14,7 @@ class Job(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     status = Column(String(50), default="pending", index=True)  # pending, processing, completed, failed
+    job_type = Column(String(50), default="enrichment", index=True)  # enrichment or verification
     original_filename = Column(Text)
     total_leads = Column(Integer, nullable=False)
     processed_leads = Column(Integer, default=0)

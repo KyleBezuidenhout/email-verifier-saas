@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 from typing import Optional, List
 import csv
 import io
@@ -223,14 +223,161 @@ async def upload_file(
     )
 
 
+@router.post("/verify-upload", response_model=JobUploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_verify_file(
+    file: UploadFile = File(...),
+    column_email: Optional[str] = Form(None),
+    column_first_name: Optional[str] = Form(None),
+    column_last_name: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload CSV file for verification-only (no permutation logic).
+    CSV must have an 'email' column. Optional: first_name, last_name for display.
+    """
+    # Validate file type
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only CSV files are allowed"
+        )
+    
+    # Read and parse CSV
+    contents = await file.read()
+    csv_content = contents.decode('utf-8')
+    csv_reader = csv.DictReader(io.StringIO(csv_content))
+    
+    # Get actual column names from CSV
+    rows = list(csv_reader)
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV file is empty"
+        )
+    
+    actual_columns = list(rows[0].keys())
+    
+    # Use provided column mappings or default to standard names
+    email_col = column_email or 'email'
+    first_name_col = column_first_name or 'first_name'
+    last_name_col = column_last_name or 'last_name'
+    
+    # Validate that email column exists
+    if email_col not in actual_columns:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Missing required column: email (mapped to '{email_col}')"
+        )
+    
+    # Remap CSV rows to standard column names
+    remapped_rows = []
+    for row in rows:
+        email = row.get(email_col, '').strip()
+        if not email:
+            continue  # Skip rows without email
+        
+        remapped_row = {
+            'email': email,
+            'first_name': row.get(first_name_col, '').strip() if first_name_col in actual_columns else '',
+            'last_name': row.get(last_name_col, '').strip() if last_name_col in actual_columns else '',
+        }
+        # Extract domain from email if available
+        if '@' in email:
+            remapped_row['domain'] = email.split('@')[1]
+        remapped_rows.append(remapped_row)
+    
+    if not remapped_rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid rows with email addresses found in CSV"
+        )
+    
+    # Create job with job_type="verification"
+    job = Job(
+        user_id=current_user.id,
+        status="pending",
+        job_type="verification",
+        original_filename=file.filename,
+        total_leads=len(remapped_rows),
+        processed_leads=0,
+        valid_emails_found=0,
+        catchall_emails_found=0,
+        cost_in_credits=0,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    
+    # Upload file to R2
+    input_file_path = f"jobs/{job.id}/input/{file.filename}"
+    try:
+        s3_client.put_object(
+            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+            Key=input_file_path,
+            Body=contents
+        )
+        job.input_file_path = input_file_path
+    except Exception as e:
+        db.delete(job)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload file: {str(e)}"
+        )
+    
+    # Create leads directly from CSV (no permutations)
+    leads_to_create = []
+    for row in remapped_rows:
+        lead = Lead(
+            job_id=job.id,
+            user_id=current_user.id,
+            first_name=row.get('first_name', ''),
+            last_name=row.get('last_name', ''),
+            domain=row.get('domain', ''),
+            email=row['email'],
+            verification_status='pending',
+            is_final_result=False,
+        )
+        leads_to_create.append(lead)
+    
+    # Bulk insert leads
+    db.bulk_save_objects(leads_to_create)
+    db.commit()
+    
+    # Queue job for processing
+    try:
+        job_id_str = str(job.id)
+        queue_name = "simple-email-verification-queue"
+        redis_client.lpush(queue_name, job_id_str)
+        print(f"✅ Queued verification job {job.id} to Redis queue '{queue_name}'")
+    except Exception as e:
+        print(f"Failed to queue job: {e}")
+        import traceback
+        traceback.print_exc()
+        pass
+    
+    return JobUploadResponse(
+        job_id=job.id,
+        message="File uploaded successfully. Verification started."
+    )
+
+
 @router.get("", response_model=List[JobResponse])
 async def get_jobs(
+    job_type: Optional[str] = Query(None, description="Filter by job type: 'enrichment' or 'verification'"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     try:
-        jobs = db.query(Job).filter(Job.user_id == current_user.id).order_by(desc(Job.created_at)).all()
-        print(f"Found {len(jobs)} jobs for user {current_user.id}")
+        query = db.query(Job).filter(Job.user_id == current_user.id)
+        
+        # Filter by job_type if provided
+        if job_type:
+            query = query.filter(Job.job_type == job_type)
+        
+        jobs = query.order_by(desc(Job.created_at)).all()
+        print(f"Found {len(jobs)} jobs for user {current_user.id} (filter: {job_type or 'all'})")
         return [JobResponse.model_validate(job) for job in jobs]
     except Exception as e:
         print(f"Error fetching jobs: {e}")
@@ -380,11 +527,17 @@ async def verify_catchalls(
             detail="Job not found"
         )
     
-    # Get all catchall leads for this job
+    # Get all catchall leads for this job that haven't been verified yet
+    from sqlalchemy import not_
     catchall_leads = db.query(Lead).filter(
         Lead.job_id == job_uuid,
         Lead.verification_status == "catchall",
         Lead.user_id == current_user.id
+    ).filter(
+        or_(
+            Lead.verification_tag.is_(None),
+            Lead.verification_tag.notin_(["catchall-verified", "valid-catchall"])
+        )
     ).all()
     
     if not catchall_leads:
@@ -409,9 +562,13 @@ async def verify_catchalls(
                 result = await verifier.verify_email(lead.email)
                 
                 if result["status"] == "valid":
-                    # Update lead: status to valid, add catchall-verified tag
+                    # Update lead: status to valid, add appropriate tag based on job type
                     lead.verification_status = "valid"
-                    lead.verification_tag = "catchall-verified"
+                    # Use "valid-catchall" for verification jobs, "catchall-verified" for enrichment jobs
+                    if job.job_type == "verification":
+                        lead.verification_tag = "valid-catchall"
+                    else:
+                        lead.verification_tag = "catchall-verified"
                     verified_count += 1
                 elif result["status"] == "error":
                     errors.append(f"Error verifying {lead.email}: {result['message']}")

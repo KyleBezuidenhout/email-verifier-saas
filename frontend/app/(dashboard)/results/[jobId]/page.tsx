@@ -58,18 +58,27 @@ export default function ResultsPage() {
     filter === "all"
       ? leads
       : filter === "valid"
-      ? leads.filter((lead) => lead.verification_status === "valid")
+      ? leads.filter((lead) => lead.verification_status === "valid" || lead.verification_tag === "valid-catchall" || lead.verification_tag === "catchall-verified")
       : leads.filter((lead) => lead.verification_status === filter);
 
-  // Valid leads include both regular valid and catchall-verified
-  const validLeads = leads.filter((l) => l.verification_status === "valid");
-  const catchallLeads = leads.filter((l) => l.verification_status === "catchall");
+  // Valid leads include both regular valid and catchall-verified/valid-catchall
+  const validLeads = leads.filter((l) => 
+    l.verification_status === "valid" || 
+    l.verification_tag === "catchall-verified" || 
+    l.verification_tag === "valid-catchall"
+  );
+  // Catchall leads that haven't been verified yet
+  const catchallLeads = leads.filter((l) => 
+    l.verification_status === "catchall" && 
+    l.verification_tag !== "catchall-verified" && 
+    l.verification_tag !== "valid-catchall"
+  );
   const notFoundLeads = leads.filter((l) => l.verification_status === "invalid" || l.verification_status === "not_found");
   
   // Check if user can verify catchalls (has API key and job has catchall leads)
   const canVerifyCatchalls = user?.catchall_verifier_api_key && catchallLeads.length > 0;
   
-  const totalVerified = validLeads.length + catchallLeads.length;
+  const totalVerified = validLeads.length; // Only count verified emails (includes valid-catchall)
   const totalCost = job ? (job.cost_in_credits || 0) * 0.1 : 0;
   const costPerEmail = totalVerified > 0 ? totalCost / totalVerified : 0;
   const competitorCost = totalVerified * 0.50; // Competitors charge $0.50 per email
@@ -80,7 +89,7 @@ export default function ResultsPage() {
     : 0;
 
   const downloadCSV = () => {
-    const headers = ["First Name", "Last Name", "Website", "Email", "Status"];
+    const headers = ["First Name", "Last Name", "Website", "Email", "Status", "Tag"];
     const csv = [
       headers.join(","),
       ...filteredLeads.map((lead) =>
@@ -89,7 +98,8 @@ export default function ResultsPage() {
           lead.last_name,
           lead.domain,
           lead.email,
-          lead.verification_status,
+          lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status,
+          lead.verification_tag || "",
         ].join(",")
       ),
     ].join("\n");
@@ -254,7 +264,7 @@ export default function ResultsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-omni-border">
+          <table className="min-w-full divide-y divide-dashbrd-border">
             <thead className="bg-dashbrd-card">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
@@ -275,9 +285,12 @@ export default function ResultsPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
                   Score
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
+                  Tag
+                </th>
               </tr>
             </thead>
-            <tbody className="bg-dashbrd-card divide-y divide-omni-border">
+            <tbody className="bg-dashbrd-card divide-y divide-dashbrd-border">
               {filteredLeads.map((lead) => (
                 <tr key={lead.id} className="hover:bg-dashbrd-card transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text">
@@ -296,24 +309,32 @@ export default function ResultsPage() {
                     <div className="flex items-center gap-2">
                       <span
                         className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          lead.verification_status === "valid"
+                          lead.verification_status === "valid" || lead.verification_tag === "valid-catchall"
                             ? "bg-green-900/20 text-green-300 border border-green-800"
                             : lead.verification_status === "catchall"
                             ? "bg-yellow-900/20 text-yellow-300 border border-yellow-800"
                             : "bg-red-900/20 text-red-300 border border-red-800"
                         }`}
                       >
-                        {lead.verification_status}
+                        {lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status}
                       </span>
                       {lead.verification_tag === "catchall-verified" && (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-dashbrd-accent/20 text-dashbrd-accent border border-omni-cyan/30">
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-dashbrd-accent/20 text-dashbrd-accent border border-dashbrd-accent/30">
                           Catchall-Verified
+                        </span>
+                      )}
+                      {lead.verification_tag === "valid-catchall" && (
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-900/30 text-green-300 border border-green-600">
+                          Valid-Catchall
                         </span>
                       )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text-muted">
                     {lead.prevalence_score || "-"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text-muted">
+                    {lead.verification_tag || "-"}
                   </td>
                 </tr>
               ))}

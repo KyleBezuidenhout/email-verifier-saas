@@ -4,15 +4,17 @@ import { useState, useEffect } from "react";
 import Papa, { ParseResult } from "papaparse";
 
 interface ColumnMapping {
-  first_name: string;
-  last_name: string;
-  website: string;
+  first_name?: string;
+  last_name?: string;
+  website?: string;
+  email?: string;
   company_size?: string;
 }
 
 interface FilePreviewProps {
   file: File;
   onMappingChange?: (mapping: ColumnMapping, isValid: boolean) => void;
+  mode?: 'enrichment' | 'verification'; // 'enrichment' requires first_name, last_name, website; 'verification' requires email
 }
 
 // Column variations for auto-detection
@@ -20,10 +22,16 @@ const COLUMN_VARIATIONS: Record<keyof ColumnMapping, string[]> = {
   first_name: ["firstname", "first", "fname", "givenname", "first_name"],
   last_name: ["lastname", "last", "lname", "surname", "familyname", "last_name"],
   website: ["website", "domain", "companywebsite", "companydomain", "url", "companyurl", "company_website"],
+  email: ["email", "emailaddress", "e-mail", "email_address", "mail"],
   company_size: ["companysize", "company_size", "size", "employees", "employeecount", "headcount"],
 };
 
-const REQUIRED_COLUMNS: (keyof ColumnMapping)[] = ["first_name", "last_name", "website"];
+const getRequiredColumns = (mode?: 'enrichment' | 'verification'): (keyof ColumnMapping)[] => {
+  if (mode === 'verification') {
+    return ['email'];
+  }
+  return ['first_name', 'last_name', 'website'];
+};
 
 // Normalize header for comparison
 const normalizeHeader = (h: string) => h.toLowerCase().replace(/[\s_-]/g, "");
@@ -41,7 +49,7 @@ const autoDetectColumn = (fileHeaders: string[], targetColumn: keyof ColumnMappi
   return null;
 };
 
-export function FilePreview({ file, onMappingChange }: FilePreviewProps) {
+export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: FilePreviewProps) {
   const [preview, setPreview] = useState<Record<string, string>[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,11 +60,13 @@ export function FilePreview({ file, onMappingChange }: FilePreviewProps) {
     first_name: "",
     last_name: "",
     website: "",
+    email: "",
     company_size: "",
   });
   const [unmappedColumns, setUnmappedColumns] = useState<(keyof ColumnMapping)[]>([]);
 
   useEffect(() => {
+    const requiredColumns = getRequiredColumns(mode);
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
@@ -71,11 +81,12 @@ export function FilePreview({ file, onMappingChange }: FilePreviewProps) {
             first_name: autoDetectColumn(fileHeaders, "first_name") || "",
             last_name: autoDetectColumn(fileHeaders, "last_name") || "",
             website: autoDetectColumn(fileHeaders, "website") || "",
+            email: autoDetectColumn(fileHeaders, "email") || "",
             company_size: autoDetectColumn(fileHeaders, "company_size") || "",
           };
           
           // Find which required columns couldn't be auto-detected
-          const needsMapping = REQUIRED_COLUMNS.filter(col => !detectedMapping[col]);
+          const needsMapping = requiredColumns.filter(col => !detectedMapping[col]);
           
           setMapping(detectedMapping);
           setUnmappedColumns(needsMapping);
@@ -94,7 +105,7 @@ export function FilePreview({ file, onMappingChange }: FilePreviewProps) {
       });
     };
     reader.readAsText(file);
-  }, [file, onMappingChange]);
+  }, [file, onMappingChange, mode]);
 
   // Handle manual column selection
   const handleColumnSelect = (targetColumn: keyof ColumnMapping, selectedHeader: string) => {
@@ -102,7 +113,8 @@ export function FilePreview({ file, onMappingChange }: FilePreviewProps) {
     setMapping(newMapping);
     
     // Update unmapped columns
-    const stillUnmapped = REQUIRED_COLUMNS.filter(col => !newMapping[col]);
+    const requiredColumns = getRequiredColumns(mode);
+    const stillUnmapped = requiredColumns.filter(col => !newMapping[col]);
     setUnmappedColumns(stillUnmapped);
     
     // Notify parent
@@ -115,6 +127,7 @@ export function FilePreview({ file, onMappingChange }: FilePreviewProps) {
       first_name: "First Name",
       last_name: "Last Name",
       website: "Website/Domain",
+      email: "Email",
       company_size: "Company Size (optional)",
     };
     return labels[col];
@@ -140,20 +153,20 @@ export function FilePreview({ file, onMappingChange }: FilePreviewProps) {
     <div className="mt-4 space-y-4">
       {/* Column Mapping Section - only show if there are unmapped columns */}
       {unmappedColumns.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <h4 className="text-sm font-medium text-amber-800 mb-3">
+        <div className="bg-yellow-900/20 border border-yellow-800 rounded-lg p-4">
+          <h4 className="text-sm font-medium text-yellow-300 mb-3">
             📋 Please map the following columns:
           </h4>
           <div className="space-y-3">
             {unmappedColumns.map((col) => (
               <div key={col} className="flex items-center gap-3">
-                <label className="text-sm text-gray-700 w-40">
+                <label className="text-sm text-dashbrd-text w-40">
                   {getColumnLabel(col)}:
                 </label>
                 <select
-                  value={mapping[col]}
+                  value={mapping[col] || ""}
                   onChange={(e) => handleColumnSelect(col, e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="dashbrd-input flex-1 text-sm"
                 >
                   <option value="">-- Select column --</option>
                   {headers.map((header) => (
@@ -170,7 +183,7 @@ export function FilePreview({ file, onMappingChange }: FilePreviewProps) {
 
       {/* Success message when all columns are mapped */}
       {unmappedColumns.length === 0 && (
-        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+        <div className="badge-success px-4 py-3 rounded-lg text-sm flex items-center gap-2">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
@@ -179,57 +192,76 @@ export function FilePreview({ file, onMappingChange }: FilePreviewProps) {
       )}
 
       {/* Column Mapping Summary */}
-      <div className="bg-gray-50 border rounded-lg p-4">
-        <h4 className="text-sm font-medium text-gray-700 mb-2">Column Mapping:</h4>
+      <div className="bg-dashbrd-card border border-dashbrd-border rounded-lg p-4">
+        <h4 className="text-sm font-medium text-dashbrd-text mb-2">Column Mapping:</h4>
         <div className="grid grid-cols-2 gap-2 text-sm">
-          <div className="text-gray-600">First Name →</div>
-          <div className={mapping.first_name ? "text-green-700 font-medium" : "text-red-600"}>
-            {mapping.first_name || "Not mapped"}
-          </div>
-          <div className="text-gray-600">Last Name →</div>
-          <div className={mapping.last_name ? "text-green-700 font-medium" : "text-red-600"}>
-            {mapping.last_name || "Not mapped"}
-          </div>
-          <div className="text-gray-600">Website →</div>
-          <div className={mapping.website ? "text-green-700 font-medium" : "text-red-600"}>
-            {mapping.website || "Not mapped"}
-          </div>
-          <div className="text-gray-600">Company Size →</div>
-          <div className={mapping.company_size ? "text-green-700 font-medium" : "text-gray-400"}>
-            {mapping.company_size || "Not mapped (optional)"}
-          </div>
+          {mode === 'verification' ? (
+            <>
+              <div className="text-dashbrd-text-muted">Email →</div>
+              <div className={mapping.email ? "text-green-400 font-medium" : "text-red-400"}>
+                {mapping.email || "Not mapped (required)"}
+              </div>
+              <div className="text-dashbrd-text-muted">First Name →</div>
+              <div className={mapping.first_name ? "text-green-400 font-medium" : "text-dashbrd-text-muted"}>
+                {mapping.first_name || "Not mapped (optional)"}
+              </div>
+              <div className="text-dashbrd-text-muted">Last Name →</div>
+              <div className={mapping.last_name ? "text-green-400 font-medium" : "text-dashbrd-text-muted"}>
+                {mapping.last_name || "Not mapped (optional)"}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-dashbrd-text-muted">First Name →</div>
+              <div className={mapping.first_name ? "text-green-400 font-medium" : "text-red-400"}>
+                {mapping.first_name || "Not mapped"}
+              </div>
+              <div className="text-dashbrd-text-muted">Last Name →</div>
+              <div className={mapping.last_name ? "text-green-400 font-medium" : "text-red-400"}>
+                {mapping.last_name || "Not mapped"}
+              </div>
+              <div className="text-dashbrd-text-muted">Website →</div>
+              <div className={mapping.website ? "text-green-400 font-medium" : "text-red-400"}>
+                {mapping.website || "Not mapped"}
+              </div>
+              <div className="text-dashbrd-text-muted">Company Size →</div>
+              <div className={mapping.company_size ? "text-green-400 font-medium" : "text-dashbrd-text-muted"}>
+                {mapping.company_size || "Not mapped (optional)"}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Preview Table */}
       {preview.length > 0 && (
-        <div className="bg-white border rounded-lg overflow-hidden">
-          <div className="px-4 py-2 bg-gray-50 border-b">
-            <p className="text-sm font-medium text-gray-700">
+        <div className="dashbrd-card overflow-hidden">
+          <div className="px-4 py-2 bg-dashbrd-card-hover border-b border-dashbrd-border">
+            <p className="text-sm font-medium text-dashbrd-text">
               Preview (first 5 rows)
             </p>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-dashbrd-border">
+              <thead className="bg-dashbrd-card-hover">
                 <tr>
                   {headers.map((header) => (
                     <th
                       key={header}
-                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      className="px-4 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase tracking-wider"
                     >
                       {header}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-dashbrd-card divide-y divide-dashbrd-border">
                 {preview.map((row, i) => (
                   <tr key={i}>
                     {headers.map((header) => (
                       <td
                         key={header}
-                        className="px-4 py-3 whitespace-nowrap text-sm text-gray-900"
+                        className="px-4 py-3 whitespace-nowrap text-sm text-dashbrd-text"
                       >
                         {row[header] || "-"}
                       </td>

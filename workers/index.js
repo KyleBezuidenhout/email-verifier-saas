@@ -308,20 +308,23 @@ async function processJob(jobId) {
     }
     
     const jobData = jobResult.rows[0];
+    const jobType = jobData.job_type || 'enrichment'; // Default to enrichment for backward compatibility
     
     // Update job status to processing
     await updateJobStatus(jobId, 'processing');
     
     // Get all leads for this job
+    // For verification jobs, no need to order by prevalence_score
+    const orderBy = jobType === 'verification' ? 'id' : 'prevalence_score DESC';
     const leadsResult = await pgPool.query(
-      'SELECT * FROM leads WHERE job_id = $1 ORDER BY prevalence_score DESC',
+      `SELECT * FROM leads WHERE job_id = $1 ORDER BY ${orderBy}`,
       [jobId]
     );
     
     const leads = leadsResult.rows;
     const totalLeads = leads.length;
     
-    console.log(`Found ${totalLeads} leads to verify`);
+    console.log(`Found ${totalLeads} leads to verify (job_type: ${jobType})`);
     
     if (totalLeads === 0) {
       await updateJobStatus(jobId, 'completed', {
@@ -383,47 +386,71 @@ async function processJob(jobId) {
     
     console.log(`Verification complete. Valid: ${validCount}, Catchall: ${catchallCount}, Processed: ${processedCount}`);
     
-    // Apply deduplication
-    console.log('Applying deduplication...');
-    const allLeads = await pgPool.query(
-      'SELECT * FROM leads WHERE job_id = $1',
-      [jobId]
-    );
+    let finalValidCount, finalCatchallCount, finalResultIds;
     
-    const finalResults = deduplicateLeads(allLeads.rows);
-    
-    // Mark final results in database
-    const finalResultIds = [];
-    
-    for (const result of finalResults) {
-      if (result.id) {
-        finalResultIds.push(result.id);
-      } else if (result.verification_status === 'not_found') {
-        const notFoundLead = await pgPool.query(
-          `SELECT id FROM leads 
-           WHERE job_id = $1 
-           AND first_name = $2 
-           AND last_name = $3 
-           AND domain = $4 
-           LIMIT 1`,
-          [jobId, result.first_name, result.last_name, result.domain]
-        );
-        
-        if (notFoundLead.rows.length > 0) {
-          await pgPool.query(
-            'UPDATE leads SET email = $1, verification_status = $2, is_final_result = true WHERE id = $3',
-            ['', 'not_found', notFoundLead.rows[0].id]
-          );
-          finalResultIds.push(notFoundLead.rows[0].id);
+    if (jobType === 'verification') {
+      // For verification jobs: skip deduplication, mark all valid/catchall as final results
+      console.log('Verification job: skipping deduplication, marking all results as final');
+      
+      const allLeads = await pgPool.query(
+        'SELECT * FROM leads WHERE job_id = $1',
+        [jobId]
+      );
+      
+      finalResultIds = [];
+      for (const lead of allLeads.rows) {
+        if (lead.verification_status === 'valid' || lead.verification_status === 'catchall' || lead.verification_status === 'invalid') {
+          finalResultIds.push(lead.id);
         }
       }
+      
+      await markFinalResults(finalResultIds);
+      
+      finalValidCount = validCount;
+      finalCatchallCount = catchallCount;
+    } else {
+      // For enrichment jobs: apply deduplication logic
+      console.log('Applying deduplication...');
+      const allLeads = await pgPool.query(
+        'SELECT * FROM leads WHERE job_id = $1',
+        [jobId]
+      );
+      
+      const finalResults = deduplicateLeads(allLeads.rows);
+      
+      // Mark final results in database
+      finalResultIds = [];
+      
+      for (const result of finalResults) {
+        if (result.id) {
+          finalResultIds.push(result.id);
+        } else if (result.verification_status === 'not_found') {
+          const notFoundLead = await pgPool.query(
+            `SELECT id FROM leads 
+             WHERE job_id = $1 
+             AND first_name = $2 
+             AND last_name = $3 
+             AND domain = $4 
+             LIMIT 1`,
+            [jobId, result.first_name, result.last_name, result.domain]
+          );
+          
+          if (notFoundLead.rows.length > 0) {
+            await pgPool.query(
+              'UPDATE leads SET email = $1, verification_status = $2, is_final_result = true WHERE id = $3',
+              ['', 'not_found', notFoundLead.rows[0].id]
+            );
+            finalResultIds.push(notFoundLead.rows[0].id);
+          }
+        }
+      }
+      
+      await markFinalResults(finalResultIds);
+      
+      // Update final counts
+      finalValidCount = finalResults.filter(r => r.verification_status === 'valid').length;
+      finalCatchallCount = finalResults.filter(r => r.verification_status === 'catchall').length;
     }
-    
-    await markFinalResults(finalResultIds);
-    
-    // Update final counts
-    const finalValidCount = finalResults.filter(r => r.verification_status === 'valid').length;
-    const finalCatchallCount = finalResults.filter(r => r.verification_status === 'catchall').length;
     
     // Calculate cost
     const costInCredits = finalValidCount + finalCatchallCount;
@@ -448,12 +475,12 @@ async function processJob(jobId) {
     console.log(`Job ${jobId} completed successfully!`);
     console.log(`Final results: ${finalValidCount} valid, ${finalCatchallCount} catchall`);
     
-      return {
-        status: 'completed',
-        processedCount: uniquePeopleCount,
-        validCount: finalValidCount,
-        catchallCount: finalCatchallCount,
-      };
+    return {
+      status: 'completed',
+      processedCount: processedCount,
+      validCount: finalValidCount,
+      catchallCount: finalCatchallCount,
+    };
     
   } catch (error) {
     console.error(`Error processing job ${jobId}:`, error);

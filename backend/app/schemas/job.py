@@ -8,6 +8,7 @@ class JobResponse(BaseModel):
     id: UUID
     user_id: UUID
     status: str
+    job_type: Optional[str] = "enrichment"  # enrichment or verification
     original_filename: Optional[str]
     total_leads: int
     processed_leads: int

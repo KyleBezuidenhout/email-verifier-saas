@@ -163,8 +163,20 @@ class ApiClient {
     return this.requestWithFile<UploadResponse>("/api/v1/jobs/upload", file, options);
   }
 
-  async getJobs(): Promise<Job[]> {
-    return this.request<Job[]>("/api/v1/jobs");
+  async uploadVerifyFile(
+    file: File,
+    options?: {
+      column_email?: string;
+      column_first_name?: string;
+      column_last_name?: string;
+    }
+  ): Promise<UploadResponse> {
+    return this.requestWithFile<UploadResponse>("/api/v1/jobs/verify-upload", file, options);
+  }
+
+  async getJobs(jobType?: 'enrichment' | 'verification'): Promise<Job[]> {
+    const url = jobType ? `/api/v1/jobs?job_type=${jobType}` : "/api/v1/jobs";
+    return this.request<Job[]>(url);
   }
 
   async getJob(jobId: string): Promise<Job> {

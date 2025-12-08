@@ -14,6 +14,7 @@ export interface Job {
   id: string;
   user_id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
+  job_type?: 'enrichment' | 'verification';
   original_filename?: string;
   total_leads: number;
   processed_leads: number;
