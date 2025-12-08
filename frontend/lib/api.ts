@@ -178,6 +178,12 @@ class ApiClient {
     });
   }
 
+  async regenerateApiKey(): Promise<User> {
+    return this.request<User>("/api/v1/auth/regenerate-api-key", {
+      method: "POST",
+    });
+  }
+
   // Job endpoints
   async uploadFile(
     file: File,

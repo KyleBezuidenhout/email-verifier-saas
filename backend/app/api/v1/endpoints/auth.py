@@ -155,3 +155,27 @@ async def logout():
     # If you need server-side logout, you'd need to maintain a token blacklist
     return {"message": "Successfully logged out"}
 
+
+@router.post("/regenerate-api-key", response_model=UserResponse)
+async def regenerate_api_key(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Regenerate the user's API key. Old key will no longer work."""
+    import uuid
+    current_user.api_key = uuid.uuid4()
+    db.commit()
+    db.refresh(current_user)
+    
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        company_name=current_user.company_name,
+        credits=current_user.credits,
+        api_key=current_user.api_key,
+        catchall_verifier_api_key=current_user.catchall_verifier_api_key,
+        is_active=current_user.is_active,
+        created_at=current_user.created_at.isoformat(),
+    )
+
