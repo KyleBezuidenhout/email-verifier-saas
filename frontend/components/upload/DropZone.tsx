@@ -47,12 +47,19 @@ export function DropZone({ onFileSelect, selectedFile }: DropZoneProps) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={cn(
-        "border-2 border-dashed rounded-lg p-12 text-center transition-colors",
+        "relative border-2 border-dashed rounded-xl p-16 text-center transition-all duration-300 overflow-hidden",
         isDragging
-          ? "border-blue-500 bg-blue-50"
-          : "border-gray-300 hover:border-gray-400"
+          ? "border-omni-cyan bg-omni-dark/50"
+          : "border-omni-border bg-omni-dark/30 hover:border-omni-cyan/50"
       )}
     >
+      {/* Concentric rings background effect */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="absolute w-64 h-64 rounded-full border border-omni-border/20"></div>
+        <div className="absolute w-96 h-96 rounded-full border border-omni-border/10"></div>
+        <div className="absolute w-[32rem] h-[32rem] rounded-full border border-omni-border/5"></div>
+      </div>
+
       <input
         type="file"
         id="file-upload"
@@ -60,39 +67,50 @@ export function DropZone({ onFileSelect, selectedFile }: DropZoneProps) {
         onChange={handleFileInput}
         className="hidden"
       />
-      <label htmlFor="file-upload" className="cursor-pointer">
-        <div className="space-y-4">
-          <div className="mx-auto w-12 h-12 text-gray-400">
+      <label htmlFor="file-upload" className="cursor-pointer relative z-10">
+        <div className="space-y-6">
+          {/* Document icon with upload button overlay */}
+          <div className="mx-auto relative w-20 h-20">
+            {/* Document icon */}
             <svg
-              fill="none"
-              stroke="currentColor"
               viewBox="0 0 24 24"
-              className="w-full h-full"
+              fill="none"
+              className="w-full h-full text-omni-gray"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
+              <rect x="6" y="4" width="12" height="16" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
+              <line x1="9" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <line x1="9" y1="16" x2="13" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
             </svg>
+            {/* Upload button overlay */}
+            <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-omni-cyan rounded-full flex items-center justify-center shadow-lg">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                className="w-5 h-5 text-omni-black"
+              >
+                <path d="M12 5v14M5 12l7-7 7 7" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
           </div>
-          <div>
-            <p className="text-lg font-medium text-gray-900">
-              {selectedFile ? selectedFile.name : "Drop your CSV file here"}
+          
+          <div className="space-y-2">
+            <p className="text-xl font-bold text-omni-white">
+              {selectedFile ? selectedFile.name : "Import new file"}
             </p>
-            <p className="text-sm text-gray-500 mt-2">
-              or{" "}
-              <span className="text-blue-600 hover:text-blue-500 font-medium">
-                browse
-              </span>{" "}
-              to upload
-            </p>
-            {selectedFile && (
-              <p className="text-xs text-gray-400 mt-1">
-                {(selectedFile.size / 1024).toFixed(2)} KB
+            <div className="space-y-1">
+              <p className="text-sm text-omni-gray">
+                Maximum file size: 50 MB (10K records MAX)
               </p>
-            )}
+              <p className="text-sm text-omni-gray">
+                Supported format:{" "}
+                <span className="px-2 py-0.5 bg-omni-dark border border-omni-border rounded-full text-omni-white">
+                  .CSV
+                </span>
+              </p>
+            </div>
           </div>
         </div>
       </label>

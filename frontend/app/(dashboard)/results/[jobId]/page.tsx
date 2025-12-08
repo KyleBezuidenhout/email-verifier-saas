@@ -115,7 +115,7 @@ export default function ResultsPage() {
   if (error || !job) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 px-4 py-3 rounded-lg">
+        <div className="bg-red-900/20 border border-red-800 text-red-300 px-4 py-3 rounded-lg">
           {error || "Job not found"}
         </div>
       </div>
@@ -127,28 +127,28 @@ export default function ResultsPage() {
       <div className="mb-8">
         <Link
           href="/dashboard"
-          className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-500 mb-4 inline-block"
+          className="text-omni-cyan hover:opacity-80 transition-opacity mb-4 inline-block"
         >
           ← Back to Dashboard
         </Link>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Results</h1>
-        <p className="mt-2 text-gray-600 dark:text-gray-400">Job ID: {jobId}</p>
+        <h1 className="text-3xl font-bold text-omni-white">Results</h1>
+        <p className="mt-2 text-omni-gray">Job ID: {jobId}</p>
       </div>
 
       {/* Summary Banner */}
       {totalVerified > 0 && (
-        <div className="mb-8 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg p-6 border border-green-200 dark:border-green-800">
+        <div className="mb-8 bg-omni-dark border border-omni-border rounded-lg p-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              <h2 className="text-2xl font-bold text-omni-white mb-2">
                 ✅ Verified {totalVerified} emails in {processingTime} minutes for ${totalCost.toFixed(2)}
               </h2>
               <div className="flex flex-wrap gap-4 text-sm">
-                <span className="text-gray-700 dark:text-gray-300">
-                  Cost per email: <strong>${costPerEmail.toFixed(2)}</strong>
+                <span className="text-omni-gray">
+                  Cost per email: <strong className="text-omni-white">${costPerEmail.toFixed(2)}</strong>
                 </span>
                 {savings > 0 && (
-                  <span className="text-green-700 dark:text-green-300">
+                  <span className="text-omni-cyan">
                     💰 You saved <strong>${savings.toFixed(2)}</strong> vs competitors
                   </span>
                 )}
@@ -159,39 +159,39 @@ export default function ResultsPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Total Leads</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{job.total_leads}</p>
+        <div className="bg-omni-dark border border-omni-border p-6 rounded-lg">
+          <p className="text-sm text-omni-gray">Total Leads</p>
+          <p className="text-2xl font-bold text-omni-white">{job.total_leads}</p>
         </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Valid Emails</p>
-          <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+        <div className="bg-omni-dark border border-omni-border p-6 rounded-lg">
+          <p className="text-sm text-omni-gray">Valid Emails</p>
+          <p className="text-2xl font-bold text-omni-cyan">
             {validLeads.length}
           </p>
         </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Catchall Emails</p>
-          <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+        <div className="bg-omni-dark border border-omni-border p-6 rounded-lg">
+          <p className="text-sm text-omni-gray">Catchall Emails</p>
+          <p className="text-2xl font-bold text-omni-cyan">
             {catchallLeads.length}
           </p>
         </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Not Found</p>
-          <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+        <div className="bg-omni-dark border border-omni-border p-6 rounded-lg">
+          <p className="text-sm text-omni-gray">Not Found</p>
+          <p className="text-2xl font-bold text-red-400">
             {notFoundLeads.length}
           </p>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className="bg-omni-dark border border-omni-border rounded-lg p-6">
         <div className="flex justify-between items-center mb-4">
           <div className="flex space-x-2">
             <button
               onClick={() => setFilter("all")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "all"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  ? "bg-omni-cyan text-omni-black font-medium"
+                  : "bg-omni-black border border-omni-border text-omni-gray hover:bg-omni-dark"
               }`}
             >
               All ({leads.length})
@@ -200,8 +200,8 @@ export default function ResultsPage() {
               onClick={() => setFilter("valid")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "valid"
-                  ? "bg-green-600 text-white"
-                  : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  ? "bg-omni-cyan text-omni-black font-medium"
+                  : "bg-omni-black border border-omni-border text-omni-gray hover:bg-omni-dark"
               }`}
             >
               Valid ({validLeads.length})
@@ -210,8 +210,8 @@ export default function ResultsPage() {
               onClick={() => setFilter("catchall")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "catchall"
-                  ? "bg-yellow-600 text-white"
-                  : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  ? "bg-omni-cyan text-omni-black font-medium"
+                  : "bg-omni-black border border-omni-border text-omni-gray hover:bg-omni-dark"
               }`}
             >
               Catchall ({catchallLeads.length})
@@ -227,7 +227,7 @@ export default function ResultsPage() {
                         window.location.href = "/settings";
                       }
                     }}
-                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 dark:bg-yellow-500 dark:hover:bg-yellow-600 transition-colors text-sm"
+                    className="px-4 py-2 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
                     title="Add your Catchall Verifier API key in Settings to verify catchall emails"
                   >
                     Verify Catchalls (Add API Key)
@@ -236,7 +236,7 @@ export default function ResultsPage() {
                   <button
                     onClick={handleVerifyCatchalls}
                     disabled={verifyingCatchalls}
-                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 dark:bg-yellow-500 dark:hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center space-x-2"
+                    className="px-4 py-2 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2"
                   >
                     {verifyingCatchalls && <LoadingSpinner size="sm" />}
                     <span>{verifyingCatchalls ? "Verifying..." : "Verify Catchalls"}</span>
@@ -246,7 +246,7 @@ export default function ResultsPage() {
             )}
             <button
               onClick={downloadCSV}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors text-sm"
+              className="px-4 py-2 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
             >
               Download CSV
             </button>
@@ -254,42 +254,42 @@ export default function ResultsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+          <table className="min-w-full divide-y divide-omni-border">
+            <thead className="bg-omni-dark">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
                   First Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
                   Last Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
                   Website
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
                   Email
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase">
                   Score
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="bg-omni-black divide-y divide-omni-border">
               {filteredLeads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                <tr key={lead.id} className="hover:bg-omni-dark transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-white">
                     {lead.first_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-white">
                     {lead.last_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-gray">
                     {lead.domain}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-white">
                     {lead.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -297,22 +297,22 @@ export default function ResultsPage() {
                       <span
                         className={`px-2 py-1 text-xs font-semibold rounded-full ${
                           lead.verification_status === "valid"
-                            ? "bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300"
+                            ? "bg-green-900/20 text-green-300 border border-green-800"
                             : lead.verification_status === "catchall"
-                            ? "bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300"
-                            : "bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300"
+                            ? "bg-yellow-900/20 text-yellow-300 border border-yellow-800"
+                            : "bg-red-900/20 text-red-300 border border-red-800"
                         }`}
                       >
                         {lead.verification_status}
                       </span>
                       {lead.verification_tag === "catchall-verified" && (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300">
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-omni-cyan/20 text-omni-cyan border border-omni-cyan/30">
                           Catchall-Verified
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-gray">
                     {lead.prevalence_score || "-"}
                   </td>
                 </tr>

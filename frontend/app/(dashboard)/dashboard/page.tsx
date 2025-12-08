@@ -96,21 +96,21 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Job Dashboard</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
+          <h1 className="text-3xl font-bold text-omni-white">Job Dashboard</h1>
+          <p className="mt-2 text-omni-gray">
             Manage and monitor your email verification jobs
           </p>
         </div>
         <Link
           href="/upload"
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
+          className="px-4 py-2 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 transition-opacity font-medium"
         >
           Upload CSV
         </Link>
       </div>
 
       {error && (
-        <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 px-4 py-3 rounded-lg text-sm">
+        <div className="mb-4 bg-red-900/20 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">
           {error}
         </div>
       )}

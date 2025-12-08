@@ -65,20 +65,20 @@ export default function UploadPage() {
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Hero Section */}
       <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+        <h1 className="text-4xl font-bold text-omni-white mb-4">
           Upload. Verify. Download. Done.
         </h1>
-        <p className="text-lg text-gray-600 dark:text-gray-400 mb-6">
+        <p className="text-lg text-omni-gray mb-6">
           Process up to 250M leads • Results in minutes, not hours
         </p>
         <div className="flex flex-wrap gap-3 justify-center">
-          <span className="px-3 py-1 rounded-full text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+          <span className="px-3 py-1 rounded-full text-sm bg-omni-dark border border-omni-border text-omni-cyan">
             ⚡ Lightning-fast
           </span>
-          <span className="px-3 py-1 rounded-full text-sm bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
+          <span className="px-3 py-1 rounded-full text-sm bg-omni-dark border border-omni-border text-omni-cyan">
             💰 10x cheaper
           </span>
-          <span className="px-3 py-1 rounded-full text-sm bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+          <span className="px-3 py-1 rounded-full text-sm bg-omni-dark border border-omni-border text-omni-cyan">
             📈 250M+ capacity
           </span>
         </div>
@@ -88,15 +88,15 @@ export default function UploadPage() {
       <div className="mb-6 flex gap-4 justify-center">
         <button
           onClick={() => setShowSalesNavModal(true)}
-          className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg"
+          className="px-6 py-3 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 transition-opacity font-medium"
         >
           📋 Import from SalesNav
         </button>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+      <div className="bg-omni-dark border border-omni-border rounded-lg p-6 space-y-6">
         {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 px-4 py-3 rounded-lg text-sm">
+          <div className="bg-red-900/20 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">
             {error}
           </div>
         )}
@@ -113,18 +113,18 @@ export default function UploadPage() {
 
         {selectedFile && (
           <>
-            <div className="border-t pt-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
+            <div className="border-t border-omni-border pt-6">
+              <h3 className="text-lg font-medium text-omni-white mb-4">
                 File Information
               </h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-gray-500">File name:</span>
-                  <span className="ml-2 font-medium">{selectedFile.name}</span>
+                  <span className="text-omni-gray">File name:</span>
+                  <span className="ml-2 font-medium text-omni-white">{selectedFile.name}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">File size:</span>
-                  <span className="ml-2 font-medium">
+                  <span className="text-omni-gray">File size:</span>
+                  <span className="ml-2 font-medium text-omni-white">
                     {formatFileSize(selectedFile.size)}
                   </span>
                 </div>
@@ -134,15 +134,15 @@ export default function UploadPage() {
             <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
 
             {!isVerificationOnly && (
-              <div className="border-t dark:border-gray-700 pt-6">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              <div className="border-t border-omni-border pt-6">
+                <h3 className="text-lg font-medium text-omni-white mb-4">
                   Advanced Options
                 </h3>
                 <div className="space-y-4">
                   <div>
                     <label
                       htmlFor="company-size"
-                      className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                      className="block text-sm font-medium text-omni-gray mb-2"
                     >
                       Company Size (optional)
                     </label>
@@ -150,7 +150,7 @@ export default function UploadPage() {
                       id="company-size"
                       value={companySize}
                       onChange={(e) => setCompanySize(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                      className="w-full px-4 py-2 border border-omni-border rounded-lg focus:ring-2 focus:ring-omni-cyan focus:border-omni-cyan bg-omni-black text-omni-white"
                     >
                       <option value="">Select company size</option>
                       <option value="1-50">1-50 employees</option>
@@ -163,10 +163,10 @@ export default function UploadPage() {
               </div>
             )}
 
-            <div className="flex justify-end space-x-4 pt-6 border-t dark:border-gray-700">
+            <div className="flex justify-end space-x-4 pt-6 border-t border-omni-border">
               <button
                 onClick={() => setSelectedFile(null)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                className="px-4 py-2 border border-omni-border rounded-lg text-omni-gray hover:bg-omni-dark transition-colors"
                 disabled={uploading}
               >
                 Cancel
@@ -174,7 +174,7 @@ export default function UploadPage() {
               <button
                 onClick={handleUpload}
                 disabled={uploading || !isMappingValid}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                className="px-6 py-2 bg-omni-cyan text-omni-black rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 font-medium transition-opacity"
                 title={!isMappingValid ? "Please map all required columns first" : ""}
               >
                 {uploading && <LoadingSpinner size="sm" />}

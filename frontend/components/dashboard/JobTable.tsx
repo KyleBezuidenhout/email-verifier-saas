@@ -23,44 +23,44 @@ export function JobTable({ jobs, onDelete }: JobTableProps) {
   };
 
   return (
-    <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+    <div className="bg-omni-dark border border-omni-border rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <table className="min-w-full divide-y divide-omni-border">
+          <thead className="bg-omni-dark">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase tracking-wider">
                 Job ID
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase tracking-wider">
                 Upload Date
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase tracking-wider">
                 Leads
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase tracking-wider">
                 Progress
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase tracking-wider">
                 Verified
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-omni-gray uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-omni-black divide-y divide-omni-border">
             {jobs.map((job) => (
-              <tr key={job.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
+              <tr key={job.id} className="hover:bg-omni-dark transition-colors">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-omni-white">
                   {job.id.slice(0, 8)}...
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-gray">
                   {formatDate(job.created_at)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-white">
                   {job.total_leads}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -73,9 +73,9 @@ export function JobTable({ jobs, onDelete }: JobTableProps) {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-omni-dark rounded-full h-2">
                     <div
-                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      className="bg-omni-cyan h-2 rounded-full transition-all"
                       style={{
                         width: `${calculateProgress(
                           job.processed_leads,
@@ -84,31 +84,31 @@ export function JobTable({ jobs, onDelete }: JobTableProps) {
                       }}
                     />
                   </div>
-                  <span className="text-xs text-gray-500 mt-1">
+                  <span className="text-xs text-omni-gray mt-1 block">
                     {calculateProgress(job.processed_leads, job.total_leads)}%
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-omni-white">
                   {job.valid_emails_found + job.catchall_emails_found}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                   <Link
                     href={`/results/${job.id}`}
-                    className="text-blue-600 hover:text-blue-900"
+                    className="text-omni-cyan hover:opacity-80 transition-opacity"
                   >
                     View
                   </Link>
                   {deleteConfirm === job.id ? (
                     <button
                       onClick={() => handleDelete(job.id)}
-                      className="text-red-600 hover:text-red-900"
+                      className="text-red-400 hover:text-red-300 transition-colors"
                     >
                       Confirm
                     </button>
                   ) : (
                     <button
                       onClick={() => handleDelete(job.id)}
-                      className="text-red-600 hover:text-red-900"
+                      className="text-red-400 hover:text-red-300 transition-colors"
                     >
                       Delete
                     </button>
@@ -121,7 +121,7 @@ export function JobTable({ jobs, onDelete }: JobTableProps) {
       </div>
       {jobs.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-500">No jobs yet. Upload a CSV file to get started.</p>
+          <p className="text-omni-gray">No jobs yet. Upload a CSV file to get started.</p>
         </div>
       )}
     </div>
