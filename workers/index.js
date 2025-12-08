@@ -434,7 +434,23 @@ async function pollSimpleQueue() {
   }
 }
 
-// Process job from simple queue (extracted logic)
+// Mark a single lead as final result
+async function markLeadAsFinal(leadId, jobId) {
+  await pgPool.query(
+    'UPDATE leads SET is_final_result = true WHERE id = $1',
+    [leadId]
+  );
+}
+
+// Mark a lead as not_found
+async function markLeadAsNotFound(leadId) {
+  await pgPool.query(
+    'UPDATE leads SET email = $1, verification_status = $2, is_final_result = true WHERE id = $3',
+    ['', 'not_found', leadId]
+  );
+}
+
+// Process job from simple queue with EARLY EXIT optimization
 async function processJobFromQueue(jobId) {
   console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
   
@@ -475,123 +491,131 @@ async function processJobFromQueue(jobId) {
       return { status: 'completed', message: 'No leads to process' };
     }
     
-    let processedPermutations = 0;
+    // ============================================
+    // EARLY EXIT OPTIMIZATION: Group by unique person
+    // ============================================
+    const leadsByPerson = new Map();
+    for (const lead of leads) {
+      const key = `${lead.first_name.toLowerCase()}_${lead.last_name.toLowerCase()}_${lead.domain.toLowerCase()}`;
+      if (!leadsByPerson.has(key)) {
+        leadsByPerson.set(key, []);
+      }
+      leadsByPerson.get(key).push(lead);
+    }
+    
+    // Sort each person's permutations by prevalence score (highest first)
+    for (const [key, personLeads] of leadsByPerson) {
+      personLeads.sort((a, b) => (b.prevalence_score || 0) - (a.prevalence_score || 0));
+    }
+    
+    console.log(`Grouped into ${leadsByPerson.size} unique people`);
+    
+    let completedPeopleCount = 0;
     let validCount = 0;
     let catchallCount = 0;
-    const completedUniquePeople = new Set(); // Track unique people completed
+    let totalApiCalls = 0;
+    let savedApiCalls = 0;
+    const finalResultIds = [];
     
-    // Process leads in batches
-    const batchSize = 10;
-    for (let i = 0; i < leads.length; i += batchSize) {
-      const batch = leads.slice(i, i + batchSize);
+    // Process each person's permutations with early exit
+    for (const [personKey, personLeads] of leadsByPerson) {
+      let foundValid = false;
+      let bestCatchall = null;
+      let permutationsVerified = 0;
       
-      // Process batch in parallel (respecting rate limit)
-      const batchPromises = batch.map(async (lead) => {
+      // Process permutations one by one (in order of prevalence score)
+      for (const lead of personLeads) {
         try {
           const result = await verifyEmail(lead.email);
+          totalApiCalls++;
+          permutationsVerified++;
           
           await updateLeadStatus(lead.id, result.status, result.message);
           
-          // Mark this unique person as processed (regardless of result)
-          const personKey = `${lead.first_name.toLowerCase()}_${lead.last_name.toLowerCase()}_${lead.domain.toLowerCase()}`;
-          const wasNewPerson = !completedUniquePeople.has(personKey);
-          
           if (result.status === 'valid') {
+            // *** EARLY EXIT: Found valid email! ***
+            await markLeadAsFinal(lead.id, jobId);
+            finalResultIds.push(lead.id);
             validCount++;
-            completedUniquePeople.add(personKey);
-          } else if (result.status === 'catchall') {
-            catchallCount++;
-            completedUniquePeople.add(personKey);
-          } else {
-            // Even if invalid, mark person as processed for progress tracking
-            completedUniquePeople.add(personKey);
-          }
-          
-          processedPermutations++;
-          
-          // Calculate progress based on unique people (not permutations)
-          const uniquePeopleProcessed = completedUniquePeople.size;
-          const progressPercent = Math.round((uniquePeopleProcessed / uniquePeopleCount) * 100);
-          
-          // Update job progress every 10 permutations or when a new unique person is completed
-          if (processedPermutations % 10 === 0 || wasNewPerson) {
-            await updateJobStatus(jobId, 'processing', {
-              processed_leads: uniquePeopleProcessed, // Show unique people, not permutations
-              valid_emails_found: validCount,
-              catchall_emails_found: catchallCount,
-            });
+            foundValid = true;
             
-            console.log(`Progress: ${uniquePeopleProcessed}/${uniquePeopleCount} unique people (${progressPercent}%) - ${processedPermutations}/${totalPermutations} permutations verified`);
+            // Calculate how many API calls we saved
+            const remainingPermutations = personLeads.length - permutationsVerified;
+            savedApiCalls += remainingPermutations;
+            
+            console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/${personLeads.length} - skipping ${remainingPermutations} remaining`);
+            break; // Stop verifying this person's remaining permutations
+            
+          } else if (result.status === 'catchall') {
+            // Track best catchall (we already sorted by prevalence, so first catchall is best)
+            if (!bestCatchall) {
+              bestCatchall = lead;
+            }
+            catchallCount++;
           }
+          // If invalid or error, continue to next permutation
+          
         } catch (error) {
           console.error(`Error processing lead ${lead.id}:`, error.message);
           await updateLeadStatus(lead.id, 'error', error.message);
-          processedPermutations++;
+          totalApiCalls++;
+          permutationsVerified++;
         }
+      }
+      
+      // If no valid found, use best catchall or mark as not_found
+      if (!foundValid) {
+        if (bestCatchall) {
+          await markLeadAsFinal(bestCatchall.id, jobId);
+          finalResultIds.push(bestCatchall.id);
+          console.log(`  ~ CATCHALL selected for ${personKey} (verified all ${permutationsVerified} permutations)`);
+        } else {
+          // No valid or catchall found - mark first lead as not_found
+          await markLeadAsNotFound(personLeads[0].id);
+          finalResultIds.push(personLeads[0].id);
+          console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${permutationsVerified} permutations)`);
+        }
+      }
+      
+      // Update progress after each person
+      completedPeopleCount++;
+      const progressPercent = Math.round((completedPeopleCount / uniquePeopleCount) * 100);
+      
+      await updateJobStatus(jobId, 'processing', {
+        processed_leads: completedPeopleCount,
+        valid_emails_found: validCount,
+        catchall_emails_found: catchallCount,
       });
       
-      await Promise.all(batchPromises);
-    }
-    
-    // Final progress update - use unique people count
-    const finalUniquePeopleProcessed = completedUniquePeople.size;
-    await updateJobStatus(jobId, 'processing', {
-      processed_leads: finalUniquePeopleProcessed,
-      valid_emails_found: validCount,
-      catchall_emails_found: catchallCount,
-    });
-    
-    console.log(`Verification complete. Valid: ${validCount}, Catchall: ${catchallCount}, Processed: ${finalUniquePeopleProcessed}/${uniquePeopleCount} unique people`);
-    
-    // Apply deduplication
-    console.log('Applying deduplication...');
-    const allLeads = await pgPool.query(
-      'SELECT * FROM leads WHERE job_id = $1',
-      [jobId]
-    );
-    
-    const finalResults = deduplicateLeads(allLeads.rows);
-    
-    // Mark final results
-    const finalResultIds = [];
-    for (const result of finalResults) {
-      if (result.id) {
-        finalResultIds.push(result.id);
-      } else if (result.verification_status === 'not_found') {
-        const notFoundLead = await pgPool.query(
-          `SELECT id FROM leads 
-           WHERE job_id = $1 
-           AND first_name = $2 
-           AND last_name = $3 
-           AND domain = $4 
-           LIMIT 1`,
-          [jobId, result.first_name, result.last_name, result.domain]
-        );
-        
-        if (notFoundLead.rows.length > 0) {
-          await pgPool.query(
-            'UPDATE leads SET email = $1, verification_status = $2, is_final_result = true WHERE id = $3',
-            ['', 'not_found', notFoundLead.rows[0].id]
-          );
-          finalResultIds.push(notFoundLead.rows[0].id);
-        }
+      // Log progress every 10 people or at significant milestones
+      if (completedPeopleCount % 10 === 0 || completedPeopleCount === uniquePeopleCount) {
+        console.log(`Progress: ${completedPeopleCount}/${uniquePeopleCount} people (${progressPercent}%) | API calls: ${totalApiCalls} | Saved: ${savedApiCalls}`);
       }
     }
     
-    await markFinalResults(finalResultIds);
+    // Unmark all leads first, then mark final results
+    await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
     
-    // Update final counts
-    const finalValidCount = finalResults.filter(r => r.verification_status === 'valid').length;
-    const finalCatchallCount = finalResults.filter(r => r.verification_status === 'catchall').length;
+    if (finalResultIds.length > 0) {
+      const placeholders = finalResultIds.map((_, i) => `$${i + 1}`).join(',');
+      await pgPool.query(
+        `UPDATE leads SET is_final_result = true WHERE id IN (${placeholders})`,
+        finalResultIds
+      );
+    }
     
-    // Calculate cost
-    const costInCredits = finalValidCount + finalCatchallCount;
+    // Calculate cost (only charged for valid + catchall results)
+    const costInCredits = validCount + (finalResultIds.length - validCount);
+    const finalCatchallCount = finalResultIds.filter(id => {
+      const lead = leads.find(l => l.id === id);
+      return lead && lead.verification_status === 'catchall';
+    }).length;
     
-    // Mark job as completed - use unique people count
+    // Mark job as completed
     await updateJobStatus(jobId, 'completed', {
-      processed_leads: uniquePeopleCount, // All unique people completed
-      valid_emails_found: finalValidCount,
-      catchall_emails_found: finalCatchallCount,
+      processed_leads: uniquePeopleCount,
+      valid_emails_found: validCount,
+      catchall_emails_found: catchallCount,
       cost_in_credits: costInCredits,
       completed_at: new Date(),
     });
@@ -604,8 +628,12 @@ async function processJobFromQueue(jobId) {
       );
     }
     
+    console.log(`\n========================================`);
     console.log(`Job ${jobId} completed successfully!`);
-    console.log(`Final results: ${finalValidCount} valid, ${finalCatchallCount} catchall`);
+    console.log(`Final results: ${validCount} valid, ${catchallCount} catchall`);
+    console.log(`Total API calls: ${totalApiCalls} (saved ${savedApiCalls} calls with early exit)`);
+    console.log(`Efficiency: ${Math.round((savedApiCalls / (totalApiCalls + savedApiCalls)) * 100)}% reduction in API calls`);
+    console.log(`========================================\n`);
     
   } catch (error) {
     console.error(`Error processing job ${jobId}:`, error);
