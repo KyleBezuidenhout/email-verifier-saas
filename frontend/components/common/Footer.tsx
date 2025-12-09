@@ -10,7 +10,7 @@ export function Footer() {
           <div>
             <div className="mb-4">
               <Image
-                src="/images/billion-verifier-logo.png"
+                src="https://i.ibb.co/tpK9jgGb/logo-var-4.png"
                 alt="Billion Verifier"
                 width={180}
                 height={40}

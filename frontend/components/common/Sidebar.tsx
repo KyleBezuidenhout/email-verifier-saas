@@ -92,7 +92,7 @@ export function Sidebar() {
         <div className="p-6 border-b border-apple-border">
           <Link href="/dashboard" className="flex items-center">
             <Image
-              src="/images/billion-verifier-logo.png"
+              src="https://i.ibb.co/tpK9jgGb/logo-var-4.png"
               alt="Billion Verifier"
               width={180}
               height={40}

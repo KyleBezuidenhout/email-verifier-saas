@@ -25,7 +25,7 @@ export function Navbar() {
         {/* Logo */}
         <Link href={user ? "/dashboard" : "/"} className="flex items-center">
           <Image
-            src="/images/billion-verifier-logo.png"
+            src="https://i.ibb.co/tpK9jgGb/logo-var-4.png"
             alt="Billion Verifier"
             width={200}
             height={44}
