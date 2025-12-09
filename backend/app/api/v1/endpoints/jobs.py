@@ -110,7 +110,10 @@ async def upload_file(
             detail=f"Missing required columns: {', '.join(missing_columns)}"
         )
     
-    # Remap CSV rows to standard column names
+    # Remap CSV rows to standard column names and capture extra columns
+    # Standard columns that are mapped to specific fields
+    mapped_cols = {first_name_col, last_name_col, website_col, company_size_col}
+    
     remapped_rows = []
     for row in rows:
         remapped_row = {
@@ -122,6 +125,14 @@ async def upload_file(
             remapped_row['company_size'] = row.get(company_size_col, '').strip()
         elif company_size:
             remapped_row['company_size'] = company_size
+        
+        # Capture all extra columns (not in mapped_cols) into extra_data
+        extra_data = {}
+        for col, val in row.items():
+            if col not in mapped_cols and val and str(val).strip():
+                extra_data[col] = str(val).strip()
+        remapped_row['extra_data'] = extra_data
+        
         remapped_rows.append(remapped_row)
     
     # Filter out rows with missing required data
@@ -195,6 +206,7 @@ async def upload_file(
                 prevalence_score=perm['prevalence_score'],
                 verification_status='pending',
                 is_final_result=False,
+                extra_data=row.get('extra_data', {}),
             )
             leads_to_create.append(lead)
     
@@ -270,7 +282,10 @@ async def upload_verify_file(
             detail=f"Missing required column: email (mapped to '{email_col}')"
         )
     
-    # Remap CSV rows to standard column names
+    # Remap CSV rows to standard column names and capture extra columns
+    # Standard columns that are mapped to specific fields
+    mapped_cols = {email_col, first_name_col, last_name_col}
+    
     remapped_rows = []
     for row in rows:
         email = row.get(email_col, '').strip()
@@ -285,6 +300,14 @@ async def upload_verify_file(
         # Extract domain from email if available
         if '@' in email:
             remapped_row['domain'] = email.split('@')[1]
+        
+        # Capture all extra columns (not in mapped_cols) into extra_data
+        extra_data = {}
+        for col, val in row.items():
+            if col not in mapped_cols and val and str(val).strip():
+                extra_data[col] = str(val).strip()
+        remapped_row['extra_data'] = extra_data
+        
         remapped_rows.append(remapped_row)
     
     if not remapped_rows:
@@ -338,6 +361,7 @@ async def upload_verify_file(
             email=row['email'],
             verification_status='pending',
             is_final_result=False,
+            extra_data=row.get('extra_data', {}),
         )
         leads_to_create.append(lead)
     

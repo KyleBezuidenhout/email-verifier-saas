@@ -42,6 +42,7 @@ export interface Lead {
   verification_tag?: string;
   mx_record?: string;
   mx_provider?: 'outlook' | 'google' | 'other';
+  extra_data?: Record<string, string>;
   is_final_result: boolean;
   created_at: string;
 }

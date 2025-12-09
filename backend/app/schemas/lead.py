@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 from uuid import UUID
 
 
@@ -18,6 +18,7 @@ class LeadResponse(BaseModel):
     verification_tag: Optional[str]
     mx_record: Optional[str]
     mx_provider: Optional[str]
+    extra_data: Optional[Dict[str, Any]] = {}
     is_final_result: bool
     created_at: str
 

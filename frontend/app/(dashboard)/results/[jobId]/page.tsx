@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { Lead, Job } from "@/types";
 import { apiClient } from "@/lib/api";
@@ -110,6 +110,17 @@ export default function ResultsPage() {
   );
   const notFoundLeads = leads.filter((l) => l.verification_status === "invalid" || l.verification_status === "not_found");
   
+  // Extract unique extra column names from all leads
+  const extraColumns = useMemo(() => {
+    const cols = new Set<string>();
+    leads.forEach(lead => {
+      if (lead.extra_data) {
+        Object.keys(lead.extra_data).forEach(key => cols.add(key));
+      }
+    });
+    return Array.from(cols).sort(); // Sort alphabetically for consistent ordering
+  }, [leads]);
+  
   // Calculate filtered counts for display in filter buttons
   const filteredValidLeads = filteredLeads.filter((l) => 
     l.verification_status === "valid" || 
@@ -139,13 +150,27 @@ export default function ResultsPage() {
     : 0;
 
   const downloadCSV = () => {
-    const headers = ["First Name", "Last Name", "Website", "Email", "Status", "Tag", "MX Type"];
+    // Build headers: standard columns + extra columns from CSV
+    const standardHeaders = ["First Name", "Last Name", "Website", "Email", "Status", "Tag", "MX Type"];
+    const headers = [...standardHeaders, ...extraColumns];
+    
+    // Helper to escape CSV values (handle commas, quotes, newlines)
+    const escapeCSV = (value: string) => {
+      if (!value) return "";
+      if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    };
+    
     const csv = [
-      headers.join(","),
+      headers.map(escapeCSV).join(","),
       ...filteredLeads.map((lead) => {
         const mxType = getProviderFromMX(lead.mx_record, lead.mx_provider);
         const mxTypeDisplay = mxType.charAt(0).toUpperCase() + mxType.slice(1); // Capitalize first letter
-        return [
+        
+        // Standard values
+        const standardValues = [
           lead.first_name,
           lead.last_name,
           lead.domain,
@@ -153,7 +178,12 @@ export default function ResultsPage() {
           lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status,
           lead.verification_tag || "",
           mxTypeDisplay,
-        ].join(",");
+        ];
+        
+        // Extra column values
+        const extraValues = extraColumns.map(col => lead.extra_data?.[col] || "");
+        
+        return [...standardValues, ...extraValues].map(escapeCSV).join(",");
       }),
     ].join("\n");
 
@@ -404,6 +434,12 @@ export default function ResultsPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
                   MX Type
                 </th>
+                {/* Dynamic columns from extra_data */}
+                {extraColumns.map((col) => (
+                  <th key={col} className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
+                    {col.replace(/_/g, ' ')}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="bg-apple-surface divide-y divide-apple-border">
@@ -458,6 +494,12 @@ export default function ResultsPage() {
                       return mxType.charAt(0).toUpperCase() + mxType.slice(1); // Capitalize first letter
                     })()}
                   </td>
+                  {/* Dynamic cells from extra_data */}
+                  {extraColumns.map((col) => (
+                    <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
+                      {lead.extra_data?.[col] || "-"}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
