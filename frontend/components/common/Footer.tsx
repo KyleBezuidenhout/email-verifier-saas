@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export function Footer() {
   return (
@@ -7,9 +8,15 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
           {/* Logo Column */}
           <div>
-            <h3 className="text-lg font-bold text-omni-white mb-4">
-              Email<span className="text-omni-cyan">Verifier</span>
-            </h3>
+            <div className="mb-4">
+              <Image
+                src="/images/billion-verifier-logo.png"
+                alt="Billion Verifier"
+                width={180}
+                height={40}
+                className="h-10 w-auto"
+              />
+            </div>
             <p className="text-sm text-omni-gray mb-4">
               Professional email verification service for your business.
             </p>
@@ -102,7 +109,7 @@ export function Footer() {
         {/* Copyright */}
         <div className="pt-8 border-t border-omni-border text-center">
           <p className="text-xs text-omni-gray">
-            © {new Date().getFullYear()} EmailVerifier. All rights reserved.
+            © {new Date().getFullYear()} Billion Verifier. All rights reserved.
           </p>
         </div>
       </div>

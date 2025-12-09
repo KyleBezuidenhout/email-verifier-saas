@@ -387,7 +387,7 @@ export default function ApiDocsPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-apple-text mb-2">API Documentation</h1>
         <p className="text-apple-text-muted">
-          Complete API reference for integrating with Email Verifier SaaS. Use your API key from Settings to authenticate requests.
+          Complete API reference for integrating with Billion Verifier. Use your API key from Settings to authenticate requests.
         </p>
       </div>
 

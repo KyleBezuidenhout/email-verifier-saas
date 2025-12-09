@@ -4,7 +4,7 @@ import { AuthProvider } from '@/context/AuthContext'
 import { ThemeProvider } from '@/components/common/ThemeProvider'
 
 export const metadata: Metadata = {
-  title: 'Email Verifier SaaS',
+  title: 'Billion Verifier',
   description: 'Professional email verification service',
 }
 

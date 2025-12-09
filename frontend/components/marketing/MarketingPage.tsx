@@ -90,7 +90,7 @@ export function MarketingPage() {
               Built by the founders of a leading email infrastructure company, we&apos;ve spent years at the intersection of email delivery and cold outreach. We&apos;ve overseen over 4M emails being sent daily, and we noticed something alarming: lead prices have skyrocketed since we started, making it increasingly difficult for founders and sales teams to scale affordably.
             </p>
             <p className="text-base md:text-lg text-omni-gray leading-relaxed mb-12">
-              So we took it into our own hands. We built a solution designed specifically for cold email senders—whether you&apos;re just starting out or sending millions of emails daily. EmailVerifier is the market&apos;s{" "}
+              So we took it into our own hands. We built a solution designed specifically for cold email senders—whether you&apos;re just starting out or sending millions of emails daily. Billion Verifier is the market&apos;s{" "}
               <span className="text-omni-cyan">most affordable</span>,{" "}
               <span className="text-omni-cyan">beginner-friendly</span>, and{" "}
               <span className="text-omni-cyan">infinitely scalable</span> email verification platform. No complexity. No hidden costs. Just clean, verified leads.
@@ -298,7 +298,7 @@ export function MarketingPage() {
                   <tr className="bg-omni-black border-b border-omni-border">
                     <th className="px-6 py-4 text-left text-sm font-bold text-omni-white">Features</th>
                     <th className="px-6 py-4 text-center text-sm font-bold text-omni-white">Competitor A</th>
-                    <th className="px-6 py-4 text-center text-sm font-bold text-omni-cyan bg-omni-cyan/10">EmailVerifier</th>
+                    <th className="px-6 py-4 text-center text-sm font-bold text-omni-cyan bg-omni-cyan/10">Billion Verifier</th>
                     <th className="px-6 py-4 text-center text-sm font-bold text-omni-white">Competitor B</th>
                   </tr>
                 </thead>
@@ -333,7 +333,7 @@ export function MarketingPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
               {[
-                { quote: "EmailVerifier has saved us thousands of dollars. The speed and accuracy are unmatched.", name: "Sarah Johnson", title: "VP of Sales, TechCorp" },
+                { quote: "Billion Verifier has saved us thousands of dollars. The speed and accuracy are unmatched.", name: "Sarah Johnson", title: "VP of Sales, TechCorp" },
                 { quote: "We process millions of leads monthly. This platform scales effortlessly and never breaks.", name: "Michael Chen", title: "Founder, GrowthLab" },
                 { quote: "Best investment we've made for our cold outreach. ROI is incredible.", name: "Emily Rodriguez", title: "Sales Director, StartupXYZ" },
               ].map((testimonial, i) => (

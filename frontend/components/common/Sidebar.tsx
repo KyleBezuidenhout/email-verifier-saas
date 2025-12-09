@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
@@ -89,10 +90,15 @@ export function Sidebar() {
       <div className="flex flex-col h-full">
         {/* Logo */}
         <div className="p-6 border-b border-apple-border">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="text-xl font-bold text-apple-text">
-              Email<span className="text-apple-accent">Verifier</span>
-            </span>
+          <Link href="/dashboard" className="flex items-center">
+            <Image
+              src="/images/billion-verifier-logo.png"
+              alt="Billion Verifier"
+              width={180}
+              height={40}
+              className="h-8 w-auto"
+              priority
+            />
           </Link>
         </div>
 
