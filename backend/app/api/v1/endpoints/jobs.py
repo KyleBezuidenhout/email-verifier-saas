@@ -587,23 +587,13 @@ async def verify_catchalls(
             # Keep as integer initially, convert to string when needed
             list_id_value = list_id
             list_id = str(list_id_value)
-            list_id_value = list_id
-            list_id = str(list_id_value)
-            print(f"Created catchall list with ID: {list_id} (original type: {type(list_id_value)})")
+            print(f"Created catchall list with ID: {list_id} (original type: {type(list_id_value).__name__})")
             print(f"Full create response: {create_response}")
             
-            # Longer delay to ensure list is fully created and ready before adding emails
-            # Some APIs need a moment to fully initialize the list
-            print("Waiting 3 seconds for list to initialize...")
-            await asyncio.sleep(3)
-            
-            # Try to verify the list exists by checking its status
-            try:
-                status_check = await verifier.get_list_status(list_id)
-                print(f"List {list_id} status check successful: {status_check}")
-            except Exception as status_error:
-                print(f"Warning: Could not verify list status: {status_error}")
-                # Continue anyway - maybe status endpoint requires emails first
+            # IMPORTANT: Add emails IMMEDIATELY after creating list
+            # The status check showed list was already "processing" after 3s delay
+            # This means the list auto-starts or times out if no emails are added quickly
+            # Do NOT add any delay here!
         except HTTPException:
             raise
         except Exception as e:
@@ -619,10 +609,12 @@ async def verify_catchalls(
                 detail=f"Failed to create catchall list: {error_msg}"
             )
         
-        # Step 2: Add emails to list (batch add)
+        # Step 2: Add emails to list IMMEDIATELY (batch add)
+        # Must happen before the list auto-starts processing
         try:
-            print(f"About to add {len(emails_list)} emails to list {list_id}")
+            print(f"Adding {len(emails_list)} emails to list {list_id} immediately...")
             await verifier.add_emails_to_list(list_id, emails_list)
+            print(f"Successfully added emails to list {list_id}")
         except Exception as e:
             errors.append(f"Failed to add emails to list: {str(e)}")
             raise HTTPException(
