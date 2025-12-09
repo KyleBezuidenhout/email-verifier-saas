@@ -588,6 +588,9 @@ async def verify_catchalls(
             list_id_value = list_id
             list_id = str(list_id_value)
             print(f"Created catchall list with ID: {list_id} (original type: {type(list_id_value)})")
+            
+            # Small delay to ensure list is fully created before adding emails
+            await asyncio.sleep(1)
         except HTTPException:
             raise
         except Exception as e:
@@ -605,6 +608,7 @@ async def verify_catchalls(
         
         # Step 2: Add emails to list (batch add)
         try:
+            print(f"About to add {len(emails_list)} emails to list {list_id}")
             await verifier.add_emails_to_list(list_id, emails_list)
         except Exception as e:
             errors.append(f"Failed to add emails to list: {str(e)}")
