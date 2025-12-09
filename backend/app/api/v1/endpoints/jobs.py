@@ -588,9 +588,12 @@ async def verify_catchalls(
             list_id_value = list_id
             list_id = str(list_id_value)
             print(f"Created catchall list with ID: {list_id} (original type: {type(list_id_value)})")
+            print(f"Full create response: {create_response}")
             
-            # Small delay to ensure list is fully created before adding emails
-            await asyncio.sleep(1)
+            # Longer delay to ensure list is fully created and ready before adding emails
+            # Some APIs need a moment to fully initialize the list
+            print("Waiting 3 seconds for list to initialize...")
+            await asyncio.sleep(3)
         except HTTPException:
             raise
         except Exception as e:
