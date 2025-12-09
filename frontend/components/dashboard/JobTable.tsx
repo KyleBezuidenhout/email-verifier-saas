@@ -3,6 +3,7 @@
 import { Job } from "@/types";
 import { formatDate, getStatusColor, calculateProgress } from "@/lib/utils";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 interface JobTableProps {
@@ -12,6 +13,7 @@ interface JobTableProps {
 }
 
 export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
+  const router = useRouter();
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const handleDelete = (jobId: string) => {
@@ -21,6 +23,15 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
     } else {
       setDeleteConfirm(jobId);
     }
+  };
+
+  const handleRowClick = (jobId: string, e: React.MouseEvent) => {
+    // Don't navigate if clicking on action buttons or links
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('a')) {
+      return;
+    }
+    router.push(`/results/${jobId}`);
   };
 
   return (
@@ -54,7 +65,11 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
           </thead>
           <tbody className="bg-apple-surface divide-y divide-apple-border">
             {jobs.map((job) => (
-              <tr key={job.id} className="hover:bg-apple-surface-hover transition-colors">
+              <tr 
+                key={job.id} 
+                className="hover:bg-apple-surface-hover transition-colors cursor-pointer"
+                onClick={(e) => handleRowClick(job.id, e)}
+              >
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-apple-text">
                   {job.id.slice(0, 8)}...
                 </td>
@@ -99,13 +114,17 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                   <Link
                     href={`/results/${job.id}`}
+                    onClick={(e) => e.stopPropagation()}
                     className="text-apple-accent hover:opacity-80 transition-opacity"
                   >
                     View
                   </Link>
                   {(job.status === 'pending' || job.status === 'processing') && onCancel && (
                     <button
-                      onClick={() => onCancel(job.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCancel(job.id);
+                      }}
                       className="text-apple-warning hover:text-apple-warning/80 transition-colors"
                     >
                       Cancel
@@ -113,14 +132,20 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                   )}
                   {deleteConfirm === job.id ? (
                     <button
-                      onClick={() => handleDelete(job.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(job.id);
+                      }}
                       className="text-apple-error hover:text-apple-error/80 transition-colors"
                     >
                       Confirm
                     </button>
                   ) : (
                     <button
-                      onClick={() => handleDelete(job.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(job.id);
+                      }}
                       className="text-apple-error hover:text-apple-error/80 transition-colors"
                     >
                       Delete
