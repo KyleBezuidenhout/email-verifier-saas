@@ -549,6 +549,25 @@ async def verify_catchalls(
     list_id = None
     
     try:
+        # Step 0: Check credit balance before proceeding
+        try:
+            credits_response = await verifier.get_credits()
+            current_balance = credits_response.get("balance", credits_response.get("credits", 0))
+            emails_count = len(catchall_leads)
+            
+            # Estimate credits needed (typically 1 credit per email for catchall verification)
+            # If balance is too low, provide helpful error message
+            if current_balance < emails_count:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=f"Insufficient credits. You have {current_balance} credits but need at least {emails_count} credits to verify {emails_count} catchall emails. Please add credits to your OmniVerifier account."
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            # If credit check fails, log but continue (might be API issue)
+            errors.append(f"Could not check credit balance: {str(e)}")
+        
         # Step 1: Create catchall list
         emails_list = [lead.email for lead in catchall_leads]
         title = f"Job {job_id} Catchall Verification"
@@ -562,10 +581,19 @@ async def verify_catchalls(
             list_id = create_response.get("id")
             if not list_id:
                 raise Exception("Failed to get list ID from OmniVerifier response")
+        except HTTPException:
+            raise
         except Exception as e:
+            error_msg = str(e)
+            # Check if it's a 402 error and provide better message
+            if "402" in error_msg or "Insufficient credits" in error_msg or "Payment Required" in error_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=f"Insufficient credits in your OmniVerifier account. You need at least {len(emails_list)} credits to verify {len(emails_list)} catchall emails. Please add credits to your OmniVerifier account and try again."
+                )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to create catchall list: {str(e)}"
+                detail=f"Failed to create catchall list: {error_msg}"
             )
         
         # Step 2: Add emails to list (batch add)
