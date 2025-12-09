@@ -53,10 +53,10 @@ export function Header() {
   };
 
   return (
-    <header className="h-[70px] bg-dashbrd-bg border-b border-dashbrd-border flex items-center justify-between px-6">
+    <header className="h-[70px] bg-apple-bg border-b border-apple-border flex items-center justify-between px-6">
       {/* Page Title / Breadcrumb */}
       <div className="flex-1">
-        <h1 className="text-lg font-semibold text-dashbrd-text">
+        <h1 className="text-lg font-semibold text-apple-text">
           {getPageTitle()}
         </h1>
       </div>
@@ -65,7 +65,7 @@ export function Header() {
       <div className="flex items-center gap-3">
         {/* Notification bell placeholder */}
         <button
-          className="p-2 rounded-lg hover:bg-dashbrd-card text-dashbrd-text-muted hover:text-dashbrd-text transition-colors relative"
+          className="p-2 rounded-lg hover:bg-apple-surface text-apple-text-muted hover:text-apple-text transition-colors relative"
           aria-label="Notifications"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -75,7 +75,7 @@ export function Header() {
 
         <button
           onClick={toggleTheme}
-          className="p-2 rounded-lg hover:bg-dashbrd-card text-dashbrd-text-muted hover:text-dashbrd-text transition-colors"
+          className="p-2 rounded-lg hover:bg-apple-surface text-apple-text-muted hover:text-apple-text transition-colors"
           aria-label="Toggle theme"
         >
           {theme === "dark" ? (
@@ -92,27 +92,27 @@ export function Header() {
         <div className="relative">
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-dashbrd-card transition-colors"
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-apple-surface transition-colors"
           >
-            <div className="w-8 h-8 rounded-full bg-dashbrd-accent/20 flex items-center justify-center text-dashbrd-accent font-semibold text-xs">
+            <div className="w-8 h-8 rounded-full bg-apple-accent/20 flex items-center justify-center text-apple-accent font-semibold text-xs">
               {getInitials(user.full_name, user.email)}
             </div>
-            <span className="text-sm font-medium text-dashbrd-text hidden md:block">
+            <span className="text-sm font-medium text-apple-text hidden md:block">
               {user.full_name || user.email.split("@")[0]}
             </span>
-            <svg className="w-4 h-4 text-dashbrd-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-apple-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
           {showMenu && (
-            <div className="absolute right-0 mt-2 w-56 bg-dashbrd-card border border-dashbrd-border rounded-xl py-2 z-50 shadow-lg">
-              <div className="px-4 py-3 border-b border-dashbrd-border">
-                <p className="text-sm font-medium text-dashbrd-text">{user.full_name || "User"}</p>
-                <p className="text-xs text-dashbrd-text-muted mt-0.5">{user.email}</p>
+            <div className="absolute right-0 mt-2 w-56 bg-apple-surface border border-apple-border rounded-xl py-2 z-50 shadow-lg">
+              <div className="px-4 py-3 border-b border-apple-border">
+                <p className="text-sm font-medium text-apple-text">{user.full_name || "User"}</p>
+                <p className="text-xs text-apple-text-muted mt-0.5">{user.email}</p>
               </div>
               <Link
                 href="/settings"
-                className="block px-4 py-2 text-sm text-dashbrd-text hover:bg-dashbrd-card-hover transition-colors"
+                className="block px-4 py-2 text-sm text-apple-text hover:bg-apple-surface-hover transition-colors"
                 onClick={() => setShowMenu(false)}
               >
                 Settings
@@ -122,7 +122,7 @@ export function Header() {
                   handleLogout();
                   setShowMenu(false);
                 }}
-                className="block w-full text-left px-4 py-2 text-sm text-dashbrd-error hover:bg-dashbrd-card-hover transition-colors"
+                className="block w-full text-left px-4 py-2 text-sm text-apple-error hover:bg-apple-surface-hover transition-colors"
               >
                 Logout
               </button>

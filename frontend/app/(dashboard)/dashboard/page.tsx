@@ -95,7 +95,7 @@ export default function DashboardPage() {
       {/* Date Filter */}
       <div className="mb-6 dashbrd-card p-4">
         <div className="flex flex-wrap items-center gap-4">
-          <label className="text-sm font-medium text-dashbrd-text-muted">Filter by date:</label>
+          <label className="text-sm font-medium text-apple-text-muted">Filter by date:</label>
           <div className="flex gap-2">
             {(["7d", "30d", "90d", "all"] as DateRange[]).map((range) => (
               <button
@@ -103,8 +103,8 @@ export default function DashboardPage() {
                 onClick={() => setDateRange(range)}
                 className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                   dateRange === range
-                    ? "bg-dashbrd-accent text-white font-medium"
-                    : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card-hover hover:text-dashbrd-text"
+                    ? "bg-apple-accent text-white font-medium"
+                    : "bg-dashbrd-card border border-apple-border text-apple-text-muted hover:bg-dashbrd-card-hover hover:text-apple-text"
                 }`}
               >
                 {range === "7d" ? "Last 7 days" : range === "30d" ? "Last 30 days" : range === "90d" ? "Last 90 days" : "All time"}
@@ -114,8 +114,8 @@ export default function DashboardPage() {
               onClick={() => setDateRange("custom")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 dateRange === "custom"
-                  ? "bg-dashbrd-accent text-white font-medium"
-                  : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card-hover hover:text-dashbrd-text"
+                  ? "bg-apple-accent text-white font-medium"
+                  : "bg-dashbrd-card border border-apple-border text-apple-text-muted hover:bg-dashbrd-card-hover hover:text-apple-text"
               }`}
             >
               Custom
@@ -127,14 +127,14 @@ export default function DashboardPage() {
                 type="date"
                 value={customStartDate}
                 onChange={(e) => setCustomStartDate(e.target.value)}
-                className="dashbrd-input text-sm"
+                className="apple-input text-sm"
               />
-              <span className="text-dashbrd-text-muted">to</span>
+              <span className="text-apple-text-muted">to</span>
               <input
                 type="date"
                 value={customEndDate}
                 onChange={(e) => setCustomEndDate(e.target.value)}
-                className="dashbrd-input text-sm"
+                className="apple-input text-sm"
               />
             </div>
           )}
@@ -150,41 +150,41 @@ export default function DashboardPage() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="dashbrd-card-hover p-6">
-          <p className="text-sm text-dashbrd-text-muted mb-2">Money Saved vs Competitors</p>
-          <p className="text-3xl font-bold text-dashbrd-accent">
+          <p className="text-sm text-apple-text-muted mb-2">Money Saved vs Competitors</p>
+          <p className="text-3xl font-bold text-apple-accent">
             ${stats.moneySaved.toFixed(2)}
           </p>
-          <p className="text-xs text-dashbrd-text-muted mt-1">
+          <p className="text-xs text-apple-text-muted mt-1">
             Competitors would charge ${(stats.totalVerified * 0.50).toFixed(2)}
           </p>
         </div>
 
         <div className="dashbrd-card-hover p-6">
-          <p className="text-sm text-dashbrd-text-muted mb-2">Total Valid Emails Found</p>
-          <p className="text-3xl font-bold text-dashbrd-accent">
+          <p className="text-sm text-apple-text-muted mb-2">Total Valid Emails Found</p>
+          <p className="text-3xl font-bold text-apple-accent">
             {stats.totalVerified.toLocaleString()}
           </p>
-          <p className="text-xs text-dashbrd-text-muted mt-1">
+          <p className="text-xs text-apple-text-muted mt-1">
             {filteredJobs.length} job{filteredJobs.length !== 1 ? "s" : ""} processed
           </p>
         </div>
 
         <div className="dashbrd-card-hover p-6">
-          <p className="text-sm text-dashbrd-text-muted mb-2">Credit Usage</p>
-          <p className="text-3xl font-bold text-dashbrd-accent">
+          <p className="text-sm text-apple-text-muted mb-2">Credit Usage</p>
+          <p className="text-3xl font-bold text-apple-accent">
             {stats.creditsUsed.toLocaleString()}
           </p>
-          <p className="text-xs text-dashbrd-text-muted mt-1">
+          <p className="text-xs text-apple-text-muted mt-1">
             ${stats.totalCost.toFixed(2)} spent
           </p>
         </div>
 
         <div className="dashbrd-card-hover p-6">
-          <p className="text-sm text-dashbrd-text-muted mb-2">Credits Left</p>
-          <p className="text-3xl font-bold text-dashbrd-accent">
+          <p className="text-sm text-apple-text-muted mb-2">Credits Left</p>
+          <p className="text-3xl font-bold text-apple-accent">
             {stats.creditsLeft.toLocaleString()}
           </p>
-          <p className="text-xs text-dashbrd-text-muted mt-1">
+          <p className="text-xs text-apple-text-muted mt-1">
             Available credits
           </p>
         </div>
@@ -194,16 +194,16 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Activity Chart Placeholder */}
         <div className="dashbrd-card p-6">
-          <h3 className="text-lg font-medium text-dashbrd-text mb-4">Activity Over Time</h3>
-          <div className="h-64 flex items-center justify-center text-dashbrd-text-muted">
+          <h3 className="text-lg font-medium text-apple-text mb-4">Activity Over Time</h3>
+          <div className="h-64 flex items-center justify-center text-apple-text-muted">
             <p>Chart visualization coming soon</p>
           </div>
         </div>
 
         {/* Verification Status Chart Placeholder */}
         <div className="dashbrd-card p-6">
-          <h3 className="text-lg font-medium text-dashbrd-text mb-4">Verification Status</h3>
-          <div className="h-64 flex items-center justify-center text-dashbrd-text-muted">
+          <h3 className="text-lg font-medium text-apple-text mb-4">Verification Status</h3>
+          <div className="h-64 flex items-center justify-center text-apple-text-muted">
             <p>Chart visualization coming soon</p>
           </div>
         </div>
@@ -211,15 +211,15 @@ export default function DashboardPage() {
 
       {/* Activity Timeline */}
       <div className="dashbrd-card p-6">
-        <h3 className="text-lg font-medium text-dashbrd-text mb-4">Recent Activity</h3>
+        <h3 className="text-lg font-medium text-apple-text mb-4">Recent Activity</h3>
         <div className="space-y-3">
           {filteredJobs.slice(0, 10).map((job) => (
-            <div key={job.id} className="flex items-center justify-between py-2 border-b border-dashbrd-border last:border-0">
+            <div key={job.id} className="flex items-center justify-between py-2 border-b border-apple-border last:border-0">
               <div>
-                <p className="text-sm text-dashbrd-text">
+                <p className="text-sm text-apple-text">
                   Job {job.id.slice(0, 8)}... - {job.valid_emails_found + job.catchall_emails_found} emails verified
                 </p>
-                <p className="text-xs text-dashbrd-text-muted mt-1">
+                <p className="text-xs text-apple-text-muted mt-1">
                   {new Date(job.created_at).toLocaleString()}
                 </p>
               </div>
@@ -233,7 +233,7 @@ export default function DashboardPage() {
             </div>
           ))}
           {filteredJobs.length === 0 && (
-            <p className="text-dashbrd-text-muted text-center py-8">No activity in selected date range</p>
+            <p className="text-apple-text-muted text-center py-8">No activity in selected date range</p>
           )}
         </div>
       </div>

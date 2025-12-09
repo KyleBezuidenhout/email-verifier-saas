@@ -171,8 +171,8 @@ export default function VerifyEmailsPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-dashbrd-text">Verify Emails</h1>
-        <p className="mt-2 text-dashbrd-text-muted">
+        <h1 className="text-3xl font-bold text-apple-text">Verify Emails</h1>
+        <p className="mt-2 text-apple-text-muted">
           Verify email addresses directly using our verification service (no permutation logic)
         </p>
       </div>
@@ -194,9 +194,9 @@ export default function VerifyEmailsPage() {
           </div>
         )}
 
-        <div className="bg-dashbrd-card-hover border border-dashbrd-border rounded-lg p-4">
-          <p className="text-sm text-dashbrd-text-muted">
-            <strong className="text-dashbrd-text">Note:</strong> CSV must include an <strong>email</strong> column. 
+        <div className="bg-dashbrd-card-hover border border-apple-border rounded-lg p-4">
+          <p className="text-sm text-apple-text-muted">
+            <strong className="text-apple-text">Note:</strong> CSV must include an <strong>email</strong> column. 
             Optional columns: first_name, last_name for display purposes.
           </p>
         </div>
@@ -208,18 +208,18 @@ export default function VerifyEmailsPage() {
 
         {selectedFile && (
           <>
-            <div className="border-t border-dashbrd-border pt-6">
-              <h3 className="text-lg font-medium text-dashbrd-text mb-4">
+            <div className="border-t border-apple-border pt-6">
+              <h3 className="text-lg font-medium text-apple-text mb-4">
                 File Information
               </h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-dashbrd-text-muted">File name:</span>
-                  <span className="ml-2 font-medium text-dashbrd-text">{selectedFile.name}</span>
+                  <span className="text-apple-text-muted">File name:</span>
+                  <span className="ml-2 font-medium text-apple-text">{selectedFile.name}</span>
                 </div>
                 <div>
-                  <span className="text-dashbrd-text-muted">File size:</span>
-                  <span className="ml-2 font-medium text-dashbrd-text">
+                  <span className="text-apple-text-muted">File size:</span>
+                  <span className="ml-2 font-medium text-apple-text">
                     {formatFileSize(selectedFile.size)}
                   </span>
                 </div>
@@ -228,7 +228,7 @@ export default function VerifyEmailsPage() {
 
             <FilePreview file={selectedFile} onMappingChange={handleMappingChange} mode="verification" />
 
-            <div className="flex justify-end space-x-4 pt-6 border-t border-dashbrd-border">
+            <div className="flex justify-end space-x-4 pt-6 border-t border-apple-border">
               <button
                 onClick={() => {
                   setSelectedFile(null);
@@ -257,10 +257,10 @@ export default function VerifyEmailsPage() {
 
       {/* Job History - Last 30 Days Only */}
       <div className="mb-4">
-        <h2 className="text-lg font-medium text-dashbrd-text mb-2">
+        <h2 className="text-lg font-medium text-apple-text mb-2">
           Recent Verification Jobs (Last 30 Days)
         </h2>
-        <p className="text-sm text-dashbrd-text-muted">
+        <p className="text-sm text-apple-text-muted">
           Showing {filteredJobs.length} of {jobs.length} total verification jobs
         </p>
       </div>

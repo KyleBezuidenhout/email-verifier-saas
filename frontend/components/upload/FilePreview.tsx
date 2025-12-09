@@ -160,7 +160,7 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
           <div className="space-y-3">
             {unmappedColumns.map((col) => (
               <div key={col} className="flex items-center gap-3">
-                <label className="text-sm text-dashbrd-text w-40">
+                <label className="text-sm text-apple-text w-40">
                   {getColumnLabel(col)}:
                 </label>
                 <select
@@ -192,40 +192,40 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
       )}
 
       {/* Column Mapping Summary */}
-      <div className="bg-dashbrd-card border border-dashbrd-border rounded-lg p-4">
-        <h4 className="text-sm font-medium text-dashbrd-text mb-2">Column Mapping:</h4>
+      <div className="bg-apple-surface border border-apple-border rounded-lg p-4">
+        <h4 className="text-sm font-medium text-apple-text mb-2">Column Mapping:</h4>
         <div className="grid grid-cols-2 gap-2 text-sm">
           {mode === 'verification' ? (
             <>
-              <div className="text-dashbrd-text-muted">Email →</div>
-              <div className={mapping.email ? "text-green-400 font-medium" : "text-red-400"}>
+              <div className="text-apple-text-muted">Email →</div>
+              <div className={mapping.email ? "text-apple-success font-medium" : "text-apple-error"}>
                 {mapping.email || "Not mapped (required)"}
               </div>
-              <div className="text-dashbrd-text-muted">First Name →</div>
-              <div className={mapping.first_name ? "text-green-400 font-medium" : "text-dashbrd-text-muted"}>
+              <div className="text-apple-text-muted">First Name →</div>
+              <div className={mapping.first_name ? "text-apple-success font-medium" : "text-apple-text-muted"}>
                 {mapping.first_name || "Not mapped (optional)"}
               </div>
-              <div className="text-dashbrd-text-muted">Last Name →</div>
-              <div className={mapping.last_name ? "text-green-400 font-medium" : "text-dashbrd-text-muted"}>
+              <div className="text-apple-text-muted">Last Name →</div>
+              <div className={mapping.last_name ? "text-apple-success font-medium" : "text-apple-text-muted"}>
                 {mapping.last_name || "Not mapped (optional)"}
               </div>
             </>
           ) : (
             <>
-              <div className="text-dashbrd-text-muted">First Name →</div>
-              <div className={mapping.first_name ? "text-green-400 font-medium" : "text-red-400"}>
+              <div className="text-apple-text-muted">First Name →</div>
+              <div className={mapping.first_name ? "text-apple-success font-medium" : "text-apple-error"}>
                 {mapping.first_name || "Not mapped"}
               </div>
-              <div className="text-dashbrd-text-muted">Last Name →</div>
-              <div className={mapping.last_name ? "text-green-400 font-medium" : "text-red-400"}>
+              <div className="text-apple-text-muted">Last Name →</div>
+              <div className={mapping.last_name ? "text-apple-success font-medium" : "text-apple-error"}>
                 {mapping.last_name || "Not mapped"}
               </div>
-              <div className="text-dashbrd-text-muted">Website →</div>
-              <div className={mapping.website ? "text-green-400 font-medium" : "text-red-400"}>
+              <div className="text-apple-text-muted">Website →</div>
+              <div className={mapping.website ? "text-apple-success font-medium" : "text-apple-error"}>
                 {mapping.website || "Not mapped"}
               </div>
-              <div className="text-dashbrd-text-muted">Company Size →</div>
-              <div className={mapping.company_size ? "text-green-400 font-medium" : "text-dashbrd-text-muted"}>
+              <div className="text-apple-text-muted">Company Size →</div>
+              <div className={mapping.company_size ? "text-apple-success font-medium" : "text-apple-text-muted"}>
                 {mapping.company_size || "Not mapped (optional)"}
               </div>
             </>
@@ -236,32 +236,32 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
       {/* Preview Table */}
       {preview.length > 0 && (
         <div className="dashbrd-card overflow-hidden">
-          <div className="px-4 py-2 bg-dashbrd-card-hover border-b border-dashbrd-border">
-            <p className="text-sm font-medium text-dashbrd-text">
+          <div className="px-4 py-2 bg-apple-surface-hover border-b border-apple-border">
+            <p className="text-sm font-medium text-apple-text">
               Preview (first 5 rows)
             </p>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-dashbrd-border">
-              <thead className="bg-dashbrd-card-hover">
+            <table className="min-w-full divide-y divide-apple-border">
+              <thead className="bg-apple-surface-hover">
                 <tr>
                   {headers.map((header) => (
                     <th
                       key={header}
-                      className="px-4 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase tracking-wider"
+                      className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider"
                     >
                       {header}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="bg-dashbrd-card divide-y divide-dashbrd-border">
+              <tbody className="bg-apple-surface divide-y divide-apple-border">
                 {preview.map((row, i) => (
                   <tr key={i}>
                     {headers.map((header) => (
                       <td
                         key={header}
-                        className="px-4 py-3 whitespace-nowrap text-sm text-dashbrd-text"
+                        className="px-4 py-3 whitespace-nowrap text-sm text-apple-text"
                       >
                         {row[header] || "-"}
                       </td>

@@ -33,13 +33,13 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
+        <div className="bg-apple-error/20 border border-apple-error/30 text-apple-error px-4 py-3 rounded-lg text-sm">
           {error}
         </div>
       )}
 
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="email" className="block text-sm font-medium text-apple-text mb-2">
           Email address
         </label>
         <input
@@ -48,13 +48,13 @@ export function LoginForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-4 py-2 bg-apple-surface border border-apple-border text-apple-text placeholder-apple-text-muted rounded-lg focus:ring-2 focus:ring-apple-accent focus:border-apple-accent focus:outline-none"
           placeholder="you@example.com"
         />
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="password" className="block text-sm font-medium text-apple-text mb-2">
           Password
         </label>
         <input
@@ -63,7 +63,7 @@ export function LoginForm() {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-4 py-2 bg-apple-surface border border-apple-border text-apple-text placeholder-apple-text-muted rounded-lg focus:ring-2 focus:ring-apple-accent focus:border-apple-accent focus:outline-none"
           placeholder="••••••••"
         />
       </div>
@@ -75,16 +75,16 @@ export function LoginForm() {
             type="checkbox"
             checked={rememberMe}
             onChange={(e) => setRememberMe(e.target.checked)}
-            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            className="h-4 w-4 text-apple-accent focus:ring-apple-accent border-apple-border rounded bg-apple-surface"
           />
-          <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+          <label htmlFor="remember-me" className="ml-2 block text-sm text-apple-text-muted">
             Remember me
           </label>
         </div>
 
         <Link
           href="/forgot-password"
-          className="text-sm text-blue-600 hover:text-blue-500"
+          className="text-sm text-apple-accent hover:text-apple-accent/80"
         >
           Forgot password?
         </Link>
@@ -93,14 +93,14 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+        className="w-full bg-apple-accent text-white py-2 px-4 rounded-lg hover:bg-apple-accent/90 focus:outline-none focus:ring-2 focus:ring-apple-accent focus:ring-offset-2 focus:ring-offset-apple-bg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
       >
         {loading ? <LoadingSpinner size="sm" /> : "Sign in"}
       </button>
 
-      <p className="text-center text-sm text-gray-600">
+      <p className="text-center text-sm text-apple-text-muted">
         Don&apos;t have an account?{" "}
-        <Link href="/register" className="text-blue-600 hover:text-blue-500 font-medium">
+        <Link href="/register" className="text-apple-accent hover:text-apple-accent/80 font-medium">
           Sign up
         </Link>
       </p>

@@ -49,15 +49,15 @@ export function DropZone({ onFileSelect, selectedFile }: DropZoneProps) {
       className={cn(
         "relative border-2 border-dashed rounded-xl p-16 text-center transition-all duration-300 overflow-hidden",
         isDragging
-          ? "border-dashbrd-accent bg-dashbrd-card/50"
-          : "border-dashbrd-border bg-dashbrd-card/30 hover:border-dashbrd-accent/50"
+          ? "border-apple-accent bg-apple-surface/50"
+          : "border-apple-border bg-apple-surface/30 hover:border-apple-accent/50"
       )}
     >
       {/* Concentric rings background effect */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="absolute w-64 h-64 rounded-full border border-dashbrd-border/20"></div>
-        <div className="absolute w-96 h-96 rounded-full border border-dashbrd-border/10"></div>
-        <div className="absolute w-[32rem] h-[32rem] rounded-full border border-dashbrd-border/5"></div>
+        <div className="absolute w-64 h-64 rounded-full border border-apple-border/20"></div>
+        <div className="absolute w-96 h-96 rounded-full border border-apple-border/10"></div>
+        <div className="absolute w-[32rem] h-[32rem] rounded-full border border-apple-border/5"></div>
       </div>
 
       <input
@@ -75,7 +75,7 @@ export function DropZone({ onFileSelect, selectedFile }: DropZoneProps) {
             <svg
               viewBox="0 0 24 24"
               fill="none"
-              className="w-full h-full text-dashbrd-text-muted"
+              className="w-full h-full text-apple-text-muted"
             >
               <rect x="6" y="4" width="12" height="16" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
               <line x1="9" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -83,7 +83,7 @@ export function DropZone({ onFileSelect, selectedFile }: DropZoneProps) {
               <line x1="9" y1="16" x2="13" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
             </svg>
             {/* Upload button overlay */}
-            <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-dashbrd-accent rounded-full flex items-center justify-center shadow-lg">
+            <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-apple-accent rounded-full flex items-center justify-center shadow-lg">
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -97,16 +97,16 @@ export function DropZone({ onFileSelect, selectedFile }: DropZoneProps) {
           </div>
           
           <div className="space-y-2">
-            <p className="text-xl font-bold text-dashbrd-text">
+            <p className="text-xl font-bold text-apple-text">
               {selectedFile ? selectedFile.name : "Import new file"}
             </p>
             <div className="space-y-1">
-              <p className="text-sm text-dashbrd-text-muted">
+              <p className="text-sm text-apple-text-muted">
                 Maximum file size: 50 MB (10K records MAX)
               </p>
-              <p className="text-sm text-dashbrd-text-muted">
+              <p className="text-sm text-apple-text-muted">
                 Supported format:{" "}
-                <span className="px-2 py-0.5 bg-dashbrd-card border border-dashbrd-border rounded-full text-dashbrd-text">
+                <span className="px-2 py-0.5 bg-apple-surface border border-apple-border rounded-full text-apple-text">
                   .CSV
                 </span>
               </p>

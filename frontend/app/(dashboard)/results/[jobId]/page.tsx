@@ -178,7 +178,7 @@ export default function ResultsPage() {
   if (error || !job) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-red-900/20 border border-red-800 text-red-300 px-4 py-3 rounded-lg">
+        <div className="bg-apple-error/20 border border-apple-error/30 text-apple-error px-4 py-3 rounded-lg">
           {error || "Job not found"}
         </div>
       </div>
@@ -194,28 +194,28 @@ export default function ResultsPage() {
       <div className="mb-8">
         <Link
           href={backLink}
-          className="text-dashbrd-accent hover:opacity-80 transition-opacity mb-4 inline-block"
+          className="text-apple-accent hover:opacity-80 transition-opacity mb-4 inline-block"
         >
           ← {backLinkText}
         </Link>
-        <h1 className="text-3xl font-bold text-dashbrd-text">Results</h1>
-        <p className="mt-2 text-dashbrd-text-muted">Job ID: {jobId}</p>
+        <h1 className="text-3xl font-bold text-apple-text">Results</h1>
+        <p className="mt-2 text-apple-text-muted">Job ID: {jobId}</p>
       </div>
 
       {/* Summary Banner */}
       {totalVerified > 0 && (
-        <div className="mb-8 bg-dashbrd-card border border-dashbrd-border rounded-lg p-6">
+        <div className="mb-8 bg-apple-surface border border-apple-border rounded-lg p-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-dashbrd-text mb-2">
+              <h2 className="text-2xl font-bold text-apple-text mb-2">
                 ✅ Verified {totalVerified} emails in {processingTime} minutes for ${totalCost.toFixed(2)}
               </h2>
               <div className="flex flex-wrap gap-4 text-sm">
-                <span className="text-dashbrd-text-muted">
-                  Cost per email: <strong className="text-dashbrd-text">${costPerEmail.toFixed(2)}</strong>
+                <span className="text-apple-text-muted">
+                  Cost per email: <strong className="text-apple-text">${costPerEmail.toFixed(2)}</strong>
                 </span>
                 {savings > 0 && (
-                  <span className="text-dashbrd-accent">
+                  <span className="text-apple-accent">
                     💰 You saved <strong>${savings.toFixed(2)}</strong> vs competitors
                   </span>
                 )}
@@ -226,31 +226,31 @@ export default function ResultsPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-dashbrd-card border border-dashbrd-border p-6 rounded-lg">
-          <p className="text-sm text-dashbrd-text-muted">Total Leads</p>
-          <p className="text-2xl font-bold text-dashbrd-text">{job.total_leads}</p>
+        <div className="bg-apple-surface border border-apple-border p-6 rounded-lg">
+          <p className="text-sm text-apple-text-muted">Total Leads</p>
+          <p className="text-2xl font-bold text-apple-text">{job.total_leads}</p>
         </div>
-        <div className="bg-dashbrd-card border border-dashbrd-border p-6 rounded-lg">
-          <p className="text-sm text-dashbrd-text-muted">Valid Emails</p>
-          <p className="text-2xl font-bold text-dashbrd-accent">
+        <div className="bg-apple-surface border border-apple-border p-6 rounded-lg">
+          <p className="text-sm text-apple-text-muted">Valid Emails</p>
+          <p className="text-2xl font-bold text-apple-accent">
             {validLeads.length}
           </p>
         </div>
-        <div className="bg-dashbrd-card border border-dashbrd-border p-6 rounded-lg">
-          <p className="text-sm text-dashbrd-text-muted">Catchall Emails</p>
-          <p className="text-2xl font-bold text-dashbrd-accent">
+        <div className="bg-apple-surface border border-apple-border p-6 rounded-lg">
+          <p className="text-sm text-apple-text-muted">Catchall Emails</p>
+          <p className="text-2xl font-bold text-apple-accent">
             {catchallLeads.length}
           </p>
         </div>
-        <div className="bg-dashbrd-card border border-dashbrd-border p-6 rounded-lg">
-          <p className="text-sm text-dashbrd-text-muted">Not Found</p>
-          <p className="text-2xl font-bold text-red-400">
+        <div className="bg-apple-surface border border-apple-border p-6 rounded-lg">
+          <p className="text-sm text-apple-text-muted">Not Found</p>
+          <p className="text-2xl font-bold text-apple-error">
             {notFoundLeads.length}
           </p>
         </div>
       </div>
 
-      <div className="bg-dashbrd-card border border-dashbrd-border rounded-lg p-6">
+      <div className="bg-apple-surface border border-apple-border rounded-lg p-6">
         <div className="mb-4">
           {/* Status Filter */}
           <div className="flex space-x-2 mb-3">
@@ -258,8 +258,8 @@ export default function ResultsPage() {
               onClick={() => setFilter("all")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "all"
-                  ? "bg-dashbrd-accent text-white font-medium"
-                  : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
+                  ? "bg-apple-accent text-white font-medium"
+                  : "bg-apple-surface border border-apple-border text-apple-text-muted hover:bg-apple-surface"
               }`}
             >
               All ({filteredLeads.length})
@@ -268,8 +268,8 @@ export default function ResultsPage() {
               onClick={() => setFilter("valid")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "valid"
-                  ? "bg-dashbrd-accent text-white font-medium"
-                  : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
+                  ? "bg-apple-accent text-white font-medium"
+                  : "bg-apple-surface border border-apple-border text-apple-text-muted hover:bg-apple-surface"
               }`}
             >
               Valid ({filteredValidLeads.length})
@@ -278,8 +278,8 @@ export default function ResultsPage() {
               onClick={() => setFilter("catchall")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "catchall"
-                  ? "bg-dashbrd-accent text-white font-medium"
-                  : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
+                  ? "bg-apple-accent text-white font-medium"
+                  : "bg-apple-surface border border-apple-border text-apple-text-muted hover:bg-apple-surface"
               }`}
             >
               Catchall ({filteredCatchallLeads.length})
@@ -288,8 +288,8 @@ export default function ResultsPage() {
               onClick={() => setFilter("invalid")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === "invalid"
-                  ? "bg-dashbrd-accent text-white font-medium"
-                  : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card"
+                  ? "bg-apple-accent text-white font-medium"
+                  : "bg-apple-surface border border-apple-border text-apple-text-muted hover:bg-apple-surface"
               }`}
             >
               Invalid ({filteredNotFoundLeads.length})
@@ -298,7 +298,7 @@ export default function ResultsPage() {
           
           {/* MX Provider Filter */}
           <div className="flex items-center space-x-4">
-            <span className="text-sm font-medium text-dashbrd-text-muted">MX Provider:</span>
+            <span className="text-sm font-medium text-apple-text-muted">MX Provider:</span>
             <div className="flex space-x-3">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -311,9 +311,9 @@ export default function ResultsPage() {
                       setMxFilters(mxFilters.filter(f => f !== 'outlook'));
                     }
                   }}
-                  className="w-4 h-4 rounded border-dashbrd-border bg-dashbrd-bg text-dashbrd-accent focus:ring-dashbrd-accent"
+                  className="w-4 h-4 rounded border-apple-border bg-apple-bg text-apple-accent focus:ring-apple-accent"
                 />
-                <span className="text-sm text-dashbrd-text">Outlook Only</span>
+                <span className="text-sm text-apple-text">Outlook Only</span>
               </label>
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -326,9 +326,9 @@ export default function ResultsPage() {
                       setMxFilters(mxFilters.filter(f => f !== 'google'));
                     }
                   }}
-                  className="w-4 h-4 rounded border-dashbrd-border bg-dashbrd-bg text-dashbrd-accent focus:ring-dashbrd-accent"
+                  className="w-4 h-4 rounded border-apple-border bg-apple-bg text-apple-accent focus:ring-apple-accent"
                 />
-                <span className="text-sm text-dashbrd-text">Google Only</span>
+                <span className="text-sm text-apple-text">Google Only</span>
               </label>
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -341,15 +341,15 @@ export default function ResultsPage() {
                       setMxFilters(mxFilters.filter(f => f !== 'other'));
                     }
                   }}
-                  className="w-4 h-4 rounded border-dashbrd-border bg-dashbrd-bg text-dashbrd-accent focus:ring-dashbrd-accent"
+                  className="w-4 h-4 rounded border-apple-border bg-apple-bg text-apple-accent focus:ring-apple-accent"
                 />
-                <span className="text-sm text-dashbrd-text">Other MX</span>
+                <span className="text-sm text-apple-text">Other MX</span>
               </label>
             </div>
             {mxFilters.length > 0 && (
               <button
                 onClick={() => setMxFilters([])}
-                className="text-xs text-dashbrd-text-muted hover:text-dashbrd-text underline"
+                className="text-xs text-apple-text-muted hover:text-apple-text underline"
               >
                 Clear ({mxFilters.length})
               </button>
@@ -362,7 +362,7 @@ export default function ResultsPage() {
               <button
                 onClick={handleVerifyCatchalls}
                 disabled={verifyingCatchalls}
-                className="px-4 py-2 bg-dashbrd-accent text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2"
+                className="px-4 py-2 bg-apple-accent text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2"
               >
                 {verifyingCatchalls && <LoadingSpinner size="sm" />}
                 <span>{verifyingCatchalls ? "Verifying..." : "Verify Catchalls"}</span>
@@ -370,7 +370,7 @@ export default function ResultsPage() {
             )}
             <button
               onClick={downloadCSV}
-              className="px-4 py-2 bg-dashbrd-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
+              className="px-4 py-2 bg-apple-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
             >
               Download CSV
             </button>
@@ -378,48 +378,48 @@ export default function ResultsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-dashbrd-border">
-            <thead className="bg-dashbrd-card">
+          <table className="min-w-full divide-y divide-apple-border">
+            <thead className="bg-apple-surface">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
                   First Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
                   Last Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
                   Website
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
                   Email
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
                   Score
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
                   Tag
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashbrd-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
                   MX Type
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-dashbrd-card divide-y divide-dashbrd-border">
+            <tbody className="bg-apple-surface divide-y divide-apple-border">
               {filteredLeads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-dashbrd-card transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text">
+                <tr key={lead.id} className="hover:bg-apple-surface transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
                     {lead.first_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
                     {lead.last_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text-muted">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
                     {lead.domain}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
                     {lead.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -427,33 +427,33 @@ export default function ResultsPage() {
                       <span
                         className={`px-2 py-1 text-xs font-semibold rounded-full ${
                           lead.verification_status === "valid" || lead.verification_tag === "valid-catchall"
-                            ? "bg-green-900/20 text-green-300 border border-green-800"
+                            ? "bg-apple-success/20 text-apple-success border border-apple-success/30"
                             : lead.verification_status === "catchall"
-                            ? "bg-yellow-900/20 text-yellow-300 border border-yellow-800"
-                            : "bg-red-900/20 text-red-300 border border-red-800"
+                            ? "bg-apple-warning/20 text-apple-warning border border-apple-warning/30"
+                            : "bg-apple-error/20 text-apple-error border border-apple-error/30"
                         }`}
                       >
                         {lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status}
                       </span>
                       {lead.verification_tag === "catchall-verified" && (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-dashbrd-accent/20 text-dashbrd-accent border border-dashbrd-accent/30">
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-apple-accent/20 text-apple-accent border border-apple-accent/30">
                           Catchall-Verified
                         </span>
                       )}
                       {lead.verification_tag === "valid-catchall" && (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-900/30 text-green-300 border border-green-600">
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-apple-success/30 text-apple-success border border-apple-success/50">
                           Valid-Catchall
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text-muted">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
                     {lead.prevalence_score || "-"}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text-muted">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
                     {lead.verification_tag || "-"}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashbrd-text-muted">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
                     {(() => {
                       const mxType = getProviderFromMX(lead.mx_record, lead.mx_provider);
                       return mxType.charAt(0).toUpperCase() + mxType.slice(1); // Capitalize first letter

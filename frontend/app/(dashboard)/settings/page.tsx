@@ -66,44 +66,44 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-3xl font-bold text-dashbrd-text mb-8">Settings</h1>
+      <h1 className="text-3xl font-bold text-apple-text mb-8">Settings</h1>
 
       <div className="dashbrd-card p-6 space-y-6">
         <div>
-          <h2 className="text-lg font-medium text-dashbrd-text mb-4">
+          <h2 className="text-lg font-medium text-apple-text mb-4">
             Account Information
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-dashbrd-text-muted">
+              <label className="block text-sm font-medium text-apple-text-muted">
                 Email
               </label>
-              <p className="mt-1 text-sm text-dashbrd-text">{user?.email}</p>
+              <p className="mt-1 text-sm text-apple-text">{user?.email}</p>
             </div>
             {user?.company_name && (
               <div>
-                <label className="block text-sm font-medium text-dashbrd-text-muted">
+                <label className="block text-sm font-medium text-apple-text-muted">
                   Company Name
                 </label>
-                <p className="mt-1 text-sm text-dashbrd-text">
+                <p className="mt-1 text-sm text-apple-text">
                   {user.company_name}
                 </p>
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-dashbrd-text-muted">
+              <label className="block text-sm font-medium text-apple-text-muted">
                 Credits
               </label>
-              <p className="mt-1 text-sm text-dashbrd-text">{user?.credits || 0}</p>
+              <p className="mt-1 text-sm text-apple-text">{user?.credits || 0}</p>
             </div>
           </div>
         </div>
 
-        <div className="border-t border-dashbrd-border pt-6">
-          <h2 className="text-lg font-medium text-dashbrd-text mb-4">API Key</h2>
+        <div className="border-t border-apple-border pt-6">
+          <h2 className="text-lg font-medium text-apple-text mb-4">API Key</h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-dashbrd-text-muted mb-2">
+              <label className="block text-sm font-medium text-apple-text-muted mb-2">
                 Your API Key
               </label>
               <div className="flex space-x-2">
@@ -111,7 +111,7 @@ export default function SettingsPage() {
                   type="text"
                   value={user?.api_key || ""}
                   readOnly
-                  className="flex-1 dashbrd-input font-mono text-sm"
+                  className="flex-1 apple-input font-mono text-sm"
                 />
                 <button
                   onClick={() => {
@@ -123,7 +123,7 @@ export default function SettingsPage() {
                   Copy
                 </button>
               </div>
-              <p className="mt-2 text-sm text-dashbrd-text-muted">
+              <p className="mt-2 text-sm text-apple-text-muted">
                 Use this API key to authenticate API requests. Include it in the <code className="px-1 py-0.5 bg-dashbrd-card rounded text-xs">X-API-Key</code> header or as a Bearer token.
               </p>
             </div>
@@ -138,13 +138,13 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="border-t border-dashbrd-border pt-6">
-          <h2 className="text-lg font-medium text-dashbrd-text mb-4">
+        <div className="border-t border-apple-border pt-6">
+          <h2 className="text-lg font-medium text-apple-text mb-4">
             Catchall Verifier API Key (Optional)
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-dashbrd-text-muted mb-2">
+              <label className="block text-sm font-medium text-apple-text-muted mb-2">
                 Catchall Verifier API Key
               </label>
               <input
@@ -152,9 +152,9 @@ export default function SettingsPage() {
                 value={catchallApiKey}
                 onChange={(e) => setCatchallApiKey(e.target.value)}
                 placeholder="Enter your catchall verifier API key (optional)"
-                className="dashbrd-input w-full"
+                className="apple-input w-full"
               />
-              <p className="mt-1 text-sm text-dashbrd-text-muted">
+              <p className="mt-1 text-sm text-apple-text-muted">
                 Add your catchall verifier API key to verify catchall emails from your enrichment runs.
               </p>
             </div>
@@ -169,14 +169,14 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="border-t border-dashbrd-border pt-6">
-          <h2 className="text-lg font-medium text-dashbrd-error mb-4">
+        <div className="border-t border-apple-border pt-6">
+          <h2 className="text-lg font-medium text-apple-error mb-4">
             Danger Zone
           </h2>
           <button
             onClick={handleLogout}
             disabled={loading}
-            className="px-4 py-2 bg-dashbrd-error text-white rounded-lg hover:bg-dashbrd-error/90 disabled:opacity-50 flex items-center space-x-2 transition-colors"
+            className="px-4 py-2 bg-apple-error text-white rounded-lg hover:bg-apple-error/90 disabled:opacity-50 flex items-center space-x-2 transition-colors"
           >
             {loading && <LoadingSpinner size="sm" />}
             <span>Logout</span>

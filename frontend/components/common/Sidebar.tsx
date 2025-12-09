@@ -85,13 +85,13 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-[250px] bg-dashbrd-bg border-r border-dashbrd-border z-40">
+    <aside className="fixed left-0 top-0 h-screen w-[250px] bg-apple-bg border-r border-apple-border z-40">
       <div className="flex flex-col h-full">
         {/* Logo */}
-        <div className="p-6 border-b border-dashbrd-border">
+        <div className="p-6 border-b border-apple-border">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="text-xl font-bold text-dashbrd-text">
-              Email<span className="text-dashbrd-accent">Verifier</span>
+            <span className="text-xl font-bold text-apple-text">
+              Email<span className="text-apple-accent">Verifier</span>
             </span>
           </Link>
         </div>
@@ -134,16 +134,16 @@ export function Sidebar() {
 
         {/* User Profile Section */}
         {user && (
-          <div className="p-4 border-t border-dashbrd-border">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-dashbrd-card border border-dashbrd-border">
-              <div className="w-10 h-10 rounded-full bg-dashbrd-accent/20 flex items-center justify-center text-dashbrd-accent font-semibold text-sm">
+          <div className="p-4 border-t border-apple-border">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-apple-surface border border-apple-border">
+              <div className="w-10 h-10 rounded-full bg-apple-accent/20 flex items-center justify-center text-apple-accent font-semibold text-sm">
                 {getInitials(user.full_name, user.email)}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-dashbrd-text truncate">
+                <p className="text-sm font-medium text-apple-text truncate">
                   {user.full_name || "User"}
                 </p>
-                <p className="text-xs text-dashbrd-text-muted truncate">
+                <p className="text-xs text-apple-text-muted truncate">
                   {user.email}
                 </p>
               </div>

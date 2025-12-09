@@ -171,8 +171,8 @@ export default function FindValidEmailsPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-dashbrd-text">Find Valid Emails</h1>
-        <p className="mt-2 text-dashbrd-text-muted">
+        <h1 className="text-3xl font-bold text-apple-text">Find Valid Emails</h1>
+        <p className="mt-2 text-apple-text-muted">
           Manage and monitor your email verification jobs
         </p>
       </div>
@@ -206,18 +206,18 @@ export default function FindValidEmailsPage() {
 
         {selectedFile && (
           <>
-            <div className="border-t border-dashbrd-border pt-6">
-              <h3 className="text-lg font-medium text-dashbrd-text mb-4">
+            <div className="border-t border-apple-border pt-6">
+              <h3 className="text-lg font-medium text-apple-text mb-4">
                 File Information
               </h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-dashbrd-text-muted">File name:</span>
-                  <span className="ml-2 font-medium text-dashbrd-text">{selectedFile.name}</span>
+                  <span className="text-apple-text-muted">File name:</span>
+                  <span className="ml-2 font-medium text-apple-text">{selectedFile.name}</span>
                 </div>
                 <div>
-                  <span className="text-dashbrd-text-muted">File size:</span>
-                  <span className="ml-2 font-medium text-dashbrd-text">
+                  <span className="text-apple-text-muted">File size:</span>
+                  <span className="ml-2 font-medium text-apple-text">
                     {formatFileSize(selectedFile.size)}
                   </span>
                 </div>
@@ -227,15 +227,15 @@ export default function FindValidEmailsPage() {
             <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
 
             {!isVerificationOnly && (
-              <div className="border-t border-dashbrd-border pt-6">
-                <h3 className="text-lg font-medium text-dashbrd-text mb-4">
+              <div className="border-t border-apple-border pt-6">
+                <h3 className="text-lg font-medium text-apple-text mb-4">
                   Advanced Options
                 </h3>
                 <div className="space-y-4">
                   <div>
                     <label
                       htmlFor="company-size"
-                      className="block text-sm font-medium text-dashbrd-text-muted mb-2"
+                      className="block text-sm font-medium text-apple-text-muted mb-2"
                     >
                       Company Size (optional)
                     </label>
@@ -243,7 +243,7 @@ export default function FindValidEmailsPage() {
                       id="company-size"
                       value={companySize}
                       onChange={(e) => setCompanySize(e.target.value)}
-                      className="dashbrd-input w-full"
+                      className="apple-input w-full"
                     >
                       <option value="">Select company size</option>
                       <option value="1-50">1-50 employees</option>
@@ -256,7 +256,7 @@ export default function FindValidEmailsPage() {
               </div>
             )}
 
-            <div className="flex justify-end space-x-4 pt-6 border-t border-dashbrd-border">
+            <div className="flex justify-end space-x-4 pt-6 border-t border-apple-border">
               <button
                 onClick={() => {
                   setSelectedFile(null);

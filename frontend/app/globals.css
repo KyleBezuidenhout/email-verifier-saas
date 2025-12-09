@@ -6,11 +6,11 @@
 
 @layer base {
   * {
-    @apply border-dashbrd-border;
+    @apply border-apple-border;
   }
 
   body {
-    @apply bg-dashbrd-bg text-dashbrd-text font-sans;
+    @apply bg-apple-bg text-apple-text font-sans;
     font-family: 'Inter', 'Segoe UI', sans-serif;
   }
 
@@ -22,47 +22,47 @@
 @layer components {
   /* Card component */
   .dashbrd-card {
-    @apply bg-dashbrd-card border border-dashbrd-border rounded-xl;
+    @apply bg-apple-surface border border-apple-border rounded-xl;
     transition: all 0.2s ease;
   }
 
   .dashbrd-card-hover {
-    @apply dashbrd-card hover:bg-dashbrd-card-hover hover:border-dashbrd-border-light;
+    @apply dashbrd-card hover:bg-apple-surface-hover hover:border-apple-border;
   }
 
   /* Input/Select styling */
   .dashbrd-input {
-    @apply bg-dashbrd-card border border-dashbrd-border rounded-lg px-4 py-2 text-dashbrd-text placeholder-dashbrd-text-muted;
-    @apply focus:outline-none focus:ring-2 focus:ring-dashbrd-accent focus:border-dashbrd-accent;
+    @apply bg-apple-surface border border-apple-border rounded-lg px-4 py-2 text-apple-text placeholder-apple-text-muted;
+    @apply focus:outline-none focus:ring-2 focus:ring-apple-accent focus:border-apple-accent;
     transition: all 0.2s ease;
   }
 
   /* Badge variations */
   .badge-success {
-    @apply bg-dashbrd-success/20 text-dashbrd-success border border-dashbrd-success/30;
+    @apply bg-apple-success/20 text-apple-success border border-apple-success/30;
   }
 
   .badge-warning {
-    @apply bg-dashbrd-warning/20 text-dashbrd-warning border border-dashbrd-warning/30;
+    @apply bg-apple-warning/20 text-apple-warning border border-apple-warning/30;
   }
 
   .badge-error {
-    @apply bg-dashbrd-error/20 text-dashbrd-error border border-dashbrd-error/30;
+    @apply bg-apple-error/20 text-apple-error border border-apple-error/30;
   }
 
   .badge-info {
-    @apply bg-dashbrd-accent/20 text-dashbrd-accent border border-dashbrd-accent/30;
+    @apply bg-apple-accent/20 text-apple-accent border border-apple-accent/30;
   }
 
   /* Button styles */
   .btn-primary {
-    @apply bg-dashbrd-accent text-white px-4 py-2 rounded-lg font-medium;
-    @apply hover:bg-dashbrd-accent/90 transition-colors;
+    @apply bg-apple-accent text-white px-4 py-2 rounded-lg font-medium;
+    @apply hover:bg-apple-accent/90 transition-colors;
   }
 
   .btn-secondary {
-    @apply bg-dashbrd-card border border-dashbrd-border text-dashbrd-text px-4 py-2 rounded-lg font-medium;
-    @apply hover:bg-dashbrd-card-hover transition-colors;
+    @apply bg-apple-surface border border-apple-border text-apple-text px-4 py-2 rounded-lg font-medium;
+    @apply hover:bg-apple-surface-hover transition-colors;
   }
 }
 
@@ -84,7 +84,7 @@
 
   /* Gradient backgrounds for charts */
   .gradient-accent {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%);
+    background: linear-gradient(135deg, rgba(0, 122, 255, 0.1) 0%, rgba(0, 122, 255, 0.05) 100%);
   }
 }
 

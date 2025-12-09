@@ -9,48 +9,61 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Dashbrd X Design System
+        // Apple-Inspired Enterprise Design System
+        'apple': {
+          'bg': '#1C1C1E',           // Graphite - Main background
+          'surface': '#2C2C2E',       // Dark Gray - Cards, modals, sidebars
+          'surface-hover': '#3A3A3C', // Hover state for surfaces
+          'border': '#38383A',        // Subtle borders
+          'accent': '#007AFF',        // Functional Blue - Primary actions
+          'text': '#F5F5F7',          // Off-White - Primary text and icons
+          'text-muted': '#98989D',    // Secondary/muted text
+          'success': '#34C759',       // Standard Green - Success states
+          'warning': '#FF9500',       // Orange for warnings
+          'error': '#FF3B30',         // System Red for errors
+        },
+        // Legacy Dashbrd support (mapped to Apple colors for backward compatibility)
         'dashbrd': {
-          'bg': '#0D0F14',
-          'card': '#141821',
-          'card-hover': '#1A1F2C',
-          'border': '#1E2433',
-          'border-light': '#2A3142',
-          'accent': '#3B82F6',
-          'accent-glow': 'rgba(59, 130, 246, 0.2)',
-          'text': '#FFFFFF',
-          'text-muted': '#6B7280',
-          'text-subtle': '#4B5563',
-          'success': '#10B981',
-          'warning': '#F59E0B',
-          'error': '#EF4444',
+          'bg': '#1C1C1E',
+          'card': '#2C2C2E',
+          'card-hover': '#3A3A3C',
+          'border': '#38383A',
+          'border-light': '#38383A',
+          'accent': '#007AFF',
+          'accent-glow': 'rgba(0, 122, 255, 0.2)',
+          'text': '#F5F5F7',
+          'text-muted': '#98989D',
+          'text-subtle': '#98989D',
+          'success': '#34C759',
+          'warning': '#FF9500',
+          'error': '#FF3B30',
         },
         // OmniVerifier Design System (legacy - kept for backward compatibility)
-        'omni-black': '#0D0F14',
-        'omni-dark': '#141821',
-        'omni-cyan': '#3B82F6',
-        'omni-white': '#FFFFFF',
-        'omni-gray': '#6B7280',
-        'omni-light-gray': '#9CA3AF',
-        'omni-border': '#1E2433',
+        'omni-black': '#1C1C1E',
+        'omni-dark': '#2C2C2E',
+        'omni-cyan': '#007AFF',
+        'omni-white': '#F5F5F7',
+        'omni-gray': '#98989D',
+        'omni-light-gray': '#98989D',
+        'omni-border': '#38383A',
         // Legacy support
-        border: '#1E2433',
-        background: '#0D0F14',
-        foreground: '#FFFFFF',
+        border: '#38383A',
+        background: '#1C1C1E',
+        foreground: '#F5F5F7',
         primary: {
-          DEFAULT: '#3B82F6',
+          DEFAULT: '#007AFF',
           foreground: '#FFFFFF',
         },
         secondary: {
-          DEFAULT: '#141821',
-          foreground: '#FFFFFF',
+          DEFAULT: '#2C2C2E',
+          foreground: '#F5F5F7',
         },
         muted: {
-          DEFAULT: '#6B7280',
-          foreground: '#9CA3AF',
+          DEFAULT: '#98989D',
+          foreground: '#98989D',
         },
         accent: {
-          DEFAULT: '#3B82F6',
+          DEFAULT: '#007AFF',
           foreground: '#FFFFFF',
         },
       },

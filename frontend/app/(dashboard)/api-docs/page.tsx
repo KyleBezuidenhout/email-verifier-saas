@@ -385,33 +385,33 @@ export default function ApiDocsPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-dashbrd-text mb-2">API Documentation</h1>
-        <p className="text-dashbrd-text-muted">
+        <h1 className="text-3xl font-bold text-apple-text mb-2">API Documentation</h1>
+        <p className="text-apple-text-muted">
           Complete API reference for integrating with Email Verifier SaaS. Use your API key from Settings to authenticate requests.
         </p>
       </div>
 
       {/* Authentication Info */}
       <div className="dashbrd-card p-6 mb-8">
-        <h2 className="text-lg font-medium text-dashbrd-text mb-4">Authentication</h2>
-        <p className="text-sm text-dashbrd-text-muted mb-4">
+        <h2 className="text-lg font-medium text-apple-text mb-4">Authentication</h2>
+        <p className="text-sm text-apple-text-muted mb-4">
           Most endpoints require authentication. You can authenticate using either:
         </p>
         <div className="space-y-3">
-          <div className="bg-dashbrd-card-hover p-4 rounded-lg border border-dashbrd-border">
-            <p className="text-sm font-medium text-dashbrd-text mb-2">Option 1: API Key Header (Recommended for integrations)</p>
-            <code className="text-xs text-dashbrd-accent">X-API-Key: {user?.api_key || "<your-api-key>"}</code>
+          <div className="bg-dashbrd-card-hover p-4 rounded-lg border border-apple-border">
+            <p className="text-sm font-medium text-apple-text mb-2">Option 1: API Key Header (Recommended for integrations)</p>
+            <code className="text-xs text-apple-accent">X-API-Key: {user?.api_key || "<your-api-key>"}</code>
           </div>
-          <div className="bg-dashbrd-card-hover p-4 rounded-lg border border-dashbrd-border">
-            <p className="text-sm font-medium text-dashbrd-text mb-2">Option 2: Bearer Token (For web UI)</p>
-            <code className="text-xs text-dashbrd-accent">Authorization: Bearer &lt;token&gt;</code>
+          <div className="bg-dashbrd-card-hover p-4 rounded-lg border border-apple-border">
+            <p className="text-sm font-medium text-apple-text mb-2">Option 2: Bearer Token (For web UI)</p>
+            <code className="text-xs text-apple-accent">Authorization: Bearer &lt;token&gt;</code>
           </div>
         </div>
         {user?.api_key && (
-          <div className="mt-4 p-3 bg-dashbrd-accent/10 border border-dashbrd-accent/30 rounded-lg">
-            <p className="text-xs text-dashbrd-text-muted mb-1">Your API Key:</p>
+          <div className="mt-4 p-3 bg-apple-accent/10 border border-apple-accent/30 rounded-lg">
+            <p className="text-xs text-apple-text-muted mb-1">Your API Key:</p>
             <div className="flex items-center gap-2">
-              <code className="text-sm text-dashbrd-accent font-mono flex-1">{user.api_key}</code>
+              <code className="text-sm text-apple-accent font-mono flex-1">{user.api_key}</code>
               <button
                 onClick={() => copyToClipboard(user.api_key || "")}
                 className="btn-secondary text-xs px-3 py-1"
@@ -431,8 +431,8 @@ export default function ApiDocsPage() {
             onClick={() => setSelectedCategory(category)}
             className={`px-4 py-2 rounded-lg text-sm transition-colors ${
               selectedCategory === category
-                ? "bg-dashbrd-accent text-white font-medium"
-                : "bg-dashbrd-card border border-dashbrd-border text-dashbrd-text-muted hover:bg-dashbrd-card-hover"
+                ? "bg-apple-accent text-white font-medium"
+                : "bg-dashbrd-card border border-apple-border text-apple-text-muted hover:bg-dashbrd-card-hover"
             }`}
           >
             {category}
@@ -447,7 +447,7 @@ export default function ApiDocsPage() {
           const isExpanded = expandedEndpoint === endpointId;
 
           return (
-            <div key={endpointId} className="dashbrd-card border border-dashbrd-border rounded-lg overflow-hidden">
+            <div key={endpointId} className="dashbrd-card border border-apple-border rounded-lg overflow-hidden">
               {/* Endpoint Header */}
               <div
                 className="p-6 cursor-pointer hover:bg-dashbrd-card-hover transition-colors"
@@ -459,17 +459,17 @@ export default function ApiDocsPage() {
                       <span className={`px-3 py-1 rounded text-xs font-semibold border ${getMethodColor(endpoint.method)}`}>
                         {endpoint.method}
                       </span>
-                      <code className="text-dashbrd-text font-mono text-sm">{endpoint.path}</code>
+                      <code className="text-apple-text font-mono text-sm">{endpoint.path}</code>
                       {endpoint.authRequired && (
                         <span className="px-2 py-1 rounded text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
                           Auth Required
                         </span>
                       )}
                     </div>
-                    <p className="text-dashbrd-text-muted text-sm">{endpoint.description}</p>
+                    <p className="text-apple-text-muted text-sm">{endpoint.description}</p>
                   </div>
                   <svg
-                    className={`w-5 h-5 text-dashbrd-text-muted transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                    className={`w-5 h-5 text-apple-text-muted transition-transform ${isExpanded ? "rotate-180" : ""}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -481,34 +481,34 @@ export default function ApiDocsPage() {
 
               {/* Expanded Content */}
               {isExpanded && (
-                <div className="border-t border-dashbrd-border p-6 space-y-6 bg-dashbrd-bg">
+                <div className="border-t border-apple-border p-6 space-y-6 bg-apple-bg">
                   {/* Path Parameters */}
                   {endpoint.pathParams && endpoint.pathParams.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-medium text-dashbrd-text mb-3">Path Parameters</h3>
+                      <h3 className="text-sm font-medium text-apple-text mb-3">Path Parameters</h3>
                       <div className="overflow-x-auto">
                         <table className="min-w-full">
                           <thead>
-                            <tr className="border-b border-dashbrd-border">
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Name</th>
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Type</th>
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Required</th>
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Description</th>
+                            <tr className="border-b border-apple-border">
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Name</th>
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Type</th>
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Required</th>
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Description</th>
                             </tr>
                           </thead>
                           <tbody>
                             {endpoint.pathParams.map((param) => (
-                              <tr key={param.name} className="border-b border-dashbrd-border">
-                                <td className="py-2 px-3 text-sm text-dashbrd-text font-mono">{param.name}</td>
-                                <td className="py-2 px-3 text-sm text-dashbrd-text-muted">{param.type}</td>
-                                <td className="py-2 px-3 text-sm text-dashbrd-text-muted">
+                              <tr key={param.name} className="border-b border-apple-border">
+                                <td className="py-2 px-3 text-sm text-apple-text font-mono">{param.name}</td>
+                                <td className="py-2 px-3 text-sm text-apple-text-muted">{param.type}</td>
+                                <td className="py-2 px-3 text-sm text-apple-text-muted">
                                   {param.required ? (
                                     <span className="text-red-400">Yes</span>
                                   ) : (
-                                    <span className="text-dashbrd-text-muted">No</span>
+                                    <span className="text-apple-text-muted">No</span>
                                   )}
                                 </td>
-                                <td className="py-2 px-3 text-sm text-dashbrd-text-muted">{param.description}</td>
+                                <td className="py-2 px-3 text-sm text-apple-text-muted">{param.description}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -520,30 +520,30 @@ export default function ApiDocsPage() {
                   {/* Query Parameters */}
                   {endpoint.queryParams && endpoint.queryParams.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-medium text-dashbrd-text mb-3">Query Parameters</h3>
+                      <h3 className="text-sm font-medium text-apple-text mb-3">Query Parameters</h3>
                       <div className="overflow-x-auto">
                         <table className="min-w-full">
                           <thead>
-                            <tr className="border-b border-dashbrd-border">
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Name</th>
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Type</th>
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Required</th>
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Description</th>
+                            <tr className="border-b border-apple-border">
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Name</th>
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Type</th>
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Required</th>
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Description</th>
                             </tr>
                           </thead>
                           <tbody>
                             {endpoint.queryParams.map((param) => (
-                              <tr key={param.name} className="border-b border-dashbrd-border">
-                                <td className="py-2 px-3 text-sm text-dashbrd-text font-mono">{param.name}</td>
-                                <td className="py-2 px-3 text-sm text-dashbrd-text-muted">{param.type}</td>
-                                <td className="py-2 px-3 text-sm text-dashbrd-text-muted">
+                              <tr key={param.name} className="border-b border-apple-border">
+                                <td className="py-2 px-3 text-sm text-apple-text font-mono">{param.name}</td>
+                                <td className="py-2 px-3 text-sm text-apple-text-muted">{param.type}</td>
+                                <td className="py-2 px-3 text-sm text-apple-text-muted">
                                   {param.required ? (
                                     <span className="text-red-400">Yes</span>
                                   ) : (
-                                    <span className="text-dashbrd-text-muted">No</span>
+                                    <span className="text-apple-text-muted">No</span>
                                   )}
                                 </td>
-                                <td className="py-2 px-3 text-sm text-dashbrd-text-muted">{param.description}</td>
+                                <td className="py-2 px-3 text-sm text-apple-text-muted">{param.description}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -555,30 +555,30 @@ export default function ApiDocsPage() {
                   {/* Request Body */}
                   {endpoint.bodyParams && endpoint.bodyParams.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-medium text-dashbrd-text mb-3">Request Body</h3>
+                      <h3 className="text-sm font-medium text-apple-text mb-3">Request Body</h3>
                       <div className="overflow-x-auto">
                         <table className="min-w-full">
                           <thead>
-                            <tr className="border-b border-dashbrd-border">
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Name</th>
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Type</th>
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Required</th>
-                              <th className="text-left text-xs font-medium text-dashbrd-text-muted py-2 px-3">Description</th>
+                            <tr className="border-b border-apple-border">
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Name</th>
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Type</th>
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Required</th>
+                              <th className="text-left text-xs font-medium text-apple-text-muted py-2 px-3">Description</th>
                             </tr>
                           </thead>
                           <tbody>
                             {endpoint.bodyParams.map((param) => (
-                              <tr key={param.name} className="border-b border-dashbrd-border">
-                                <td className="py-2 px-3 text-sm text-dashbrd-text font-mono">{param.name}</td>
-                                <td className="py-2 px-3 text-sm text-dashbrd-text-muted">{param.type}</td>
-                                <td className="py-2 px-3 text-sm text-dashbrd-text-muted">
+                              <tr key={param.name} className="border-b border-apple-border">
+                                <td className="py-2 px-3 text-sm text-apple-text font-mono">{param.name}</td>
+                                <td className="py-2 px-3 text-sm text-apple-text-muted">{param.type}</td>
+                                <td className="py-2 px-3 text-sm text-apple-text-muted">
                                   {param.required ? (
                                     <span className="text-red-400">Yes</span>
                                   ) : (
-                                    <span className="text-dashbrd-text-muted">No</span>
+                                    <span className="text-apple-text-muted">No</span>
                                   )}
                                 </td>
-                                <td className="py-2 px-3 text-sm text-dashbrd-text-muted">{param.description}</td>
+                                <td className="py-2 px-3 text-sm text-apple-text-muted">{param.description}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -591,16 +591,16 @@ export default function ApiDocsPage() {
                   {endpoint.requestExample && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-medium text-dashbrd-text">Request Example</h3>
+                        <h3 className="text-sm font-medium text-apple-text">Request Example</h3>
                         <button
                           onClick={() => copyToClipboard(JSON.stringify(endpoint.requestExample, null, 2))}
-                          className="text-xs text-dashbrd-accent hover:text-dashbrd-accent/80"
+                          className="text-xs text-apple-accent hover:text-apple-accent/80"
                         >
                           Copy
                         </button>
                       </div>
-                      <pre className="bg-dashbrd-card border border-dashbrd-border rounded-lg p-4 overflow-x-auto">
-                        <code className="text-xs text-dashbrd-text-muted">
+                      <pre className="bg-dashbrd-card border border-apple-border rounded-lg p-4 overflow-x-auto">
+                        <code className="text-xs text-apple-text-muted">
                           {JSON.stringify(endpoint.requestExample, null, 2)}
                         </code>
                       </pre>
@@ -610,16 +610,16 @@ export default function ApiDocsPage() {
                   {/* cURL Example */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-medium text-dashbrd-text">cURL Example</h3>
+                      <h3 className="text-sm font-medium text-apple-text">cURL Example</h3>
                       <button
                         onClick={() => copyToClipboard(generateCurlExample(endpoint))}
-                        className="text-xs text-dashbrd-accent hover:text-dashbrd-accent/80"
+                        className="text-xs text-apple-accent hover:text-apple-accent/80"
                       >
                         Copy
                       </button>
                     </div>
-                    <pre className="bg-dashbrd-card border border-dashbrd-border rounded-lg p-4 overflow-x-auto">
-                      <code className="text-xs text-dashbrd-text-muted whitespace-pre-wrap">
+                    <pre className="bg-dashbrd-card border border-apple-border rounded-lg p-4 overflow-x-auto">
+                      <code className="text-xs text-apple-text-muted whitespace-pre-wrap">
                         {generateCurlExample(endpoint)}
                       </code>
                     </pre>
@@ -629,16 +629,16 @@ export default function ApiDocsPage() {
                   {endpoint.responseExample && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-medium text-dashbrd-text">Response Example</h3>
+                        <h3 className="text-sm font-medium text-apple-text">Response Example</h3>
                         <button
                           onClick={() => copyToClipboard(typeof endpoint.responseExample === 'string' ? endpoint.responseExample : JSON.stringify(endpoint.responseExample, null, 2))}
-                          className="text-xs text-dashbrd-accent hover:text-dashbrd-accent/80"
+                          className="text-xs text-apple-accent hover:text-apple-accent/80"
                         >
                           Copy
                         </button>
                       </div>
-                      <pre className="bg-dashbrd-card border border-dashbrd-border rounded-lg p-4 overflow-x-auto">
-                        <code className="text-xs text-dashbrd-text-muted">
+                      <pre className="bg-dashbrd-card border border-apple-border rounded-lg p-4 overflow-x-auto">
+                        <code className="text-xs text-apple-text-muted">
                           {typeof endpoint.responseExample === 'string' 
                             ? endpoint.responseExample 
                             : JSON.stringify(endpoint.responseExample, null, 2)}

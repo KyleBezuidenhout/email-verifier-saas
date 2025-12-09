@@ -26,15 +26,15 @@ export function formatFileSize(bytes: number): string {
 export function getStatusColor(status: string): string {
   switch (status) {
     case "completed":
-      return "bg-green-100 text-green-800";
+      return "bg-apple-success/20 text-apple-success border border-apple-success/30";
     case "processing":
-      return "bg-blue-100 text-blue-800";
+      return "bg-apple-accent/20 text-apple-accent border border-apple-accent/30";
     case "pending":
-      return "bg-gray-100 text-gray-800";
+      return "bg-apple-text-muted/20 text-apple-text-muted border border-apple-text-muted/30";
     case "failed":
-      return "bg-red-100 text-red-800";
+      return "bg-apple-error/20 text-apple-error border border-apple-error/30";
     default:
-      return "bg-gray-100 text-gray-800";
+      return "bg-apple-text-muted/20 text-apple-text-muted border border-apple-text-muted/30";
   }
 }
 
