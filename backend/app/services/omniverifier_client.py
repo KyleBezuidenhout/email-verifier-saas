@@ -96,9 +96,12 @@ class OmniVerifierClient:
         try:
             # Use list_id directly (keep as string, but ensure it's clean)
             list_id_str = str(list_id).strip()
+            # Try the endpoint path exactly as shown in the guide
+            # Guide shows: POST /v1/validate/catchall/{listId}/add
             url = f"{self.base_url}/v1/validate/catchall/{list_id_str}/add"
             print(f"Adding {len(emails)} emails to list {list_id_str} via {url}")
-            print(f"Request payload: {{'emails': {len(emails)} emails}}")
+            print(f"Request headers: {self._get_headers()}")
+            print(f"Request payload (first 3 emails): {emails[:3] if len(emails) > 3 else emails}")
             
             response = await self.client.post(
                 url,
@@ -107,6 +110,8 @@ class OmniVerifierClient:
                     "emails": emails
                 }
             )
+            print(f"Response status: {response.status_code}")
+            print(f"Response headers: {dict(response.headers)}")
             response.raise_for_status()
             result = response.json()
             print(f"Add emails response: {result}")  # Debug: log full response
@@ -114,6 +119,12 @@ class OmniVerifierClient:
         except httpx.HTTPStatusError as e:
             error_text = e.response.text if e.response else "No response text"
             print(f"HTTP Error {e.response.status_code}: {error_text}")  # Debug: log error details
+            print(f"Response URL: {e.response.url if e.response else 'N/A'}")
+            # Check if maybe the endpoint needs a different format
+            if e.response.status_code == 404:
+                # Try alternative endpoint format (maybe it's /catchall/{id}/add instead?)
+                print(f"404 error - trying to diagnose endpoint issue")
+                print(f"List ID type: {type(list_id)}, value: {list_id}")
             raise Exception(f"Failed to add emails to list: HTTP {e.response.status_code} - {error_text}")
         except Exception as e:
             print(f"Exception in add_emails_to_list: {str(e)}")  # Debug: log exception
