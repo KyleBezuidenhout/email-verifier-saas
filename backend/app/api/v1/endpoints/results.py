@@ -41,22 +41,7 @@ async def get_results(
         Lead.is_final_result == True
     ).all()
     
-    return [LeadResponse(
-        id=lead.id,
-        job_id=lead.job_id,
-        user_id=lead.user_id,
-        first_name=lead.first_name,
-        last_name=lead.last_name,
-        domain=lead.domain,
-        company_size=lead.company_size,
-        email=lead.email,
-        pattern_used=lead.pattern_used,
-        prevalence_score=lead.prevalence_score,
-        verification_status=lead.verification_status,
-        verification_tag=lead.verification_tag,
-        mx_record=lead.mx_record,
-        mx_provider=lead.mx_provider,
-        is_final_result=lead.is_final_result,
-        created_at=lead.created_at.isoformat(),
-    ) for lead in leads]
+    # Use model_validate to automatically include all fields including extra_data
+    # This handles created_at conversion and includes all schema fields
+    return [LeadResponse.model_validate(lead) for lead in leads]
 
