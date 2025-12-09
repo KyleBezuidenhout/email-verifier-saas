@@ -26,6 +26,25 @@ class OmniVerifierClient:
             "x-api-key": self.api_key
         }
     
+    async def get_credits(self) -> Dict:
+        """
+        Get current credit balance.
+        
+        Returns:
+            Response dict with credit balance information
+        """
+        try:
+            response = await self.client.get(
+                f"{self.base_url}/v1/validate/credits",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise Exception(f"Failed to get credits: HTTP {e.response.status_code} - {e.response.text}")
+        except Exception as e:
+            raise Exception(f"Error getting credits: {str(e)}")
+    
     async def create_catchall_list(self, emails_count: int, title: str) -> Dict:
         """
         Create a new catchall verification list.
