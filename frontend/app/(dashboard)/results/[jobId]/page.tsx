@@ -151,7 +151,7 @@ export default function ResultsPage() {
 
   const downloadCSV = () => {
     // Build headers: standard columns + extra columns from CSV
-    const standardHeaders = ["First Name", "Last Name", "Website", "Email", "Status", "Tag", "MX Type"];
+    const standardHeaders = ["First Name", "Last Name", "Website", "Email", "Status", "MX Type"];
     const headers = [...standardHeaders, ...extraColumns];
     
     // Helper to escape CSV values (handle commas, quotes, newlines)
@@ -176,7 +176,6 @@ export default function ResultsPage() {
           lead.domain,
           lead.email,
           lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status,
-          lead.verification_tag || "",
           mxTypeDisplay,
         ];
         
@@ -426,12 +425,6 @@ export default function ResultsPage() {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
-                  Score
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
-                  Tag
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
                   MX Type
                 </th>
                 {/* Dynamic columns from extra_data */}
@@ -481,12 +474,6 @@ export default function ResultsPage() {
                         </span>
                       )}
                     </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
-                    {lead.prevalence_score || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
-                    {lead.verification_tag || "-"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
                     {(() => {
