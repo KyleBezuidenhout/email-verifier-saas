@@ -587,6 +587,8 @@ async def verify_catchalls(
             # Keep as integer initially, convert to string when needed
             list_id_value = list_id
             list_id = str(list_id_value)
+            list_id_value = list_id
+            list_id = str(list_id_value)
             print(f"Created catchall list with ID: {list_id} (original type: {type(list_id_value)})")
             print(f"Full create response: {create_response}")
             
@@ -594,6 +596,14 @@ async def verify_catchalls(
             # Some APIs need a moment to fully initialize the list
             print("Waiting 3 seconds for list to initialize...")
             await asyncio.sleep(3)
+            
+            # Try to verify the list exists by checking its status
+            try:
+                status_check = await verifier.get_list_status(list_id)
+                print(f"List {list_id} status check successful: {status_check}")
+            except Exception as status_error:
+                print(f"Warning: Could not verify list status: {status_error}")
+                # Continue anyway - maybe status endpoint requires emails first
         except HTTPException:
             raise
         except Exception as e:
