@@ -73,9 +73,12 @@ class OmniVerifierClient:
                 }
             )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            print(f"Create list response: {data}")  # Debug: log full response
+            return data
         except httpx.HTTPStatusError as e:
-            raise Exception(f"Failed to create catchall list: HTTP {e.response.status_code} - {e.response.text}")
+            error_text = e.response.text if e.response else "No response text"
+            raise Exception(f"Failed to create catchall list: HTTP {e.response.status_code} - {error_text}")
         except Exception as e:
             raise Exception(f"Error creating catchall list: {str(e)}")
     
@@ -91,10 +94,11 @@ class OmniVerifierClient:
             Response dict
         """
         try:
-            # Ensure list_id is a string
-            list_id_str = str(list_id)
+            # Use list_id directly (keep as string, but ensure it's clean)
+            list_id_str = str(list_id).strip()
             url = f"{self.base_url}/v1/validate/catchall/{list_id_str}/add"
             print(f"Adding {len(emails)} emails to list {list_id_str} via {url}")
+            print(f"Request payload: {{'emails': {len(emails)} emails}}")
             
             response = await self.client.post(
                 url,
@@ -104,11 +108,15 @@ class OmniVerifierClient:
                 }
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            print(f"Add emails response: {result}")  # Debug: log full response
+            return result
         except httpx.HTTPStatusError as e:
             error_text = e.response.text if e.response else "No response text"
+            print(f"HTTP Error {e.response.status_code}: {error_text}")  # Debug: log error details
             raise Exception(f"Failed to add emails to list: HTTP {e.response.status_code} - {error_text}")
         except Exception as e:
+            print(f"Exception in add_emails_to_list: {str(e)}")  # Debug: log exception
             raise Exception(f"Error adding emails to list: {str(e)}")
     
     async def start_list(self, list_id: str) -> Dict:

@@ -578,12 +578,16 @@ async def verify_catchalls(
                 title=title
             )
             # API returns {"id": 12346, ...} according to docs
-            list_id = create_response.get("id")
+            # Try both "id" and "listId" fields (some APIs use different field names)
+            list_id = create_response.get("id") or create_response.get("listId")
             if not list_id:
+                print(f"Create response keys: {create_response.keys()}")
+                print(f"Full create response: {create_response}")
                 raise Exception("Failed to get list ID from OmniVerifier response")
-            # Ensure list_id is a string (API returns integer)
-            list_id = str(list_id)
-            print(f"Created catchall list with ID: {list_id}")
+            # Keep as integer initially, convert to string when needed
+            list_id_value = list_id
+            list_id = str(list_id_value)
+            print(f"Created catchall list with ID: {list_id} (original type: {type(list_id_value)})")
         except HTTPException:
             raise
         except Exception as e:
