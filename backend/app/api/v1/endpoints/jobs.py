@@ -592,7 +592,7 @@ async def verify_catchalls(
         poll_interval = 3  # Poll every 3 seconds
         start_time = time.time()
         status_completed = False
-        status = ""  # Initialize status variable
+        poll_status = ""  # Use different name to avoid shadowing imported 'status' module
         
         while True:
             elapsed_time = time.time() - start_time
@@ -602,15 +602,15 @@ async def verify_catchalls(
             
             try:
                 status_response = await verifier.get_list_status(list_id)
-                status = status_response.get("status", "").lower()
+                poll_status = status_response.get("status", "").lower()
                 
-                if status in ["completed", "done", "finished"]:
+                if poll_status in ["completed", "done", "finished"]:
                     status_completed = True
                     break
-                elif status == "failed":
+                elif poll_status == "failed":
                     errors.append("Catchall verification failed")
                     break
-                elif status in ["pending", "processing", "in_progress"]:
+                elif poll_status in ["pending", "processing", "in_progress"]:
                     # Continue polling
                     await asyncio.sleep(poll_interval)
                 else:
@@ -651,8 +651,8 @@ async def verify_catchalls(
             if result:
                 # Check if email is valid according to OmniVerifier
                 # OmniVerifier may return status like "valid", "deliverable", "exists", etc.
-                status = result.get("status", "").lower()
-                is_valid = status in ["valid", "deliverable", "exists", "ok"]
+                result_status = result.get("status", "").lower()
+                is_valid = result_status in ["valid", "deliverable", "exists", "ok"]
                 
                 if is_valid:
                     # Update lead: status to valid, add appropriate tag based on job type
