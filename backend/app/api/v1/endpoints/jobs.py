@@ -558,7 +558,8 @@ async def verify_catchalls(
                 emails_count=len(emails_list),
                 title=title
             )
-            list_id = create_response.get("listId") or create_response.get("id")
+            # API returns {"id": 12346, ...} according to docs
+            list_id = create_response.get("id")
             if not list_id:
                 raise Exception("Failed to get list ID from OmniVerifier response")
         except Exception as e:
@@ -639,7 +640,8 @@ async def verify_catchalls(
         # Create a mapping of email to result for quick lookup
         email_to_result = {}
         for result in results:
-            email = result.get("email", "").lower()
+            # API returns "email_nominal" field according to OmniVerifier docs
+            email = result.get("email_nominal", result.get("email", "")).lower()
             if email:
                 email_to_result[email] = result
         
@@ -649,10 +651,16 @@ async def verify_catchalls(
             result = email_to_result.get(email_lower)
             
             if result:
-                # Check if email is valid according to OmniVerifier
-                # OmniVerifier may return status like "valid", "deliverable", "exists", etc.
+                # OmniVerifier returns: status="good"|"risky"|"bad", is_catchall=bool
+                # "good" = valid email (deliverable, not catchall)
+                # "risky" = potentially catchall but might be deliverable
+                # "bad" = catchall or invalid
                 result_status = result.get("status", "").lower()
-                is_valid = result_status in ["valid", "deliverable", "exists", "ok"]
+                is_catchall = result.get("is_catchall", False)
+                
+                # Consider "good" status as valid (deliverable email)
+                # Even if is_catchall is true, if status is "good", it's deliverable
+                is_valid = result_status == "good"
                 
                 if is_valid:
                     # Update lead: status to valid, add appropriate tag based on job type

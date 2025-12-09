@@ -139,7 +139,9 @@ class OmniVerifierClient:
                 headers=self._get_headers()
             )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            # API returns {"results": [...]}, extract the results array
+            return data.get("results", [])
         except httpx.HTTPStatusError as e:
             raise Exception(f"Failed to get list results: HTTP {e.response.status_code} - {e.response.text}")
         except Exception as e:
