@@ -77,15 +77,20 @@ class OmniVerifierClient:
         Add emails to an existing catchall list.
         
         Args:
-            list_id: The ID of the catchall list
+            list_id: The ID of the catchall list (will be converted to string)
             emails: List of email addresses to add
         
         Returns:
             Response dict
         """
         try:
+            # Ensure list_id is a string
+            list_id_str = str(list_id)
+            url = f"{self.base_url}/v1/validate/catchall/{list_id_str}/add"
+            print(f"Adding {len(emails)} emails to list {list_id_str} via {url}")
+            
             response = await self.client.post(
-                f"{self.base_url}/v1/validate/catchall/{list_id}/add",
+                url,
                 headers=self._get_headers(),
                 json={
                     "emails": emails
@@ -94,7 +99,8 @@ class OmniVerifierClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            raise Exception(f"Failed to add emails to list: HTTP {e.response.status_code} - {e.response.text}")
+            error_text = e.response.text if e.response else "No response text"
+            raise Exception(f"Failed to add emails to list: HTTP {e.response.status_code} - {error_text}")
         except Exception as e:
             raise Exception(f"Error adding emails to list: {str(e)}")
     
