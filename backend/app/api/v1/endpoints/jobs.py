@@ -592,6 +592,7 @@ async def verify_catchalls(
         poll_interval = 3  # Poll every 3 seconds
         start_time = time.time()
         status_completed = False
+        status = ""  # Initialize status variable
         
         while True:
             elapsed_time = time.time() - start_time
