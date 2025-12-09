@@ -195,6 +195,8 @@ class OmniVerifierClient:
             List of result dicts, each containing email and validation status
         """
         try:
+            # Note: Results endpoint uses different path: /v1/catchall/list/{id}/results
+            # (not /v1/validate/catchall/{id}/results)
             response = await self.client.get(
                 f"{self.base_url}/v1/catchall/list/{list_id}/results",
                 headers=self._get_headers(include_content_type=False)
