@@ -18,6 +18,8 @@ app = FastAPI(
 # CORS origins - explicit list
 origins = [
     "http://localhost:3000",
+    "https://www.billionverifier.io",
+    "https://billionverifier.io",
     "https://email-verifier-saas.vercel.app",
     "https://email-verifier-saas-production.vercel.app",
 ]
@@ -38,6 +40,11 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"detail": str(exc)},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "*",
+        }
     )
 
 # Health check endpoint
