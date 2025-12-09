@@ -621,7 +621,7 @@ async def verify_catchalls(
         
         # Step 4: Poll for status until complete (max 5 minutes)
         max_wait_time = 300  # 5 minutes
-        poll_interval = 3  # Poll every 3 seconds
+        poll_interval = 30  # Poll every 30 seconds (as per guide recommendation)
         start_time = time.time()
         status_completed = False
         poll_status = ""  # Use different name to avoid shadowing imported 'status' module
@@ -635,12 +635,18 @@ async def verify_catchalls(
             try:
                 status_response = await verifier.get_list_status(list_id)
                 poll_status = status_response.get("status", "").lower()
+                progress = status_response.get("progress", 0)
                 
-                if poll_status in ["completed", "done", "finished"]:
+                print(f"List {list_id} status: {poll_status}, Progress: {progress}%")
+                
+                # Check for exact "completed" status as per guide
+                if poll_status == "completed":
                     status_completed = True
+                    print("Processing complete!")
                     break
                 elif poll_status == "failed":
                     errors.append("Catchall verification failed")
+                    print("Processing failed.")
                     break
                 elif poll_status in ["pending", "processing", "in_progress"]:
                     # Continue polling

@@ -19,12 +19,19 @@ class OmniVerifierClient:
         self.base_url = base_url or settings.OMNIVERIFIER_BASE_URL
         self.client = httpx.AsyncClient(timeout=60.0)
     
-    def _get_headers(self) -> Dict[str, str]:
-        """Get headers for OmniVerifier API requests."""
-        return {
-            "Content-Type": "application/json",
+    def _get_headers(self, include_content_type: bool = True) -> Dict[str, str]:
+        """
+        Get headers for OmniVerifier API requests.
+        
+        Args:
+            include_content_type: Whether to include Content-Type header (default: True)
+        """
+        headers = {
             "x-api-key": self.api_key
         }
+        if include_content_type:
+            headers["Content-Type"] = "application/json"
+        return headers
     
     async def get_credits(self) -> Dict:
         """
@@ -36,7 +43,7 @@ class OmniVerifierClient:
         try:
             response = await self.client.get(
                 f"{self.base_url}/v1/validate/credits",
-                headers=self._get_headers()
+                headers=self._get_headers(include_content_type=False)
             )
             response.raise_for_status()
             return response.json()
@@ -115,9 +122,10 @@ class OmniVerifierClient:
             Response dict
         """
         try:
+            # Start list endpoint only needs x-api-key header (no Content-Type)
             response = await self.client.post(
                 f"{self.base_url}/v1/validate/catchall/{list_id}/start",
-                headers=self._get_headers()
+                headers=self._get_headers(include_content_type=False)
             )
             response.raise_for_status()
             return response.json()
@@ -134,12 +142,12 @@ class OmniVerifierClient:
             list_id: The ID of the catchall list
         
         Returns:
-            Status dict with fields like "status", "processed", "total", etc.
+            Status dict with fields like "status", "progress", "processed", "total", etc.
         """
         try:
             response = await self.client.get(
                 f"{self.base_url}/v1/validate/catchall/{list_id}/status",
-                headers=self._get_headers()
+                headers=self._get_headers(include_content_type=False)
             )
             response.raise_for_status()
             return response.json()
@@ -161,7 +169,7 @@ class OmniVerifierClient:
         try:
             response = await self.client.get(
                 f"{self.base_url}/v1/catchall/list/{list_id}/results",
-                headers=self._get_headers()
+                headers=self._get_headers(include_content_type=False)
             )
             response.raise_for_status()
             data = response.json()
