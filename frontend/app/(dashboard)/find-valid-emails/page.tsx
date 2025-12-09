@@ -9,7 +9,6 @@ import { QuickStats } from "@/components/dashboard/QuickStats";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { DropZone } from "@/components/upload/DropZone";
 import { FilePreview, ColumnMapping } from "@/components/upload/FilePreview";
-import { VerificationModeToggle } from "@/components/upload/VerificationModeToggle";
 import { SalesNavModal } from "@/components/upload/SalesNavModal";
 import { formatFileSize } from "@/lib/utils";
 import { useSSE } from "@/hooks/useSSE";
@@ -30,7 +29,6 @@ export default function FindValidEmailsPage() {
   const [companySize, setCompanySize] = useState("");
   const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
   const [isMappingValid, setIsMappingValid] = useState(false);
-  const [isVerificationOnly, setIsVerificationOnly] = useState(false);
   const [showSalesNavModal, setShowSalesNavModal] = useState(false);
 
   useEffect(() => {
@@ -194,11 +192,6 @@ export default function FindValidEmailsPage() {
           </div>
         )}
 
-        <VerificationModeToggle
-          isVerificationOnly={isVerificationOnly}
-          onToggle={setIsVerificationOnly}
-        />
-
         <DropZone
           onFileSelect={setSelectedFile}
           selectedFile={selectedFile}
@@ -226,35 +219,33 @@ export default function FindValidEmailsPage() {
 
             <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
 
-            {!isVerificationOnly && (
-              <div className="border-t border-apple-border pt-6">
-                <h3 className="text-lg font-medium text-apple-text mb-4">
-                  Advanced Options
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <label
-                      htmlFor="company-size"
-                      className="block text-sm font-medium text-apple-text-muted mb-2"
-                    >
-                      Company Size (optional)
-                    </label>
-                    <select
-                      id="company-size"
-                      value={companySize}
-                      onChange={(e) => setCompanySize(e.target.value)}
-                      className="apple-input w-full"
-                    >
-                      <option value="">Select company size</option>
-                      <option value="1-50">1-50 employees</option>
-                      <option value="51-200">51-200 employees</option>
-                      <option value="201-500">201-500 employees</option>
-                      <option value="500+">500+ employees</option>
-                    </select>
-                  </div>
+            <div className="border-t border-apple-border pt-6">
+              <h3 className="text-lg font-medium text-apple-text mb-4">
+                Advanced Options
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="company-size"
+                    className="block text-sm font-medium text-apple-text-muted mb-2"
+                  >
+                    Company Size (optional)
+                  </label>
+                  <select
+                    id="company-size"
+                    value={companySize}
+                    onChange={(e) => setCompanySize(e.target.value)}
+                    className="apple-input w-full"
+                  >
+                    <option value="">Select company size</option>
+                    <option value="1-50">1-50 employees</option>
+                    <option value="51-200">51-200 employees</option>
+                    <option value="201-500">201-500 employees</option>
+                    <option value="500+">500+ employees</option>
+                  </select>
                 </div>
               </div>
-            )}
+            </div>
 
             <div className="flex justify-end space-x-4 pt-6 border-t border-apple-border">
               <button
