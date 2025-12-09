@@ -16,7 +16,7 @@ interface Endpoint {
   category: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://email-verifier-saas-production.up.railway.app";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
 
 const endpoints: Endpoint[] = [
   // Authentication
