@@ -9,7 +9,7 @@ export class SSEClient {
   private reconnectDelay = 1000;
 
   connect(jobId: string, token: string): void {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
     const url = `${API_URL}/api/v1/jobs/${jobId}/progress?token=${token}`;
 
     this.eventSource = new EventSource(url);

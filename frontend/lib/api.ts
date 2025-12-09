@@ -1,6 +1,6 @@
 import { LoginRequest, RegisterRequest, AuthResponse, User, Job, Lead, UploadResponse } from "@/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
 
 class ApiClient {
   private baseUrl: string;
