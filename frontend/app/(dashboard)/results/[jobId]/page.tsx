@@ -360,12 +360,11 @@ export default function ResultsPage() {
           <div className="flex space-x-2">
             {catchallLeads.length > 0 && (
               <button
-                onClick={handleVerifyCatchalls}
-                disabled={verifyingCatchalls}
-                className="px-4 py-2 bg-apple-accent text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2"
+                disabled={true}
+                title="Catchall verification temporarily unavailable"
+                className="px-4 py-2 bg-apple-surface text-apple-text-muted rounded-lg cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2 border border-apple-border"
               >
-                {verifyingCatchalls && <LoadingSpinner size="sm" />}
-                <span>{verifyingCatchalls ? "Verifying..." : "Verify Catchalls"}</span>
+                <span>Verify Catchalls (Coming Soon)</span>
               </button>
             )}
             <button
