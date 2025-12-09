@@ -111,9 +111,9 @@ class ApiClient {
       document.cookie = "token=; path=/; max-age=0";
       if (typeof window !== "undefined") {
         document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
-        // Only redirect to login if we're not already on the login or register page
+        // Only redirect to login if we're not already on public pages (home, login, register)
         const currentPath = window.location.pathname;
-        if (currentPath !== "/login" && currentPath !== "/register") {
+        if (currentPath !== "/" && currentPath !== "/login" && currentPath !== "/register") {
           window.location.href = "/login";
         }
       }
