@@ -26,7 +26,7 @@ export default function SalesNavScraperPage() {
   const [salesNavUrl, setSalesNavUrl] = useState("");
   const [urlValidation, setUrlValidation] = useState<VayneUrlCheck | null>(null);
   const [validatingUrl, setValidatingUrl] = useState(false);
-  const [urlDebounceTimer, setUrlDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+  const [urlDebounceTimer, setUrlDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   
   // Form state
   const [exportFormat, setExportFormat] = useState<"simple" | "advanced">("simple");
@@ -36,7 +36,7 @@ export default function SalesNavScraperPage() {
   const [currentOrder, setCurrentOrder] = useState<VayneOrder | null>(null);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [pollingInterval, setPollingInterval] = useState(POLLING_INTERVAL);
-  const [pollingTimer, setPollingTimer] = useState<NodeJS.Timeout | null>(null);
+  const [pollingTimer, setPollingTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   
   // Order history state
   const [orderHistory, setOrderHistory] = useState<VayneOrder[]>([]);
