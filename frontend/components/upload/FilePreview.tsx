@@ -21,9 +21,9 @@ interface FilePreviewProps {
 const COLUMN_VARIATIONS: Record<keyof ColumnMapping, string[]> = {
   first_name: ["firstname", "first", "fname", "givenname", "first_name"],
   last_name: ["lastname", "last", "lname", "surname", "familyname", "last_name"],
-  website: ["website", "domain", "companywebsite", "companydomain", "url", "companyurl", "company_website"],
+  website: ["website", "domain", "companywebsite", "companydomain", "url", "companyurl", "company_website", "primarydomain", "organization_primary_domain", "organizationprimarydomain"],
   email: ["email", "emailaddress", "e-mail", "email_address", "mail"],
-  company_size: ["companysize", "company_size", "size", "employees", "employeecount", "headcount"],
+  company_size: ["companysize", "company_size", "size", "employees", "employeecount", "headcount", "organizationsize", "organization_size", "orgsize", "org_size", "teamsize", "team_size", "staffcount", "staff_count", "numberofemployees", "num_employees", "employeesnumber"],
 };
 
 const getRequiredColumns = (mode?: 'enrichment' | 'verification'): (keyof ColumnMapping)[] => {
