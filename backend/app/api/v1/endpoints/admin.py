@@ -101,10 +101,11 @@ async def get_low_credit_clients(
     admin: User = Depends(require_admin),
     threshold: int = Query(10, ge=0)
 ):
-    """Get clients with credits below threshold."""
+    """Get clients with credits below threshold (excludes admin users who have infinite credits)."""
     clients = db.query(User).filter(
         User.credits < threshold,
-        User.is_active == True
+        User.is_active == True,
+        User.is_admin != True  # Exclude admins - they have infinite credits
     ).order_by(User.credits.asc()).all()
     
     return {
