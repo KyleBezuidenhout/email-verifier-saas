@@ -462,15 +462,19 @@ export default function AdminConsolePage() {
               </thead>
               <tbody className="divide-y divide-apple-border">
                 {jobs.map((job) => {
+                  // Only calculate hit rate after job is completed
                   // Enrichment: (valid + catchall) / total unique leads | Verification: valid / total
-                  // Cap at 100% to handle any data inconsistencies
+                  const isCompleted = job.status === "completed";
                   const isEnrichment = job.job_type === "enrichment";
-                  const rawHitRate = job.total_leads > 0
-                    ? isEnrichment
+                  let hitRateDisplay = "--";
+                  
+                  if (isCompleted && job.total_leads > 0) {
+                    const rawHitRate = isEnrichment
                       ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100)
-                      : ((job.valid_emails_found) / job.total_leads * 100)
-                    : 0;
-                  const hitRateValue = Math.min(rawHitRate, 100).toFixed(1);
+                      : ((job.valid_emails_found) / job.total_leads * 100);
+                    hitRateDisplay = `${Math.min(rawHitRate, 100).toFixed(1)}%`;
+                  }
+                  
                   return (
                   <tr 
                     key={job.id} 
@@ -495,7 +499,9 @@ export default function AdminConsolePage() {
                     <td className="px-4 py-3 text-right text-green-400">{job.valid_emails_found}</td>
                     <td className="px-4 py-3 text-right text-yellow-400">{job.catchall_emails_found}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className="text-green-400 font-medium">{hitRateValue}%</span>
+                      <span className={`font-medium ${isCompleted ? 'text-green-400' : 'text-apple-text-muted'}`}>
+                        {hitRateDisplay}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-apple-text-muted text-sm">
                       {new Date(job.created_at).toLocaleString()}
@@ -529,12 +535,12 @@ export default function AdminConsolePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {apiKeyUsage.length > 0 ? (
               apiKeyUsage.map((key, index) => {
-                // Calculate current rate based on recent usage (simulated for now)
-                // Rate limit is 165 req/30s = 5.5 req/s, scaled to 0-170 for display
+                // Check if any jobs are currently processing (key is active)
                 const hasActiveJobs = jobs.some(j => j.status === "processing");
-                const baseRate = hasActiveJobs ? 165 : 0;
-                // Add slight variation per key for visual distinction
-                const currentRate = hasActiveJobs ? Math.max(0, baseRate - (index * 10) + Math.random() * 20) : 0;
+                // Show 0 when idle, 170 (full rate) when active
+                // For multiple keys, first key handles jobs when active
+                const isKeyActive = hasActiveJobs && index === 0;
+                const currentRate = isKeyActive ? 170 : 0;
                 
                 return (
                 <div key={key.key_id} className="bg-apple-surface border border-apple-border rounded-xl p-6">
@@ -544,7 +550,8 @@ export default function AdminConsolePage() {
                       <Speedometer 
                         value={currentRate} 
                         max={170}
-                        label="Current Rate"
+                        label={key.key_preview}
+                        isActive={isKeyActive}
                       />
                     </div>
                     

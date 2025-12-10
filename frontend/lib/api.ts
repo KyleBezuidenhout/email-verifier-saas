@@ -2,6 +2,9 @@ import { LoginRequest, RegisterRequest, AuthResponse, User, Job, Lead, UploadRes
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
 
+// Flag to prevent multiple redirects
+let isRedirectingToLogin = false;
+
 class ApiClient {
   private baseUrl: string;
 
@@ -34,16 +37,23 @@ class ApiClient {
       if (response.status === 401) {
         // Clear invalid token
         document.cookie = "token=; path=/; max-age=0";
-        // Clear token from all paths
+        
         if (typeof window !== "undefined") {
           document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
-          // Only redirect to login if we're not already on public pages (home, login, register)
+          
+          // Only redirect to login once (prevents multiple redirects from parallel requests)
           const currentPath = window.location.pathname;
-          if (currentPath !== "/" && currentPath !== "/login" && currentPath !== "/register") {
-            window.location.href = "/login";
+          if (currentPath !== "/" && currentPath !== "/login" && currentPath !== "/register" && !isRedirectingToLogin) {
+            isRedirectingToLogin = true;
+            // Small delay to allow any pending requests to complete
+            setTimeout(() => {
+              window.location.href = "/login";
+            }, 100);
           }
         }
-        throw new Error("Session expired. Please log in again.");
+        
+        // Return a silent rejection instead of throwing error that logs to console
+        return Promise.reject({ silent: true, message: "Session expired" });
       }
 
       if (!response.ok) {

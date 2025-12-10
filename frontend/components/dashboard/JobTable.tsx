@@ -65,15 +65,19 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
           </thead>
           <tbody className="bg-apple-surface divide-y divide-apple-border">
             {jobs.map((job) => {
+              // Only calculate hit rate after job is completed
               // Enrichment: (valid + catchall) / total unique leads | Verification: valid / total
-              // Cap at 100% to handle any data inconsistencies
+              const isCompleted = job.status === "completed";
               const isEnrichment = job.job_type === "enrichment";
-              const rawHitRate = job.total_leads > 0
-                ? isEnrichment
+              let hitRateDisplay = "--";
+              
+              if (isCompleted && job.total_leads > 0) {
+                const rawHitRate = isEnrichment
                   ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100)
-                  : ((job.valid_emails_found) / job.total_leads * 100)
-                : 0;
-              const hitRateValue = Math.min(rawHitRate, 100).toFixed(1);
+                  : ((job.valid_emails_found) / job.total_leads * 100);
+                hitRateDisplay = `${Math.min(rawHitRate, 100).toFixed(1)}%`;
+              }
+              
               return (
               <tr 
                 key={job.id} 
@@ -119,7 +123,9 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <span className="text-green-400 font-medium">{hitRateValue}%</span>
+                  <span className={`font-medium ${isCompleted ? 'text-green-400' : 'text-apple-text-muted'}`}>
+                    {hitRateDisplay}
+                  </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                   <Link

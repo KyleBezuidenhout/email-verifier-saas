@@ -231,15 +231,25 @@ export default function ResultsPage() {
         <p className="mt-2 text-apple-text-muted">Job ID: {jobId}</p>
       </div>
 
-      {/* Hit Rate Summary Banner */}
+      {/* Hit Rate Summary Banner - Only show after completion */}
       {job && (
         <div className="mb-8 bg-apple-surface border border-apple-border rounded-lg p-6">
-          <h2 className="text-3xl font-bold text-[#007AFF]">
-            {job.job_type === "enrichment"
-              ? `${job.total_leads > 0 ? Math.min(((validLeads.length + catchallLeads.length) / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% of Emails Were Found`
-              : `${job.total_leads > 0 ? Math.min((validLeads.length / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% of Emails Are Valid`
-            }
-          </h2>
+          {job.status === "completed" ? (
+            <h2 className="text-3xl font-bold text-[#007AFF]">
+              {job.job_type === "enrichment"
+                ? `${job.total_leads > 0 ? Math.min(((validLeads.length + catchallLeads.length) / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% of Emails Were Found`
+                : `${job.total_leads > 0 ? Math.min((validLeads.length / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% of Emails Are Valid`
+              }
+            </h2>
+          ) : job.status === "processing" ? (
+            <h2 className="text-3xl font-bold text-apple-text-muted">
+              Processing... {job.processed_leads}/{job.total_leads} leads
+            </h2>
+          ) : (
+            <h2 className="text-3xl font-bold text-apple-text-muted">
+              Status: {job.status}
+            </h2>
+          )}
         </div>
       )}
 
