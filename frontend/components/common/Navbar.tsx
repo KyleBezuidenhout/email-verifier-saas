@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -23,15 +22,21 @@ export function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-omni-black border-b border-omni-border">
       <div className="max-w-[1280px] mx-auto px-4 md:px-16 h-[70px] flex items-center justify-between">
         {/* Logo */}
-        <Link href={user ? "/dashboard" : "/"} className="flex items-center">
-          <Image
-            src="https://i.ibb.co/tpK9jgGb/logo-var-4.png"
-            alt="Billion Verifier"
-            width={200}
-            height={44}
-            className="h-11 w-auto"
-            priority
-          />
+        <Link href={user ? "/dashboard" : "/"} className="flex items-center gap-2.5 group">
+          <svg 
+            className="w-7 h-7 transition-opacity group-hover:opacity-90" 
+            fill="#007AFF" 
+            viewBox="0 0 24 24" 
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+          </svg>
+          <span 
+            className="text-[#007AFF] font-bold text-xl tracking-tight"
+            style={{ fontFamily: '"Helvetica Neue", "Arial", sans-serif', fontWeight: 700 }}
+          >
+            Billion Verifier
+          </span>
         </Link>
 
         {user ? (

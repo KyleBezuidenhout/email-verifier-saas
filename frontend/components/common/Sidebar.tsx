@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
@@ -90,15 +89,21 @@ export function Sidebar() {
       <div className="flex flex-col h-full">
         {/* Logo */}
         <div className="p-6 border-b border-apple-border">
-          <Link href="/dashboard" className="flex items-center">
-            <Image
-              src="https://i.ibb.co/tpK9jgGb/logo-var-4.png"
-              alt="Billion Verifier"
-              width={180}
-              height={40}
-              className="h-8 w-auto"
-              priority
-            />
+          <Link href="/dashboard" className="flex items-center justify-center gap-2 group">
+            <svg 
+              className="w-6 h-6 transition-opacity group-hover:opacity-90" 
+              fill="#007AFF" 
+              viewBox="0 0 24 24" 
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+            </svg>
+            <span 
+              className="text-[#007AFF] font-bold text-lg tracking-tight"
+              style={{ fontFamily: '"Helvetica Neue", "Arial", sans-serif', fontWeight: 700 }}
+            >
+              Billion Verifier
+            </span>
           </Link>
         </div>
 
