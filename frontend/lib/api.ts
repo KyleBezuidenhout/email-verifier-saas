@@ -148,8 +148,8 @@ class ApiClient {
       body: JSON.stringify(data),
     });
     if (response.access_token) {
-      // If rememberMe is true, set cookie for 30 days (2592000 seconds), otherwise 7 days (604800 seconds)
-      const maxAge = data.rememberMe ? 2592000 : 604800;
+      // If rememberMe is true, set cookie for 10 days (864000 seconds), otherwise 7 days (604800 seconds)
+      const maxAge = data.rememberMe ? 864000 : 604800;
       document.cookie = `token=${response.access_token}; path=/; max-age=${maxAge}; SameSite=Lax`;
     }
     return response;
