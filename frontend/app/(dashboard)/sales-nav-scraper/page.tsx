@@ -75,7 +75,8 @@ export default function SalesNavScraperPage() {
       }
     };
     loadInitialData();
-  }, [loadAuthStatus, loadCredits, loadOrderHistory]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   // Poll current order if it exists and is processing
   useEffect(() => {
