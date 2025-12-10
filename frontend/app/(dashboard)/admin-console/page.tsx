@@ -461,9 +461,15 @@ export default function AdminConsolePage() {
               </thead>
               <tbody className="divide-y divide-apple-border">
                 {jobs.map((job) => {
-                  const hitRate = job.job_type === "enrichment" && job.total_leads > 0
-                    ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100).toFixed(1)
-                    : null;
+                  // Enrichment: (valid + catchall) / total = "X% of Emails Were Found"
+                  // Verification: valid / total = "X% of Valid Emails Were Found"
+                  const isEnrichment = job.job_type === "enrichment";
+                  const hitRateValue = job.total_leads > 0
+                    ? isEnrichment
+                      ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100).toFixed(1)
+                      : ((job.valid_emails_found) / job.total_leads * 100).toFixed(1)
+                    : "0.0";
+                  const hitRateLabel = isEnrichment ? "of Emails Were Found" : "of Valid Emails Were Found";
                   return (
                   <tr 
                     key={job.id} 
@@ -488,11 +494,7 @@ export default function AdminConsolePage() {
                     <td className="px-4 py-3 text-right text-green-400">{job.valid_emails_found}</td>
                     <td className="px-4 py-3 text-right text-yellow-400">{job.catchall_emails_found}</td>
                     <td className="px-4 py-3 text-right">
-                      {hitRate !== null ? (
-                        <span className="text-green-400 font-medium">{hitRate}% Found</span>
-                      ) : (
-                        <span className="text-apple-text-muted">-</span>
-                      )}
+                      <span className="text-green-400 font-medium">{hitRateValue}% {hitRateLabel}</span>
                     </td>
                     <td className="px-4 py-3 text-apple-text-muted text-sm">
                       {new Date(job.created_at).toLocaleString()}
