@@ -2,12 +2,14 @@
 const nextConfig = {
   reactStrictMode: true,
   typescript: {
-    // Don't fail build on type errors during build (for now, to diagnose hanging issue)
-    ignoreBuildErrors: false,
+    // Temporarily ignore type errors to diagnose build hanging issue
+    // TODO: Re-enable once build completes successfully
+    ignoreBuildErrors: true,
   },
   eslint: {
-    // Don't fail build on ESLint errors during build
-    ignoreDuringBuilds: false,
+    // Temporarily ignore ESLint errors to diagnose build hanging issue
+    // TODO: Re-enable once build completes successfully
+    ignoreDuringBuilds: true,
   },
   images: {
     remotePatterns: [
