@@ -470,33 +470,54 @@ let globalRateLimiter;
 // Legacy alias for backwards compatibility
 let rateLimiter;
 
-// Round-robin key index for distributing load across all keys
-let currentKeyIndex = 0;
+// ============================================
+// GLOBAL ROUND-ROBIN VIA REDIS
+// ============================================
+// All workers share the same round-robin counter via Redis
+// This ensures even distribution across all API keys
 
-// Get next key in round-robin fashion (maximizes throughput by using all keys)
+const ROUND_ROBIN_KEY = 'mailtester:round_robin_index';
+
+// Get next key in round-robin fashion using GLOBAL Redis counter
+// This ensures all workers across all Railway instances share the same index
 async function getNextKeyRoundRobin() {
   if (MAILTESTER_API_KEYS.length === 0) return null;
   if (MAILTESTER_API_KEYS.length === 1) return MAILTESTER_API_KEYS[0];
   
-  // Try each key starting from current index, skip unhealthy ones
+  // Get and increment global round-robin index atomically via Redis
+  let globalIndex = 0;
+  if (redisClient.isReady) {
+    try {
+      // Atomic increment - all workers share this counter
+      const newIndex = await redisClient.incr(ROUND_ROBIN_KEY);
+      globalIndex = (newIndex - 1) % MAILTESTER_API_KEYS.length;
+      
+      // Set expiry to prevent stale data (1 hour)
+      await redisClient.expire(ROUND_ROBIN_KEY, 3600);
+    } catch (err) {
+      console.error('Redis round-robin error, using fallback:', err.message);
+      globalIndex = Math.floor(Math.random() * MAILTESTER_API_KEYS.length);
+    }
+  } else {
+    // Fallback to random if Redis not ready
+    globalIndex = Math.floor(Math.random() * MAILTESTER_API_KEYS.length);
+  }
+  
+  // Try each key starting from global index, skip unhealthy ones
   for (let i = 0; i < MAILTESTER_API_KEYS.length; i++) {
-    const idx = (currentKeyIndex + i) % MAILTESTER_API_KEYS.length;
+    const idx = (globalIndex + i) % MAILTESTER_API_KEYS.length;
     const key = MAILTESTER_API_KEYS[idx];
     
     const healthy = await isKeyHealthy(key);
     const remaining = await getKeyRemaining(key);
     
     if (healthy && remaining > 0) {
-      // Move to next key for next call (round-robin)
-      currentKeyIndex = (idx + 1) % MAILTESTER_API_KEYS.length;
       return key;
     }
   }
   
-  // All keys unhealthy or exhausted, return current one anyway
-  const key = MAILTESTER_API_KEYS[currentKeyIndex];
-  currentKeyIndex = (currentKeyIndex + 1) % MAILTESTER_API_KEYS.length;
-  return key;
+  // All keys unhealthy or exhausted, return the one from global index anyway
+  return MAILTESTER_API_KEYS[globalIndex];
 }
 
 // Global rate limit function - acquires a slot from the combined pool
@@ -1022,7 +1043,8 @@ if (MAILTESTER_API_KEYS.length > 0) {
 } else {
   console.log(`Rate limit: 165 requests per 30 seconds`);
 }
-console.log(`Using GLOBAL rate limiter with round-robin key distribution`);
+console.log(`Using GLOBAL rate limiter with Redis-coordinated round-robin`);
+console.log(`All workers share the same key rotation via Redis (even distribution!)`);
 console.log(`Error failover: Auto-switch to healthy key after ${ERROR_THRESHOLD} errors/min`);
 
 // Simple Redis list poller
