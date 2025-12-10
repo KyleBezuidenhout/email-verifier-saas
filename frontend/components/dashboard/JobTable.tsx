@@ -59,12 +59,19 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                 Verified
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                Hit Rate
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
           <tbody className="bg-apple-surface divide-y divide-apple-border">
-            {jobs.map((job) => (
+            {jobs.map((job) => {
+              const hitRate = job.job_type === "enrichment" && job.total_leads > 0
+                ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100).toFixed(1)
+                : null;
+              return (
               <tr 
                 key={job.id} 
                 className="hover:bg-apple-surface-hover transition-colors cursor-pointer"
@@ -111,6 +118,13 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
                   {job.valid_emails_found + job.catchall_emails_found}
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  {hitRate !== null ? (
+                    <span className="text-green-400 font-medium">{hitRate}% Found</span>
+                  ) : (
+                    <span className="text-apple-text-muted">-</span>
+                  )}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                   <Link
                     href={`/results/${job.id}`}
@@ -153,7 +167,8 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

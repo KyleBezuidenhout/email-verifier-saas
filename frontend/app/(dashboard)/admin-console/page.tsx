@@ -454,13 +454,22 @@ export default function AdminConsolePage() {
                   <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Leads</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Valid</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Catchall</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Hit Rate</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Date</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-apple-border">
-                {jobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-apple-bg/50">
+                {jobs.map((job) => {
+                  const hitRate = job.job_type === "enrichment" && job.total_leads > 0
+                    ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100).toFixed(1)
+                    : null;
+                  return (
+                  <tr 
+                    key={job.id} 
+                    className="hover:bg-apple-bg/50 cursor-pointer"
+                    onClick={() => router.push(`/results/${job.id}`)}
+                  >
                     <td className="px-4 py-3">
                       <div>
                         <p className="text-apple-text font-medium truncate max-w-[200px]">{job.client.email}</p>
@@ -478,19 +487,28 @@ export default function AdminConsolePage() {
                     <td className="px-4 py-3 text-right text-apple-text">{job.total_leads}</td>
                     <td className="px-4 py-3 text-right text-green-400">{job.valid_emails_found}</td>
                     <td className="px-4 py-3 text-right text-yellow-400">{job.catchall_emails_found}</td>
+                    <td className="px-4 py-3 text-right">
+                      {hitRate !== null ? (
+                        <span className="text-green-400 font-medium">{hitRate}% Found</span>
+                      ) : (
+                        <span className="text-apple-text-muted">-</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-apple-text-muted text-sm">
                       {new Date(job.created_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
                       <Link
                         href={`/results/${job.id}`}
+                        onClick={(e) => e.stopPropagation()}
                         className="text-apple-accent hover:underline text-sm"
                       >
                         View Results
                       </Link>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
