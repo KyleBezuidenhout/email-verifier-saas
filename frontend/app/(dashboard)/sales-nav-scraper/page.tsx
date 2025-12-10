@@ -138,6 +138,41 @@ export default function SalesNavScraperPage() {
     }
   }, []);
 
+  const loadOrderHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const response = await apiClient.getVayneOrderHistory(10, (historyPage - 1) * 10, historyFilter === "all" ? undefined : historyFilter);
+      setOrderHistory(response.orders);
+      setHistoryTotal(response.total);
+    } catch (err) {
+      console.error("Failed to load order history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [historyPage, historyFilter]);
+
+  const pollOrderStatus = useCallback(async (orderId: string) => {
+    try {
+      const order = await apiClient.getVayneOrder(orderId);
+      setCurrentOrder(order);
+      
+      // Exponential backoff: increase interval if still processing
+      if (order.status === "processing" || order.status === "pending") {
+        setPollingInterval((prev) => Math.min(prev * 1.5, MAX_POLLING_INTERVAL));
+      } else {
+        // Order completed or failed, stop polling
+        setPollingInterval(POLLING_INTERVAL);
+        if (order.status === "completed") {
+          await loadCredits();
+          await loadOrderHistory();
+        }
+      }
+    } catch (err) {
+      console.error("Failed to poll order status:", err);
+      // Continue polling even on error (might be temporary)
+    }
+  }, [loadCredits, loadOrderHistory]);
+
   const handleUpdateAuth = async () => {
     if (!liAtCookie.trim()) {
       setError("Please enter your LinkedIn session cookie");
@@ -186,55 +221,21 @@ export default function SalesNavScraperPage() {
       setPollingInterval(POLLING_INTERVAL); // Reset polling interval
       await loadCredits(); // Refresh credits after order creation
       await loadOrderHistory(); // Refresh history
-    } catch (err: any) {
-      if (err.message?.includes("insufficient") || err.message?.includes("credits")) {
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (errorMessage.includes("insufficient") || errorMessage.includes("credits")) {
         setError("Insufficient credits. Please top up your account.");
-      } else if (err.message?.includes("401") || err.message?.includes("authentication")) {
+      } else if (errorMessage.includes("401") || errorMessage.includes("authentication")) {
         setError("LinkedIn authentication failed. Please update your session cookie.");
         await loadAuthStatus();
       } else {
-        setError(err instanceof Error ? err.message : "Failed to create order");
+        setError(errorMessage || "Failed to create order");
       }
       setShowErrorModal(true);
     } finally {
       setCreatingOrder(false);
     }
   };
-
-  const loadOrderHistory = useCallback(async () => {
-    setLoadingHistory(true);
-    try {
-      const response = await apiClient.getVayneOrderHistory(10, (historyPage - 1) * 10, historyFilter === "all" ? undefined : historyFilter);
-      setOrderHistory(response.orders);
-      setHistoryTotal(response.total);
-    } catch (err) {
-      console.error("Failed to load order history:", err);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, [historyPage, historyFilter]);
-
-  const pollOrderStatus = useCallback(async (orderId: string) => {
-    try {
-      const order = await apiClient.getVayneOrder(orderId);
-      setCurrentOrder(order);
-      
-      // Exponential backoff: increase interval if still processing
-      if (order.status === "processing" || order.status === "pending") {
-        setPollingInterval((prev) => Math.min(prev * 1.5, MAX_POLLING_INTERVAL));
-      } else {
-        // Order completed or failed, stop polling
-        setPollingInterval(POLLING_INTERVAL);
-        if (order.status === "completed") {
-          await loadCredits();
-          await loadOrderHistory();
-        }
-      }
-    } catch (err) {
-      console.error("Failed to poll order status:", err);
-      // Continue polling even on error (might be temporary)
-    }
-  }, [loadCredits, loadOrderHistory]);
 
   const handleDownloadCSV = async (orderId: string) => {
     try {
