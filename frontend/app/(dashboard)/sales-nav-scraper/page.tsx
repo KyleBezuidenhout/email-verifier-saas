@@ -387,7 +387,7 @@ export default function SalesNavScraperPage() {
         <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-apple-text">Credits & Limits</h3>
-            {credits.subscription_plan && (
+            {credits?.subscription_plan && (
               <span className="text-xs text-apple-text-muted">
                 Plan: {credits.subscription_plan}
                 {credits.subscription_expires_at && (
@@ -400,14 +400,14 @@ export default function SalesNavScraperPage() {
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-apple-text-muted">Available Credits</span>
-                <span className="font-medium text-apple-text">{credits.available_credits.toLocaleString()}</span>
+                <span className="font-medium text-apple-text">{credits?.available_credits?.toLocaleString() || 0}</span>
               </div>
             </div>
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-apple-text-muted">Leads Scraped Today</span>
                 <span className="font-medium text-apple-text">
-                  {credits.leads_scraped_today.toLocaleString()} / {credits.daily_limit.toLocaleString()}
+                  {credits?.leads_scraped_today?.toLocaleString() || 0} / {credits?.daily_limit?.toLocaleString() || 0}
                 </span>
               </div>
               <div className="w-full bg-apple-bg rounded-full h-2">
@@ -417,7 +417,7 @@ export default function SalesNavScraperPage() {
                 ></div>
               </div>
             </div>
-            {credits.subscription_plan && (
+            {credits?.subscription_plan && (
               <button className="w-full mt-3 px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors text-sm font-medium">
                 Upgrade Plan
               </button>
@@ -591,7 +591,7 @@ export default function SalesNavScraperPage() {
                 )}
               </>
             )}
-            {currentOrder.leads_found !== undefined && (
+            {currentOrder?.leads_found !== undefined && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-apple-text-muted">Leads Found</span>
                 <span className="text-sm font-medium text-apple-text">
@@ -599,7 +599,7 @@ export default function SalesNavScraperPage() {
                 </span>
               </div>
             )}
-            {currentOrder.only_qualified && currentOrder.leads_qualified !== undefined && (
+            {currentOrder?.only_qualified && currentOrder.leads_qualified !== undefined && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-apple-text-muted">Leads Qualified</span>
                 <span className="text-sm font-medium text-apple-text">
