@@ -297,8 +297,6 @@ export default function SalesNavScraperPage() {
         isOpen={showErrorModal}
         message={error}
         onClose={() => setShowErrorModal(false)}
-        showContactSupport={true}
-        showBuyCredits={error.includes("credits") || error.includes("Insufficient")}
       />
 
       {/* Authentication Status Card */}
