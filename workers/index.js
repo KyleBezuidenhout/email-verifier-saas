@@ -2,6 +2,7 @@ const { Worker } = require('bullmq');
 const axios = require('axios');
 const redis = require('redis');
 const { Pool } = require('pg');
+const http = require('http');
 require('dotenv').config();
 
 // Parse Redis connection
@@ -1288,6 +1289,32 @@ async function processJobFromQueue(jobId) {
     throw error;
   }
 }
+
+// ============================================
+// HEALTH CHECK SERVER
+// Keeps Railway from sleeping the worker container
+// ============================================
+const HEALTH_PORT = process.env.PORT || 3000;
+
+const healthServer = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  if (req.url === '/health' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      redis: redisClient.isReady ? 'connected' : 'disconnected',
+      uptime: process.uptime()
+    }));
+  } else {
+    res.writeHead(404);
+    res.end('Not found');
+  }
+});
+
+healthServer.listen(HEALTH_PORT, '0.0.0.0', () => {
+  console.log(`✅ Health check server running on port ${HEALTH_PORT}`);
+});
 
 // Start simple queue poller
 pollSimpleQueue().catch(console.error);
