@@ -537,12 +537,36 @@ export default function AdminConsolePage() {
               apiKeyUsage.map((key, index) => {
                 // Check if any jobs are currently processing (key is active)
                 const hasActiveJobs = jobs.some(j => j.status === "processing");
-                // Show exactly 0 when idle, exactly 170 when active
-                // For multiple keys, first key handles jobs when active
-                const isKeyActive = hasActiveJobs && index === 0;
+                // With multiple keys, distribute active status
+                // First key is primary, second is backup (both can be active if both have capacity)
+                const isKeyActive = hasActiveJobs && key.remaining > 0 && (
+                  index === 0 || // First key is always considered active when jobs running
+                  (index === 1 && apiKeyUsage[0]?.usage_percentage > 80) // Second key active if first is high usage
+                );
+                
+                // Health status based on usage percentage
+                const healthStatus = key.usage_percentage > 90 ? 'critical' : 
+                                     key.usage_percentage > 80 ? 'warning' : 
+                                     key.usage_percentage > 50 ? 'moderate' : 'healthy';
+                
+                const healthColors = {
+                  critical: { bg: 'bg-red-500/20', text: 'text-red-400', glow: 'shadow-red-500/50' },
+                  warning: { bg: 'bg-orange-500/20', text: 'text-orange-400', glow: 'shadow-orange-500/50' },
+                  moderate: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', glow: 'shadow-yellow-500/50' },
+                  healthy: { bg: 'bg-green-500/20', text: 'text-green-400', glow: 'shadow-green-500/50' }
+                };
+                
+                const colors = healthColors[healthStatus];
                 
                 return (
-                <div key={key.key_id} className="bg-apple-surface border border-apple-border rounded-xl p-6">
+                <div 
+                  key={key.key_id} 
+                  className={`bg-apple-surface border rounded-xl p-6 transition-all ${
+                    isKeyActive 
+                      ? `border-apple-accent shadow-lg ${colors.glow}` 
+                      : 'border-apple-border'
+                  }`}
+                >
                   <div className="flex gap-6">
                     {/* Speedometer - explicitly pass 0 or 170 */}
                     <div className="flex-shrink-0">
@@ -558,10 +582,24 @@ export default function AdminConsolePage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start mb-3">
                         <div>
-                          <p className="font-mono text-apple-text">{key.key_preview}</p>
-                          <p className="text-xs text-apple-text-muted">Key ID: {key.key_id}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-mono text-apple-text">{key.key_preview}</p>
+                            {/* Health indicator dot */}
+                            <span className={`w-2 h-2 rounded-full ${
+                              healthStatus === 'critical' ? 'bg-red-500 animate-pulse' :
+                              healthStatus === 'warning' ? 'bg-orange-500' :
+                              healthStatus === 'moderate' ? 'bg-yellow-500' :
+                              'bg-green-500'
+                            }`} title={`Status: ${healthStatus}`} />
+                            {isKeyActive && (
+                              <span className="text-xs bg-apple-accent/20 text-apple-accent px-2 py-0.5 rounded-full">
+                                ACTIVE
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-apple-text-muted">Key {index + 1} • ID: {key.key_id}</p>
                         </div>
-                        <span className={`px-2 py-1 text-xs rounded ${key.usage_percentage > 80 ? "bg-red-500/20 text-red-400" : key.usage_percentage > 50 ? "bg-yellow-500/20 text-yellow-400" : "bg-green-500/20 text-green-400"}`}>
+                        <span className={`px-2 py-1 text-xs rounded ${colors.bg} ${colors.text}`}>
                           {key.usage_percentage.toFixed(1)}%
                         </span>
                       </div>
@@ -573,15 +611,25 @@ export default function AdminConsolePage() {
                         </div>
                         <div className="w-full bg-apple-bg rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full transition-all ${key.usage_percentage > 80 ? "bg-red-500" : key.usage_percentage > 50 ? "bg-yellow-500" : "bg-green-500"}`}
+                            className={`h-2 rounded-full transition-all ${
+                              healthStatus === 'critical' ? 'bg-red-500' :
+                              healthStatus === 'warning' ? 'bg-orange-500' :
+                              healthStatus === 'moderate' ? 'bg-yellow-500' :
+                              'bg-green-500'
+                            }`}
                             style={{ width: `${Math.min(key.usage_percentage, 100)}%` }}
                           />
                         </div>
                       </div>
                       
-                      <p className="text-sm text-apple-text-muted">
-                        Remaining: <span className="text-apple-text font-medium">{key.remaining.toLocaleString()}</span>
-                      </p>
+                      <div className="flex justify-between items-center">
+                        <p className="text-sm text-apple-text-muted">
+                          Remaining: <span className="text-apple-text font-medium">{key.remaining.toLocaleString()}</span>
+                        </p>
+                        {key.remaining < 50000 && (
+                          <span className="text-xs text-orange-400">⚠️ Low capacity</span>
+                        )}
+                      </div>
                       <p className="text-xs text-apple-text-muted mt-1">
                         Resets at midnight GMT+2
                       </p>
@@ -596,6 +644,28 @@ export default function AdminConsolePage() {
               </div>
             )}
           </div>
+          
+          {/* Multi-key info banner */}
+          {apiKeyUsage.length > 1 && (
+            <div className="bg-apple-accent/10 border border-apple-accent/20 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-apple-accent mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="text-sm text-apple-text font-medium">Multi-Key Load Balancing Active</p>
+                  <p className="text-xs text-apple-text-muted mt-1">
+                    Workers automatically use the key with the most remaining capacity. If a key encounters errors, 
+                    it will automatically switch to a healthy backup key. Total daily capacity: {' '}
+                    <span className="text-apple-accent font-medium">
+                      {(apiKeyUsage.reduce((sum, k) => sum + k.limit, 0)).toLocaleString()}
+                    </span>
+                    {' '}verifications.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* OmniVerifier Credits */}
           {omniCredits && (

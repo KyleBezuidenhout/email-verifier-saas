@@ -32,7 +32,20 @@ const pgPool = new Pool({
 
 // MailTester API configuration
 const MAILTESTER_BASE_URL = process.env.MAILTESTER_BASE_URL || 'https://happy.mailtester.ninja/ninja';
-const MAILTESTER_API_KEY = process.env.MAILTESTER_API_KEY;
+
+// Support multiple API keys (comma-separated) with fallback to single key
+const MAILTESTER_API_KEYS = process.env.MAILTESTER_API_KEYS
+  ? process.env.MAILTESTER_API_KEYS.split(',').map(k => k.trim()).filter(Boolean)
+  : (process.env.MAILTESTER_API_KEY ? [process.env.MAILTESTER_API_KEY] : []);
+
+// Legacy single key for backwards compatibility
+const MAILTESTER_API_KEY = MAILTESTER_API_KEYS[0] || process.env.MAILTESTER_API_KEY;
+
+// Daily limit per key
+const DAILY_LIMIT_PER_KEY = 500000;
+
+// Error threshold for marking key unhealthy
+const ERROR_THRESHOLD = 5; // errors per minute before marking unhealthy
 
 // ============================================
 // API USAGE TRACKING (for Admin Dashboard)
@@ -70,6 +83,160 @@ async function trackApiUsage(apiKey = MAILTESTER_API_KEY) {
     // Don't fail verification if tracking fails
     console.error('Usage tracking error:', err.message);
   }
+}
+
+// ============================================
+// MULTI-KEY MANAGEMENT
+// ============================================
+
+// Get current usage for a key today
+async function getKeyUsage(apiKey) {
+  if (!redisClient.isReady || !apiKey) return 0;
+  
+  try {
+    const keyHash = getKeyHash(apiKey);
+    const today = getTodayDateGMT2();
+    const usageKey = `mailtester:usage:${keyHash}:${today}`;
+    const usage = await redisClient.get(usageKey);
+    return usage ? parseInt(usage) : 0;
+  } catch (err) {
+    console.error('Error getting key usage:', err.message);
+    return 0;
+  }
+}
+
+// Get remaining capacity for a key today
+async function getKeyRemaining(apiKey) {
+  const usage = await getKeyUsage(apiKey);
+  return Math.max(0, DAILY_LIMIT_PER_KEY - usage);
+}
+
+// ============================================
+// KEY ERROR TRACKING & HEALTH
+// ============================================
+
+// Track an error for a specific key (1-minute windows)
+async function trackKeyError(apiKey) {
+  if (!redisClient.isReady || !apiKey) return;
+  
+  try {
+    const keyHash = getKeyHash(apiKey);
+    const window = Math.floor(Date.now() / 60000); // 1-minute windows
+    const errorKey = `mailtester:errors:${keyHash}:${window}`;
+    
+    await redisClient.incr(errorKey);
+    await redisClient.expire(errorKey, 300); // 5 min TTL for cleanup
+  } catch (err) {
+    console.error('Error tracking key error:', err.message);
+  }
+}
+
+// Get error count for a key in current minute
+async function getKeyErrorCount(apiKey) {
+  if (!redisClient.isReady || !apiKey) return 0;
+  
+  try {
+    const keyHash = getKeyHash(apiKey);
+    const window = Math.floor(Date.now() / 60000);
+    const errorKey = `mailtester:errors:${keyHash}:${window}`;
+    
+    const count = await redisClient.get(errorKey);
+    return count ? parseInt(count) : 0;
+  } catch (err) {
+    return 0;
+  }
+}
+
+// Check if a key is healthy (less than ERROR_THRESHOLD errors in current minute)
+async function isKeyHealthy(apiKey) {
+  if (!redisClient.isReady || !apiKey) return true; // Assume healthy if can't check
+  
+  try {
+    // Check error count
+    const errorCount = await getKeyErrorCount(apiKey);
+    if (errorCount >= ERROR_THRESHOLD) return false;
+    
+    // Check if manually marked unhealthy
+    const keyHash = getKeyHash(apiKey);
+    const unhealthyKey = `mailtester:unhealthy:${keyHash}`;
+    const isUnhealthy = await redisClient.get(unhealthyKey);
+    
+    return !isUnhealthy;
+  } catch (err) {
+    return true; // Assume healthy on error
+  }
+}
+
+// Mark a key as unhealthy (auto-recovers after 5 minutes)
+async function markKeyUnhealthy(apiKey) {
+  if (!redisClient.isReady || !apiKey) return;
+  
+  try {
+    const keyHash = getKeyHash(apiKey);
+    const unhealthyKey = `mailtester:unhealthy:${keyHash}`;
+    
+    await redisClient.set(unhealthyKey, Date.now().toString());
+    await redisClient.expire(unhealthyKey, 300); // Auto-recover after 5 min
+    
+    console.log(`⚠️ Key ...${apiKey.slice(-4)} marked unhealthy (will recover in 5 min)`);
+  } catch (err) {
+    console.error('Error marking key unhealthy:', err.message);
+  }
+}
+
+// Get the best available API key (healthy + most remaining capacity)
+async function getBestAvailableKey() {
+  if (MAILTESTER_API_KEYS.length === 0) {
+    console.error('No API keys configured!');
+    return null;
+  }
+  
+  if (MAILTESTER_API_KEYS.length === 1) {
+    return MAILTESTER_API_KEYS[0];
+  }
+  
+  let bestKey = null;
+  let bestRemaining = -1;
+  
+  // First pass: find best healthy key
+  for (const key of MAILTESTER_API_KEYS) {
+    const healthy = await isKeyHealthy(key);
+    const remaining = await getKeyRemaining(key);
+    
+    if (healthy && remaining > bestRemaining) {
+      bestRemaining = remaining;
+      bestKey = key;
+    }
+  }
+  
+  // Fallback: if all keys unhealthy, use one with most capacity anyway
+  if (!bestKey) {
+    console.log('⚠️ All keys unhealthy, using key with most remaining capacity...');
+    for (const key of MAILTESTER_API_KEYS) {
+      const remaining = await getKeyRemaining(key);
+      if (remaining > bestRemaining) {
+        bestRemaining = remaining;
+        bestKey = key;
+      }
+    }
+  }
+  
+  return bestKey || MAILTESTER_API_KEYS[0];
+}
+
+// Get next healthy key excluding the specified one
+async function getNextHealthyKey(excludeKey) {
+  for (const key of MAILTESTER_API_KEYS) {
+    if (key !== excludeKey) {
+      const healthy = await isKeyHealthy(key);
+      const remaining = await getKeyRemaining(key);
+      if (healthy && remaining > 0) {
+        return key;
+      }
+    }
+  }
+  // No healthy alternative found
+  return null;
 }
 
 // ============================================
@@ -249,9 +416,18 @@ async function rateLimit() {
   await rateLimiter.acquire();
 }
 
-// Verify email using MailTester API with retry logic (with rate limiting)
-async function verifyEmail(email, retryCount = 0) {
+// Verify email using MailTester API with multi-key support and failover
+async function verifyEmail(email, retryCount = 0, currentKey = null, keyAttempts = 0) {
   const MAX_RETRIES = 3;
+  const MAX_KEY_ATTEMPTS = MAILTESTER_API_KEYS.length;
+  
+  // Get the best available key if not specified
+  const apiKey = currentKey || await getBestAvailableKey();
+  
+  if (!apiKey) {
+    console.error('No API keys available!');
+    return { status: 'error', message: 'No API keys configured' };
+  }
   
   await rateLimit();
   
@@ -259,13 +435,13 @@ async function verifyEmail(email, retryCount = 0) {
     const response = await axios.get(MAILTESTER_BASE_URL, {
       params: {
         email: email,
-        key: MAILTESTER_API_KEY,
+        key: apiKey,
       },
       timeout: 30000, // 30 second timeout
     });
     
     // Track API usage after successful call
-    await trackApiUsage(MAILTESTER_API_KEY);
+    await trackApiUsage(apiKey);
     
     const code = response.data?.code || 'ko';
     const message = response.data?.message || '';
@@ -289,16 +465,31 @@ async function verifyEmail(email, retryCount = 0) {
     };
   } catch (error) {
     // Track usage even on error (API was still called)
-    await trackApiUsage(MAILTESTER_API_KEY);
+    await trackApiUsage(apiKey);
     
-    // Handle 429 Too Many Requests with exponential backoff
+    // Track error for this key
+    await trackKeyError(apiKey);
+    
+    // Handle 429 Too Many Requests - try key switch after retries
     if (error.response?.status === 429) {
+      // After 2 retries with same key, try switching to different key
+      if (retryCount >= 2 && keyAttempts < MAX_KEY_ATTEMPTS - 1 && MAILTESTER_API_KEYS.length > 1) {
+        const nextKey = await getNextHealthyKey(apiKey);
+        if (nextKey && nextKey !== apiKey) {
+          console.log(`🔄 429 error - switching from key ...${apiKey.slice(-4)} to ...${nextKey.slice(-4)}`);
+          await markKeyUnhealthy(apiKey);
+          return verifyEmail(email, 0, nextKey, keyAttempts + 1); // Reset retry count with new key
+        }
+      }
+      
+      // Standard retry with same key
       if (retryCount < MAX_RETRIES) {
         const backoffMs = Math.pow(2, retryCount + 1) * 1000; // 2s, 4s, 8s
         console.log(`429 rate limited for ${email}, retrying in ${backoffMs/1000}s (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
-        return verifyEmail(email, retryCount + 1);
+        return verifyEmail(email, retryCount + 1, apiKey, keyAttempts);
       }
+      
       console.error(`Max retries exceeded for ${email}`);
       // Log error for admin dashboard
       if (currentJobContext.jobId) {
@@ -317,11 +508,23 @@ async function verifyEmail(email, retryCount = 0) {
       };
     }
     
-    // Retry once on network errors
-    if ((error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') && retryCount < MAX_RETRIES) {
-      console.log(`Network error for ${email}, retrying in 2s...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      return verifyEmail(email, retryCount + 1);
+    // Handle network errors - try key switch after retries
+    if ((error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT')) {
+      // After 2 retries with same key, try switching
+      if (retryCount >= 2 && keyAttempts < MAX_KEY_ATTEMPTS - 1 && MAILTESTER_API_KEYS.length > 1) {
+        const nextKey = await getNextHealthyKey(apiKey);
+        if (nextKey && nextKey !== apiKey) {
+          console.log(`🔄 Network error - switching from key ...${apiKey.slice(-4)} to ...${nextKey.slice(-4)}`);
+          await markKeyUnhealthy(apiKey);
+          return verifyEmail(email, 0, nextKey, keyAttempts + 1);
+        }
+      }
+      
+      if (retryCount < MAX_RETRIES) {
+        console.log(`Network error for ${email}, retrying in 2s...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return verifyEmail(email, retryCount + 1, apiKey, keyAttempts);
+      }
     }
     
     console.error(`Error verifying ${email}:`, error.message);
@@ -343,96 +546,11 @@ async function verifyEmail(email, retryCount = 0) {
   }
 }
 
-// Verify email without rate limiting (for verification jobs with manual timing control)
-async function verifyEmailWithoutRateLimit(email, retryCount = 0) {
-  const MAX_RETRIES = 3;
-  
-  try {
-    const response = await axios.get(MAILTESTER_BASE_URL, {
-      params: {
-        email: email,
-        key: MAILTESTER_API_KEY,
-      },
-      timeout: 30000, // 30 second timeout
-    });
-    
-    // Track API usage after successful call
-    await trackApiUsage(MAILTESTER_API_KEY);
-    
-    const code = response.data?.code || 'ko';
-    const message = response.data?.message || '';
-    const mx = response.data?.mx || '';
-    
-    let status = 'invalid';
-    if (code === 'ok') {
-      status = 'valid';
-    } else if (code === 'mb' || message.toLowerCase().includes('catch')) {
-      status = 'catchall';
-    }
-    
-    // Parse provider from MX record
-    const provider = extractProviderFromMX(mx);
-    
-    return {
-      status,
-      message,
-      mx,
-      provider,
-    };
-  } catch (error) {
-    // Track usage even on error (API was still called)
-    await trackApiUsage(MAILTESTER_API_KEY);
-    
-    // Handle 429 Too Many Requests with exponential backoff
-    if (error.response?.status === 429) {
-      if (retryCount < MAX_RETRIES) {
-        const backoffMs = Math.pow(2, retryCount + 1) * 1000; // 2s, 4s, 8s
-        console.log(`429 rate limited for ${email}, retrying in ${backoffMs/1000}s (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
-        return verifyEmailWithoutRateLimit(email, retryCount + 1);
-      }
-      console.error(`Max retries exceeded for ${email}`);
-      // Log error for admin dashboard
-      if (currentJobContext.jobId) {
-        await logVerificationError(
-          currentJobContext.userId,
-          currentJobContext.userEmail,
-          currentJobContext.jobId,
-          'rate_limit_exceeded',
-          'Rate limited - max retries exceeded',
-          email
-        );
-      }
-      return {
-        status: 'error',
-        message: 'Rate limited - max retries exceeded',
-      };
-    }
-    
-    // Retry once on network errors
-    if ((error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') && retryCount < MAX_RETRIES) {
-      console.log(`Network error for ${email}, retrying in 2s...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      return verifyEmailWithoutRateLimit(email, retryCount + 1);
-    }
-    
-    console.error(`Error verifying ${email}:`, error.message);
-    // Log error for admin dashboard
-    if (currentJobContext.jobId) {
-      await logVerificationError(
-        currentJobContext.userId,
-        currentJobContext.userEmail,
-        currentJobContext.jobId,
-        'verification_error',
-        error.message,
-        email
-      );
-    }
-    return {
-      status: 'error',
-      message: error.message,
-    };
-  }
+// DEPRECATED: Use verifyEmail() instead - this is kept for backwards compatibility
+// Verify email without rate limiting (now uses multi-key with failover)
+async function verifyEmailWithoutRateLimit(email, retryCount = 0, currentKey = null, keyAttempts = 0) {
+  // Just call the main verifyEmail function which handles everything
+  return verifyEmail(email, retryCount, currentKey, keyAttempts);
 }
 
 // Deduplication logic (same as backend)
@@ -779,8 +897,16 @@ async function processJob(jobId) {
 
 console.log('Worker started, waiting for jobs...');
 console.log(`MailTester API: ${MAILTESTER_BASE_URL}`);
+console.log(`API Keys configured: ${MAILTESTER_API_KEYS.length}`);
+if (MAILTESTER_API_KEYS.length > 0) {
+  MAILTESTER_API_KEYS.forEach((key, i) => {
+    console.log(`  Key ${i + 1}: ...${key.slice(-4)} (${DAILY_LIMIT_PER_KEY.toLocaleString()}/day)`);
+  });
+  console.log(`Total daily capacity: ${(MAILTESTER_API_KEYS.length * DAILY_LIMIT_PER_KEY).toLocaleString()} verifications`);
+}
 console.log(`Rate limit: 165 requests per 30 seconds (~192ms spacing between calls)`);
 console.log(`Using distributed Redis-based rate limiter for multi-worker coordination`);
+console.log(`Error failover: Auto-switch to healthy key after ${ERROR_THRESHOLD} errors/min`);
 
 // Simple Redis list poller
 async function pollSimpleQueue() {
