@@ -1176,61 +1176,74 @@ async function processJobFromQueue(jobId) {
       let lastProgressUpdate = Date.now();
       const PROGRESS_INTERVAL_MS = 3000; // Update progress every 3 seconds
       
-      // Use distributed rate limiter (coordinates across all jobs and workers)
-      console.log(`Starting verification with distributed rate limiter: ${totalLeads} leads`);
+      // Batch size for parallel processing (uses all API keys simultaneously!)
+      // With 2 keys: 10 parallel requests = both keys working at full speed
+      const BATCH_SIZE = Math.max(10, MAILTESTER_API_KEYS.length * 5);
       
-      for (let i = 0; i < leads.length; i++) {
-        // Check if job was cancelled before processing lead
+      console.log(`Starting verification with per-key rate limiters: ${totalLeads} leads (batch size: ${BATCH_SIZE})`);
+      console.log(`Using ${MAILTESTER_API_KEYS.length} API keys = ${MAILTESTER_API_KEYS.length}x speed!`);
+      
+      // Process leads in parallel batches
+      for (let i = 0; i < leads.length; i += BATCH_SIZE) {
+        // Check if job was cancelled before processing batch
         if (await isJobCancelled(jobId)) {
           console.log(`Job ${jobId} was cancelled, stopping processing...`);
           await updateJobStatus(jobId, 'cancelled');
           return { status: 'cancelled', message: 'Job was cancelled during processing' };
         }
         
-        const lead = leads[i];
+        const batch = leads.slice(i, i + BATCH_SIZE);
         
-        try {
-          // Skip leads with empty or null emails
-          if (!lead.email || lead.email.trim() === '') {
-            console.log(`Skipping lead ${lead.id} - empty email`);
-            await updateLeadStatus(lead.id, 'error', 'Empty email address');
-            processedCount++;
-            continue;
+        // Process entire batch in parallel (this uses all API keys via round-robin!)
+        const batchPromises = batch.map(async (lead) => {
+          try {
+            // Skip leads with empty or null emails
+            if (!lead.email || lead.email.trim() === '') {
+              await updateLeadStatus(lead.id, 'error', 'Empty email address');
+              return { lead, status: 'error', skipped: true };
+            }
+            
+            // Verify email (uses per-key rate limiting with round-robin)
+            const result = await verifyEmail(lead.email);
+            
+            await updateLeadStatus(lead.id, result.status, result.message, result.mx, result.provider);
+            
+            return { lead, ...result };
+          } catch (error) {
+            console.error(`Error processing lead ${lead.id}:`, error.message);
+            await updateLeadStatus(lead.id, 'error', error.message);
+            return { lead, status: 'error', message: error.message };
           }
-          
-          // Verify email (with distributed rate limiter - coordinates across all jobs)
-          const result = await verifyEmail(lead.email);
-          
-          await updateLeadStatus(lead.id, result.status, result.message, result.mx, result.provider);
+        });
+        
+        // Wait for all leads in batch to complete
+        const batchResults = await Promise.all(batchPromises);
+        
+        // Aggregate results from batch
+        for (const result of batchResults) {
+          processedCount++;
           
           if (result.status === 'valid') {
             validCount++;
-            finalResultIds.push(lead.id);
+            finalResultIds.push(result.lead.id);
           } else if (result.status === 'catchall') {
             catchallCount++;
-            finalResultIds.push(lead.id);
+            finalResultIds.push(result.lead.id);
           } else if (result.status === 'invalid') {
-            finalResultIds.push(lead.id);
+            finalResultIds.push(result.lead.id);
           }
-          
-          processedCount++;
-          
-          // Update progress every 3 seconds
-          if (Date.now() - lastProgressUpdate >= PROGRESS_INTERVAL_MS) {
-            const progressPercent = Math.round((processedCount / totalLeads) * 100);
-            await updateJobStatus(jobId, 'processing', {
-              processed_leads: processedCount,
-              valid_emails_found: validCount,
-              catchall_emails_found: catchallCount,
-            });
-            lastProgressUpdate = Date.now();
-            console.log(`Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Valid: ${validCount} | Catchall: ${catchallCount}`);
-          }
-          
-        } catch (error) {
-          console.error(`Error processing lead ${lead.id}:`, error.message);
-          await updateLeadStatus(lead.id, 'error', error.message);
-          processedCount++;
+        }
+        
+        // Update progress after each batch (or if 3 seconds have passed)
+        if (Date.now() - lastProgressUpdate >= PROGRESS_INTERVAL_MS || i + BATCH_SIZE >= leads.length) {
+          const progressPercent = Math.round((processedCount / totalLeads) * 100);
+          await updateJobStatus(jobId, 'processing', {
+            processed_leads: processedCount,
+            valid_emails_found: validCount,
+            catchall_emails_found: catchallCount,
+          });
+          lastProgressUpdate = Date.now();
+          console.log(`Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Valid: ${validCount} | Catchall: ${catchallCount}`);
         }
       }
       
