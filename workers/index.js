@@ -19,9 +19,10 @@ const redisClient = redis.createClient({
 });
 redisClient.on('error', (err) => console.error('Redis Client Error', err));
 redisClient.connect().then(() => {
-  // Initialize distributed rate limiter after Redis connection is established
-  rateLimiter = new DistributedRateLimiter(redisClient, 165, 30000);
-  console.log('Distributed rate limiter initialized (165 requests per 30 seconds)');
+  // Initialize per-key rate limiter (165 requests per 30 seconds PER KEY)
+  perKeyRateLimiter = new PerKeyRateLimiter(redisClient, 165, 30000);
+  const totalRate = MAILTESTER_API_KEYS.length * 165;
+  console.log(`Per-key rate limiter initialized (${MAILTESTER_API_KEYS.length} keys × 165/30s = ${totalRate}/30s total)`);
 }).catch(console.error);
 
 // PostgreSQL connection pool
@@ -311,91 +312,100 @@ function extractProviderFromMX(mxHostname) {
 }
 
 // ============================================
-// DISTRIBUTED RATE LIMITER WITH REDIS
+// PER-KEY RATE LIMITER WITH REDIS
 // ============================================
-// Ensures rate limits are shared across all worker instances
-// 170 requests / 30 seconds = ~176ms per request
+// Each API key gets its own rate limit (165/30s per key)
+// This enables 2x speed with 2 keys, 3x with 3 keys, etc.
 
-class DistributedRateLimiter {
+class PerKeyRateLimiter {
   constructor(redisClient, requestsPerWindow, windowMs) {
     this.redis = redisClient;
-    this.requestsPerWindow = requestsPerWindow; // 165
+    this.requestsPerWindow = requestsPerWindow; // 165 per key
     this.windowMs = windowMs; // 30000
-    this.minSpacingMs = Math.ceil(windowMs / requestsPerWindow) + 10; // ~192ms
-    this.key = 'mailtester:rate_limit';
+    this.minSpacingMs = Math.ceil(windowMs / requestsPerWindow) + 10; // ~192ms per key
+    this.keyPrefix = 'mailtester:rate_limit';
   }
 
-  async acquire() {
+  // Get Redis key for a specific API key's rate limit window
+  _getWindowKey(apiKey, windowStart) {
+    const keyHash = getKeyHash(apiKey);
+    return `${this.keyPrefix}:${keyHash}:${windowStart}`;
+  }
+
+  // Get Redis key for tracking last request time per API key
+  _getLastRequestKey(apiKey) {
+    const keyHash = getKeyHash(apiKey);
+    return `${this.keyPrefix}:${keyHash}:last_request`;
+  }
+
+  // Acquire a rate limit slot for a specific API key
+  async acquire(apiKey) {
     const now = Date.now();
     const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
-    const windowKey = `${this.key}:${windowStart}`;
+    const windowKey = this._getWindowKey(apiKey, windowStart);
     
-    // Check current count BEFORE incrementing to prevent exceeding limit
+    // Check current count for this specific key
     const currentCountStr = await this.redis.get(windowKey);
     const currentCount = currentCountStr ? parseInt(currentCountStr) : 0;
     
-    // If we're at or over the limit, wait for next window
+    // If this key is at its limit, wait for next window
     if (currentCount >= this.requestsPerWindow) {
       const nextWindow = windowStart + this.windowMs;
-      const waitTime = nextWindow - Date.now() + 100; // +100ms buffer
+      const waitTime = nextWindow - Date.now() + 100;
       
       if (waitTime > 0) {
-        console.log(`Rate limit reached (${currentCount}/${this.requestsPerWindow}). Waiting ${Math.ceil(waitTime/1000)}s for next window...`);
+        console.log(`Key ...${apiKey.slice(-4)} rate limit reached (${currentCount}/${this.requestsPerWindow}). Waiting ${Math.ceil(waitTime/1000)}s...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
-        // Retry in next window
-        return this.acquire();
+        return this.acquire(apiKey);
       }
     }
     
-    // Now increment (we know we're under the limit)
+    // Increment for this key
     const count = await this.redis.incr(windowKey);
-    
-    // Set expiration on first request in window
     if (count === 1) {
       await this.redis.expire(windowKey, Math.ceil(this.windowMs / 1000) + 1);
     }
     
-    // Double-check after increment (in case of race condition with other workers)
+    // Double-check after increment
     if (count > this.requestsPerWindow) {
-      // We exceeded - decrement and wait
       await this.redis.decr(windowKey);
       const nextWindow = windowStart + this.windowMs;
       const waitTime = nextWindow - Date.now() + 100;
       
       if (waitTime > 0) {
-        console.log(`Rate limit exceeded after increment (${count}/${this.requestsPerWindow}). Waiting ${Math.ceil(waitTime/1000)}s...`);
+        console.log(`Key ...${apiKey.slice(-4)} rate limit exceeded. Waiting ${Math.ceil(waitTime/1000)}s...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
-        return this.acquire();
+        return this.acquire(apiKey);
       }
     }
     
-    // Enforce minimum spacing between requests (using Redis for coordination)
-    const lastRequestKey = `${this.key}:last_request`;
+    // Enforce minimum spacing per key
+    const lastRequestKey = this._getLastRequestKey(apiKey);
     const lastRequestTimeStr = await this.redis.get(lastRequestKey);
     
     if (lastRequestTimeStr) {
       const lastRequestTime = parseInt(lastRequestTimeStr);
       if (!isNaN(lastRequestTime)) {
-        const timeSinceLastRequest = now - lastRequestTime;
+        const timeSinceLastRequest = Date.now() - lastRequestTime;
         if (timeSinceLastRequest < this.minSpacingMs) {
-          const waitTime = this.minSpacingMs - timeSinceLastRequest;
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+          await new Promise(resolve => setTimeout(resolve, this.minSpacingMs - timeSinceLastRequest));
         }
       }
     }
     
-    // Update last request time
     await this.redis.set(lastRequestKey, Date.now().toString(), 'EX', Math.ceil(this.windowMs / 1000));
   }
 
-  async getStatus() {
+  // Get status for a specific API key
+  async getStatus(apiKey) {
     const now = Date.now();
     const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
-    const windowKey = `${this.key}:${windowStart}`;
+    const windowKey = this._getWindowKey(apiKey, windowStart);
     const countStr = await this.redis.get(windowKey);
     const count = countStr ? parseInt(countStr) : 0;
     
     return {
+      keyHash: getKeyHash(apiKey),
       availableTokens: this.requestsPerWindow - count,
       maxTokens: this.requestsPerWindow,
       currentCount: count,
@@ -403,33 +413,75 @@ class DistributedRateLimiter {
   }
 }
 
-// Create the distributed rate limiter instance (165 per 30 seconds, ~192ms spacing)
-// Note: rateLimiter will be initialized after Redis client is connected
-let rateLimiter;
+// Per-key rate limiter instance (165 per 30 seconds PER KEY)
+let perKeyRateLimiter;
 
-// Rate limit function
+// Round-robin key index for distributing load across all keys
+let currentKeyIndex = 0;
+
+// Get next key in round-robin fashion (maximizes throughput by using all keys)
+async function getNextKeyRoundRobin() {
+  if (MAILTESTER_API_KEYS.length === 0) return null;
+  if (MAILTESTER_API_KEYS.length === 1) return MAILTESTER_API_KEYS[0];
+  
+  // Try each key starting from current index, skip unhealthy ones
+  for (let i = 0; i < MAILTESTER_API_KEYS.length; i++) {
+    const idx = (currentKeyIndex + i) % MAILTESTER_API_KEYS.length;
+    const key = MAILTESTER_API_KEYS[idx];
+    
+    const healthy = await isKeyHealthy(key);
+    const remaining = await getKeyRemaining(key);
+    
+    if (healthy && remaining > 0) {
+      // Move to next key for next call (round-robin)
+      currentKeyIndex = (idx + 1) % MAILTESTER_API_KEYS.length;
+      return key;
+    }
+  }
+  
+  // All keys unhealthy or exhausted, return current one anyway
+  const key = MAILTESTER_API_KEYS[currentKeyIndex];
+  currentKeyIndex = (currentKeyIndex + 1) % MAILTESTER_API_KEYS.length;
+  return key;
+}
+
+// Legacy rate limit function (for backwards compatibility)
+// Now uses per-key rate limiting with round-robin
 async function rateLimit() {
-  // Wait for rate limiter to be initialized if Redis connection is still pending
-  while (!rateLimiter) {
+  while (!perKeyRateLimiter) {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  await rateLimiter.acquire();
+  const key = await getNextKeyRoundRobin();
+  if (key) {
+    await perKeyRateLimiter.acquire(key);
+  }
+}
+
+// Rate limit for a specific key
+async function rateLimitForKey(apiKey) {
+  while (!perKeyRateLimiter) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  await perKeyRateLimiter.acquire(apiKey);
 }
 
 // Verify email using MailTester API with multi-key support and failover
-async function verifyEmail(email, retryCount = 0, currentKey = null, keyAttempts = 0) {
+// Uses round-robin key selection for maximum throughput (2x speed with 2 keys!)
+async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts = 0) {
   const MAX_RETRIES = 3;
   const MAX_KEY_ATTEMPTS = MAILTESTER_API_KEYS.length;
   
-  // Get the best available key if not specified
-  const apiKey = currentKey || await getBestAvailableKey();
+  // Get next key via round-robin (or use forced key for retries)
+  // Round-robin distributes load across all keys for max throughput
+  const apiKey = forceKey || await getNextKeyRoundRobin();
   
   if (!apiKey) {
     console.error('No API keys available!');
     return { status: 'error', message: 'No API keys configured' };
   }
   
-  await rateLimit();
+  // Use per-key rate limiting (each key has its own 165/30s limit)
+  await rateLimitForKey(apiKey);
   
   try {
     const response = await axios.get(MAILTESTER_BASE_URL, {
@@ -900,12 +952,15 @@ console.log(`MailTester API: ${MAILTESTER_BASE_URL}`);
 console.log(`API Keys configured: ${MAILTESTER_API_KEYS.length}`);
 if (MAILTESTER_API_KEYS.length > 0) {
   MAILTESTER_API_KEYS.forEach((key, i) => {
-    console.log(`  Key ${i + 1}: ...${key.slice(-4)} (${DAILY_LIMIT_PER_KEY.toLocaleString()}/day)`);
+    console.log(`  Key ${i + 1}: ...${key.slice(-4)} (165/30s rate, ${DAILY_LIMIT_PER_KEY.toLocaleString()}/day)`);
   });
+  const totalRate = MAILTESTER_API_KEYS.length * 165;
+  console.log(`Combined rate limit: ${totalRate} requests per 30 seconds (${MAILTESTER_API_KEYS.length}x speed!)`);
   console.log(`Total daily capacity: ${(MAILTESTER_API_KEYS.length * DAILY_LIMIT_PER_KEY).toLocaleString()} verifications`);
+} else {
+  console.log(`Rate limit: 165 requests per 30 seconds`);
 }
-console.log(`Rate limit: 165 requests per 30 seconds (~192ms spacing between calls)`);
-console.log(`Using distributed Redis-based rate limiter for multi-worker coordination`);
+console.log(`Using per-key rate limiters with round-robin distribution`);
 console.log(`Error failover: Auto-switch to healthy key after ${ERROR_THRESHOLD} errors/min`);
 
 // Simple Redis list poller
