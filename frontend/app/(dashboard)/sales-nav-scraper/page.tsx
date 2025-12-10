@@ -57,7 +57,7 @@ export default function SalesNavScraperPage() {
     loadAuthStatus();
     loadCredits();
     loadOrderHistory();
-  }, []);
+  }, [loadAuthStatus, loadCredits, loadOrderHistory]);
 
   // Poll current order if it exists and is processing
   useEffect(() => {
@@ -76,8 +76,7 @@ export default function SalesNavScraperPage() {
       }
       setPollingInterval(POLLING_INTERVAL); // Reset to initial interval
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentOrder, pollingInterval]);
+  }, [currentOrder, pollingInterval, pollOrderStatus]);
 
   // Debounced URL validation
   useEffect(() => {
@@ -101,23 +100,23 @@ export default function SalesNavScraperPage() {
     };
   }, [salesNavUrl, validateUrl]);
 
-  const loadAuthStatus = async () => {
+  const loadAuthStatus = useCallback(async () => {
     try {
       const status = await apiClient.getVayneAuthStatus();
       setAuthStatus(status);
     } catch (err) {
       console.error("Failed to load auth status:", err);
     }
-  };
+  }, []);
 
-  const loadCredits = async () => {
+  const loadCredits = useCallback(async () => {
     try {
       const creditsData = await apiClient.getVayneCredits();
       setCredits(creditsData);
     } catch (err) {
       console.error("Failed to load credits:", err);
     }
-  };
+  }, []);
 
   const validateUrl = useCallback(async (url: string) => {
     if (!url.trim()) {
@@ -202,7 +201,20 @@ export default function SalesNavScraperPage() {
     }
   };
 
-  const pollOrderStatus = async (orderId: string) => {
+  const loadOrderHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const response = await apiClient.getVayneOrderHistory(10, (historyPage - 1) * 10, historyFilter === "all" ? undefined : historyFilter);
+      setOrderHistory(response.orders);
+      setHistoryTotal(response.total);
+    } catch (err) {
+      console.error("Failed to load order history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [historyPage, historyFilter]);
+
+  const pollOrderStatus = useCallback(async (orderId: string) => {
     try {
       const order = await apiClient.getVayneOrder(orderId);
       setCurrentOrder(order);
@@ -222,7 +234,7 @@ export default function SalesNavScraperPage() {
       console.error("Failed to poll order status:", err);
       // Continue polling even on error (might be temporary)
     }
-  };
+  }, [loadCredits, loadOrderHistory]);
 
   const handleDownloadCSV = async (orderId: string) => {
     try {
@@ -256,22 +268,9 @@ export default function SalesNavScraperPage() {
     }
   };
 
-  const loadOrderHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const response = await apiClient.getVayneOrderHistory(10, (historyPage - 1) * 10, historyFilter === "all" ? undefined : historyFilter);
-      setOrderHistory(response.orders);
-      setHistoryTotal(response.total);
-    } catch (err) {
-      console.error("Failed to load order history:", err);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
   useEffect(() => {
     loadOrderHistory();
-  }, [historyPage, historyFilter]);
+  }, [loadOrderHistory]);
 
   const handleClearForm = () => {
     setSalesNavUrl("");
