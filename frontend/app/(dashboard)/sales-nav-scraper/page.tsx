@@ -657,12 +657,15 @@ export default function SalesNavScraperPage() {
           <select
             value={historyFilter}
             onChange={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setHistoryFilter(e.target.value);
+              const newFilter = e.target.value;
+              setHistoryFilter(newFilter);
               setHistoryPage(1);
+              // Manually trigger loadOrderHistory after state updates
+              setTimeout(() => {
+                loadOrderHistory();
+              }, 0);
             }}
-            className="px-3 py-1 bg-apple-bg border border-apple-border rounded-lg text-sm text-apple-text"
+            className="px-3 py-1 bg-apple-bg border border-apple-border rounded-lg text-sm text-apple-text focus:outline-none focus:ring-2 focus:ring-apple-accent"
           >
             <option value="all">All</option>
             <option value="completed">Completed</option>
