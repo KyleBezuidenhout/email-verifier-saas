@@ -554,7 +554,7 @@ export default function SalesNavScraperPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-apple-text-muted">Order ID</span>
-              <span className="text-sm font-mono text-apple-text">{currentOrder.id}</span>
+              <span className="text-sm font-mono text-apple-text">{currentOrder?.id || "N/A"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-apple-text-muted">Status</span>
@@ -570,7 +570,7 @@ export default function SalesNavScraperPage() {
                 {currentOrder.status}
               </span>
             </div>
-            {(currentOrder.status === "processing" || currentOrder.status === "pending") && (
+            {currentOrder && (currentOrder.status === "processing" || currentOrder.status === "pending") && (
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-apple-text-muted">Progress</span>
