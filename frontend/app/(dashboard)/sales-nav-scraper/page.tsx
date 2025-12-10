@@ -67,7 +67,7 @@ export default function SalesNavScraperPage() {
       }, pollingInterval);
       setPollingTimer(timer);
       return () => {
-        if (timer) clearTimeout(timer);
+        clearTimeout(timer);
       };
     } else {
       if (pollingTimer) {
@@ -76,16 +76,15 @@ export default function SalesNavScraperPage() {
       }
       setPollingInterval(POLLING_INTERVAL); // Reset to initial interval
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentOrder, pollingInterval, pollOrderStatus]);
 
   // Debounced URL validation
   useEffect(() => {
-    if (urlDebounceTimer) {
-      clearTimeout(urlDebounceTimer);
-    }
+    let timer: ReturnType<typeof setTimeout> | null = null;
     
     if (salesNavUrl.trim()) {
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         validateUrl(salesNavUrl);
       }, 500);
       setUrlDebounceTimer(timer);
@@ -94,8 +93,8 @@ export default function SalesNavScraperPage() {
     }
     
     return () => {
-      if (urlDebounceTimer) {
-        clearTimeout(urlDebounceTimer);
+      if (timer) {
+        clearTimeout(timer);
       }
     };
   }, [salesNavUrl, validateUrl]);
