@@ -178,18 +178,18 @@ export default function AdminConsolePage() {
     fetchErrors();
   }, [fetchData, fetchApiKeyUsage, fetchErrors]);
 
-  // Auto-refresh: API keys every 5 minutes
+  // Auto-refresh: API keys every 1 minute
   useEffect(() => {
-    const interval = setInterval(fetchApiKeyUsage, 5 * 60 * 1000);
+    const interval = setInterval(fetchApiKeyUsage, 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchApiKeyUsage]);
 
-  // Auto-refresh: Jobs and errors every 2 minutes
+  // Auto-refresh: Jobs and errors every 1 minute
   useEffect(() => {
     const interval = setInterval(() => {
       fetchData();
       fetchErrors();
-    }, 2 * 60 * 1000);
+    }, 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchData, fetchErrors]);
 
@@ -529,7 +529,7 @@ export default function AdminConsolePage() {
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-semibold text-apple-text">MailTester API Keys</h2>
-            <p className="text-sm text-apple-text-muted">Auto-refreshes every 5 minutes</p>
+            <p className="text-sm text-apple-text-muted">Auto-refreshes every minute</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -685,7 +685,7 @@ export default function AdminConsolePage() {
             <div>
               <h2 className="text-lg font-semibold text-apple-text">Verification Error Logs</h2>
               <p className="text-sm text-apple-text-muted">
-                {errorSummary?.total_errors || 0} errors today • Auto-refreshes every 2 minutes
+                {errorSummary?.total_errors || 0} errors today • Auto-refreshes every minute
               </p>
             </div>
           </div>
