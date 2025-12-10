@@ -994,10 +994,8 @@ async function processJobFromQueue(jobId) {
       let lastProgressUpdate = Date.now();
       const PROGRESS_INTERVAL_MS = 3000; // Update progress every 3 seconds
       
-      // Process leads sequentially with 170ms delay between each API call (speedrun mode)
-      const DELAY_MS = 170; // Fixed delay between API calls
-      
-      console.log(`Starting speedrun verification: ${totalLeads} leads, ${DELAY_MS}ms delay between calls`);
+      // Use distributed rate limiter (coordinates across all jobs and workers)
+      console.log(`Starting verification with distributed rate limiter: ${totalLeads} leads`);
       
       for (let i = 0; i < leads.length; i++) {
         // Check if job was cancelled before processing lead
@@ -1018,8 +1016,8 @@ async function processJobFromQueue(jobId) {
             continue;
           }
           
-          // Verify email (without rate limiter - we control timing manually)
-          const result = await verifyEmailWithoutRateLimit(lead.email);
+          // Verify email (with distributed rate limiter - coordinates across all jobs)
+          const result = await verifyEmail(lead.email);
           
           await updateLeadStatus(lead.id, result.status, result.message, result.mx, result.provider);
           
@@ -1047,20 +1045,10 @@ async function processJobFromQueue(jobId) {
             console.log(`Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Valid: ${validCount} | Catchall: ${catchallCount}`);
           }
           
-          // Wait 170ms before next API call (except for the last one)
-          if (i < leads.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, DELAY_MS));
-          }
-          
         } catch (error) {
           console.error(`Error processing lead ${lead.id}:`, error.message);
           await updateLeadStatus(lead.id, 'error', error.message);
           processedCount++;
-          
-          // Still wait even on error to maintain timing
-          if (i < leads.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, DELAY_MS));
-          }
         }
       }
       
