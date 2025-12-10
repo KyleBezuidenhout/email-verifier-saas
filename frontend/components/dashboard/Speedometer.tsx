@@ -10,11 +10,12 @@ interface SpeedometerProps {
 }
 
 export function Speedometer({ value, max = 170, label, isActive = false }: SpeedometerProps) {
-  // Clamp value between 0 and max
-  const clampedValue = Math.min(Math.max(0, value), max);
+  // Force needle to exactly 0 or max based on isActive (ignore intermediate values)
+  const needleValue = isActive ? max : 0;
   
   // Calculate needle rotation (-135deg to +135deg for 270 degree arc)
-  const percentage = clampedValue / max;
+  // 0 = -135deg (pointing bottom-left), max = +135deg (pointing bottom-right)
+  const percentage = needleValue / max;
   const rotation = -135 + (percentage * 270);
   
   // Colors based on active state
@@ -175,7 +176,7 @@ export function Speedometer({ value, max = 170, label, isActive = false }: Speed
       {/* Value display */}
       <div className="text-center -mt-1">
         <span className={`text-xl font-bold ${isActive ? 'text-[#FF3B30]' : 'text-[#007AFF]'}`}>
-          {Math.round(clampedValue)}
+          {needleValue}
         </span>
         <span className="text-xs text-apple-text-muted ml-1">req/30s</span>
       </div>

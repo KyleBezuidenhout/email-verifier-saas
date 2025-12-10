@@ -537,18 +537,17 @@ export default function AdminConsolePage() {
               apiKeyUsage.map((key, index) => {
                 // Check if any jobs are currently processing (key is active)
                 const hasActiveJobs = jobs.some(j => j.status === "processing");
-                // Show 0 when idle, 170 (full rate) when active
+                // Show exactly 0 when idle, exactly 170 when active
                 // For multiple keys, first key handles jobs when active
                 const isKeyActive = hasActiveJobs && index === 0;
-                const currentRate = isKeyActive ? 170 : 0;
                 
                 return (
                 <div key={key.key_id} className="bg-apple-surface border border-apple-border rounded-xl p-6">
                   <div className="flex gap-6">
-                    {/* Speedometer */}
+                    {/* Speedometer - explicitly pass 0 or 170 */}
                     <div className="flex-shrink-0">
                       <Speedometer 
-                        value={currentRate} 
+                        value={isKeyActive ? 170 : 0} 
                         max={170}
                         label={key.key_preview}
                         isActive={isKeyActive}
