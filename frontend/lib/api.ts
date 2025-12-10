@@ -148,8 +148,8 @@ class ApiClient {
       body: JSON.stringify(data),
     });
     if (response.access_token) {
-      // If rememberMe is true, set cookie for 30 days (2592000 seconds), otherwise 1 day (86400 seconds)
-      const maxAge = data.rememberMe ? 2592000 : 86400;
+      // If rememberMe is true, set cookie for 30 days (2592000 seconds), otherwise 7 days (604800 seconds)
+      const maxAge = data.rememberMe ? 2592000 : 604800;
       document.cookie = `token=${response.access_token}; path=/; max-age=${maxAge}; SameSite=Lax`;
     }
     return response;
@@ -161,7 +161,8 @@ class ApiClient {
       body: JSON.stringify(data),
     });
     if (response.access_token) {
-      document.cookie = `token=${response.access_token}; path=/; max-age=86400; SameSite=Lax`;
+      // Set cookie for 7 days (604800 seconds) - same as login without rememberMe
+      document.cookie = `token=${response.access_token}; path=/; max-age=604800; SameSite=Lax`;
     }
     return response;
   }
