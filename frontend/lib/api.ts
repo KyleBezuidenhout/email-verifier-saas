@@ -267,6 +267,194 @@ class ApiClient {
 
     return response.json();
   }
+
+  // ============================================
+  // ADMIN ENDPOINTS
+  // ============================================
+
+  async getAdminClients(limit = 100, offset = 0): Promise<{
+    clients: Array<{
+      id: string;
+      email: string;
+      full_name: string | null;
+      company_name: string | null;
+      credits: number;
+      is_active: boolean;
+      is_admin: boolean;
+      created_at: string;
+      stats: {
+        total_jobs: number;
+        enrichment_jobs: number;
+        verification_jobs: number;
+        total_valid_emails: number;
+        total_catchall_emails: number;
+        total_leads_processed: number;
+      };
+    }>;
+    total: number;
+  }> {
+    return this.request(`/api/v1/admin/clients?limit=${limit}&offset=${offset}`);
+  }
+
+  async getAdminLowCreditClients(threshold = 10): Promise<{
+    clients: Array<{
+      id: string;
+      email: string;
+      full_name: string | null;
+      company_name: string | null;
+      credits: number;
+      created_at: string;
+    }>;
+    count: number;
+  }> {
+    return this.request(`/api/v1/admin/clients/low-credits?threshold=${threshold}`);
+  }
+
+  async getAdminClientDetail(clientId: string): Promise<{
+    client: {
+      id: string;
+      email: string;
+      full_name: string | null;
+      company_name: string | null;
+      credits: number;
+      is_active: boolean;
+      is_admin: boolean;
+      api_key: string;
+      created_at: string;
+    };
+    stats: {
+      total_jobs: number;
+      total_valid_emails: number;
+      total_catchall_emails: number;
+      total_leads_processed: number;
+      total_credits_used: number;
+    };
+    recent_jobs: Array<{
+      id: string;
+      status: string;
+      job_type: string;
+      total_leads: number;
+      processed_leads: number;
+      valid_emails_found: number;
+      catchall_emails_found: number;
+      created_at: string;
+    }>;
+  }> {
+    return this.request(`/api/v1/admin/clients/${clientId}`);
+  }
+
+  async updateAdminClientCredits(clientId: string, credits: number): Promise<{
+    client_id: string;
+    old_credits: number;
+    new_credits: number;
+    message: string;
+  }> {
+    return this.request(`/api/v1/admin/clients/${clientId}/credits?credits=${credits}`, {
+      method: "PUT",
+    });
+  }
+
+  async getAdminJobs(limit = 100, offset = 0, status?: string, jobType?: string): Promise<{
+    jobs: Array<{
+      id: string;
+      status: string;
+      job_type: string;
+      original_filename: string | null;
+      total_leads: number;
+      processed_leads: number;
+      valid_emails_found: number;
+      catchall_emails_found: number;
+      cost_in_credits: number;
+      created_at: string;
+      completed_at: string | null;
+      client: {
+        id: string;
+        email: string;
+        full_name: string | null;
+        company_name: string | null;
+      };
+    }>;
+    total: number;
+  }> {
+    let url = `/api/v1/admin/jobs?limit=${limit}&offset=${offset}`;
+    if (status) url += `&status_filter=${status}`;
+    if (jobType) url += `&job_type=${jobType}`;
+    return this.request(url);
+  }
+
+  async getAdminStats(): Promise<{
+    clients: { total: number; active: number };
+    jobs: { total: number; by_status: Record<string, number>; today: number };
+    leads: { total_processed: number; total_valid: number; total_catchall: number; today: number };
+  }> {
+    return this.request("/api/v1/admin/stats");
+  }
+
+  async getAdminEnrichmentStats(period = "week", startDate?: string, endDate?: string): Promise<{
+    period: string;
+    start_date: string;
+    end_date: string;
+    chart_data: Array<{
+      date: string;
+      leads_enriched: number;
+      valid_found: number;
+      catchall_found: number;
+      jobs_count: number;
+    }>;
+    totals: {
+      total_leads: number;
+      total_valid: number;
+      total_catchall: number;
+      total_jobs: number;
+    };
+  }> {
+    let url = `/api/v1/admin/stats/enrichments?period=${period}`;
+    if (startDate) url += `&start_date=${startDate}`;
+    if (endDate) url += `&end_date=${endDate}`;
+    return this.request(url);
+  }
+
+  async getAdminApiKeyUsage(): Promise<{
+    mailtester_keys: Array<{
+      key_id: string;
+      key_preview: string;
+      usage_today: number;
+      remaining: number;
+      limit: number;
+      usage_percentage: number;
+      resets_at: string;
+      date: string;
+    }>;
+    omniverifier: { available: number; provider: string } | { error: string } | null;
+    total_mailtester_keys: number;
+    total_remaining: number;
+  }> {
+    return this.request("/api/v1/admin/api-keys/usage");
+  }
+
+  async getAdminErrors(date?: string, limit = 100, offset = 0): Promise<{
+    errors: Array<{
+      timestamp: string;
+      user_id: string;
+      user_email: string;
+      job_id: string;
+      error_type: string;
+      error_message: string;
+      email_attempted: string | null;
+    }>;
+    summary: {
+      date: string;
+      total_errors: number;
+      by_user: Record<string, number>;
+      by_job: Record<string, number>;
+      by_type: Record<string, number>;
+    };
+    total: number;
+  }> {
+    let url = `/api/v1/admin/errors?limit=${limit}&offset=${offset}`;
+    if (date) url += `&date=${date}`;
+    return this.request(url);
+  }
 }
 
 export const apiClient = new ApiClient(API_URL);

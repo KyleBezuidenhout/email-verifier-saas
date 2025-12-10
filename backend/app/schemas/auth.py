@@ -29,6 +29,7 @@ class UserResponse(BaseModel):
     api_key: UUID
     catchall_verifier_api_key: Optional[str] = None
     is_active: bool
+    is_admin: bool = False
     created_at: str
 
     class Config:

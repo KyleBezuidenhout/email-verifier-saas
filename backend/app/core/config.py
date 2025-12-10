@@ -30,8 +30,9 @@ class Settings(BaseSettings):
 
     
 
-    # MailTester
-    MAILTESTER_API_KEY: str
+    # MailTester (supports multiple keys comma-separated)
+    MAILTESTER_API_KEYS: str = ""  # Comma-separated: "key1,key2,key3"
+    MAILTESTER_API_KEY: str = ""  # Legacy single key (fallback)
     MAILTESTER_BASE_URL: str = "https://happy.mailtester.ninja/ninja"
 
     

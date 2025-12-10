@@ -6,7 +6,7 @@ import sys
 import os
 
 from app.core.config import settings
-from app.api.v1.endpoints import auth, jobs, results, test
+from app.api.v1.endpoints import auth, jobs, results, test, admin
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -67,6 +67,7 @@ async def run_migrations_on_startup():
         from migrate_add_job_type import migrate as migrate_job_type
         from migrate_add_mx_record import migrate as migrate_mx_record
         from migrate_add_mx_provider import migrate as migrate_mx_provider
+        from migrate_add_is_admin import run_migration as migrate_is_admin
         
         print("Running database migrations on startup...")
         migrate_catchall_key()
@@ -74,6 +75,7 @@ async def run_migrations_on_startup():
         migrate_job_type()
         migrate_mx_record()
         migrate_mx_provider()
+        migrate_is_admin()
         print("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
@@ -84,5 +86,6 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/api/v1/results", tags=["results"])
 app.include_router(test.router, prefix="/api/v1", tags=["test"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 

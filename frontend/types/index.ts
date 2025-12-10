@@ -7,6 +7,7 @@ export interface User {
   api_key: string;
   catchall_verifier_api_key?: string;
   is_active: boolean;
+  is_admin?: boolean;
   created_at: string;
 }
 

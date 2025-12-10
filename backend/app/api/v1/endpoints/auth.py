@@ -56,6 +56,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
             api_key=new_user.api_key,
             catchall_verifier_api_key=new_user.catchall_verifier_api_key,
             is_active=new_user.is_active,
+            is_admin=False,
             created_at=new_user.created_at.isoformat(),
         )
     )
@@ -102,6 +103,7 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
             api_key=user.api_key,
             catchall_verifier_api_key=user.catchall_verifier_api_key,
             is_active=user.is_active,
+            is_admin=getattr(user, 'is_admin', False),
             created_at=user.created_at.isoformat(),
         )
     )
@@ -118,6 +120,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         api_key=current_user.api_key,
         catchall_verifier_api_key=current_user.catchall_verifier_api_key,
         is_active=current_user.is_active,
+        is_admin=getattr(current_user, 'is_admin', False),
         created_at=current_user.created_at.isoformat(),
     )
 
@@ -145,6 +148,7 @@ async def update_user_info(
         api_key=current_user.api_key,
         catchall_verifier_api_key=current_user.catchall_verifier_api_key,
         is_active=current_user.is_active,
+        is_admin=getattr(current_user, 'is_admin', False),
         created_at=current_user.created_at.isoformat(),
     )
 
@@ -176,6 +180,7 @@ async def regenerate_api_key(
         api_key=current_user.api_key,
         catchall_verifier_api_key=current_user.catchall_verifier_api_key,
         is_active=current_user.is_active,
+        is_admin=getattr(current_user, 'is_admin', False),
         created_at=current_user.created_at.isoformat(),
     )
 

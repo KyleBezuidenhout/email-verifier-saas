@@ -34,6 +34,87 @@ const MAILTESTER_BASE_URL = process.env.MAILTESTER_BASE_URL || 'https://happy.ma
 const MAILTESTER_API_KEY = process.env.MAILTESTER_API_KEY;
 
 // ============================================
+// API USAGE TRACKING (for Admin Dashboard)
+// ============================================
+// Track usage per key per day (500k limit, resets at GMT+2 midnight)
+
+const crypto = require('crypto');
+
+function getKeyHash(apiKey) {
+  // Get last 8 chars of SHA256 hash for key identification
+  return crypto.createHash('sha256').update(apiKey).digest('hex').slice(-8);
+}
+
+function getTodayDateGMT2() {
+  // Get today's date in GMT+2 (Africa/Johannesburg)
+  const now = new Date();
+  const gmt2Offset = 2 * 60; // GMT+2 in minutes
+  const utcMinutes = now.getTime() / 60000 + now.getTimezoneOffset();
+  const gmt2Date = new Date((utcMinutes + gmt2Offset) * 60000);
+  return gmt2Date.toISOString().split('T')[0]; // YYYY-MM-DD
+}
+
+async function trackApiUsage(apiKey = MAILTESTER_API_KEY) {
+  if (!redisClient.isReady || !apiKey) return;
+  
+  try {
+    const keyHash = getKeyHash(apiKey);
+    const today = getTodayDateGMT2();
+    const usageKey = `mailtester:usage:${keyHash}:${today}`;
+    
+    await redisClient.incr(usageKey);
+    // Expire after 48 hours
+    await redisClient.expire(usageKey, 48 * 60 * 60);
+  } catch (err) {
+    // Don't fail verification if tracking fails
+    console.error('Usage tracking error:', err.message);
+  }
+}
+
+// ============================================
+// ERROR LOGGING (for Admin Dashboard)
+// ============================================
+// Log verification errors with user/job context
+
+async function logVerificationError(userId, userEmail, jobId, errorType, errorMessage, emailAttempted = null) {
+  if (!redisClient.isReady) return;
+  
+  try {
+    const today = getTodayDateGMT2();
+    const errorsKey = `verification:errors:${today}`;
+    const countsKey = `verification:error_counts:${today}`;
+    
+    const errorEntry = JSON.stringify({
+      timestamp: new Date().toISOString(),
+      user_id: userId,
+      user_email: userEmail,
+      job_id: jobId,
+      error_type: errorType,
+      error_message: errorMessage,
+      email_attempted: emailAttempted
+    });
+    
+    // Add to list (newest first)
+    await redisClient.lPush(errorsKey, errorEntry);
+    // Trim to max 10000 errors per day
+    await redisClient.lTrim(errorsKey, 0, 9999);
+    // Expire after 7 days
+    await redisClient.expire(errorsKey, 7 * 24 * 60 * 60);
+    
+    // Increment count for this user/job/type
+    const countField = `${userId}:${jobId}:${errorType}`;
+    await redisClient.hIncrBy(countsKey, countField, 1);
+    await redisClient.expire(countsKey, 7 * 24 * 60 * 60);
+  } catch (err) {
+    // Don't fail verification if logging fails
+    console.error('Error logging error:', err.message);
+  }
+}
+
+// Current job context for error logging
+let currentJobContext = { userId: null, userEmail: null, jobId: null };
+
+// ============================================
 // MX PROVIDER PARSING
 // ============================================
 // Extract provider category from MX hostname
@@ -179,6 +260,9 @@ async function verifyEmail(email, retryCount = 0) {
       timeout: 30000, // 30 second timeout
     });
     
+    // Track API usage after successful call
+    await trackApiUsage(MAILTESTER_API_KEY);
+    
     const code = response.data?.code || 'ko';
     const message = response.data?.message || '';
     const mx = response.data?.mx || '';
@@ -200,6 +284,9 @@ async function verifyEmail(email, retryCount = 0) {
       provider,
     };
   } catch (error) {
+    // Track usage even on error (API was still called)
+    await trackApiUsage(MAILTESTER_API_KEY);
+    
     // Handle 429 Too Many Requests with exponential backoff
     if (error.response?.status === 429) {
       if (retryCount < MAX_RETRIES) {
@@ -209,6 +296,17 @@ async function verifyEmail(email, retryCount = 0) {
         return verifyEmail(email, retryCount + 1);
       }
       console.error(`Max retries exceeded for ${email}`);
+      // Log error for admin dashboard
+      if (currentJobContext.jobId) {
+        await logVerificationError(
+          currentJobContext.userId,
+          currentJobContext.userEmail,
+          currentJobContext.jobId,
+          'rate_limit_exceeded',
+          'Rate limited - max retries exceeded',
+          email
+        );
+      }
       return {
         status: 'error',
         message: 'Rate limited - max retries exceeded',
@@ -223,6 +321,17 @@ async function verifyEmail(email, retryCount = 0) {
     }
     
     console.error(`Error verifying ${email}:`, error.message);
+    // Log error for admin dashboard
+    if (currentJobContext.jobId) {
+      await logVerificationError(
+        currentJobContext.userId,
+        currentJobContext.userEmail,
+        currentJobContext.jobId,
+        'verification_error',
+        error.message,
+        email
+      );
+    }
     return {
       status: 'error',
       message: error.message,
@@ -243,6 +352,9 @@ async function verifyEmailWithoutRateLimit(email, retryCount = 0) {
       timeout: 30000, // 30 second timeout
     });
     
+    // Track API usage after successful call
+    await trackApiUsage(MAILTESTER_API_KEY);
+    
     const code = response.data?.code || 'ko';
     const message = response.data?.message || '';
     const mx = response.data?.mx || '';
@@ -264,6 +376,9 @@ async function verifyEmailWithoutRateLimit(email, retryCount = 0) {
       provider,
     };
   } catch (error) {
+    // Track usage even on error (API was still called)
+    await trackApiUsage(MAILTESTER_API_KEY);
+    
     // Handle 429 Too Many Requests with exponential backoff
     if (error.response?.status === 429) {
       if (retryCount < MAX_RETRIES) {
@@ -273,6 +388,17 @@ async function verifyEmailWithoutRateLimit(email, retryCount = 0) {
         return verifyEmailWithoutRateLimit(email, retryCount + 1);
       }
       console.error(`Max retries exceeded for ${email}`);
+      // Log error for admin dashboard
+      if (currentJobContext.jobId) {
+        await logVerificationError(
+          currentJobContext.userId,
+          currentJobContext.userEmail,
+          currentJobContext.jobId,
+          'rate_limit_exceeded',
+          'Rate limited - max retries exceeded',
+          email
+        );
+      }
       return {
         status: 'error',
         message: 'Rate limited - max retries exceeded',
@@ -287,6 +413,17 @@ async function verifyEmailWithoutRateLimit(email, retryCount = 0) {
     }
     
     console.error(`Error verifying ${email}:`, error.message);
+    // Log error for admin dashboard
+    if (currentJobContext.jobId) {
+      await logVerificationError(
+        currentJobContext.userId,
+        currentJobContext.userEmail,
+        currentJobContext.jobId,
+        'verification_error',
+        error.message,
+        email
+      );
+    }
     return {
       status: 'error',
       message: error.message,
@@ -784,6 +921,20 @@ async function processJobFromQueue(jobId) {
     
     const jobData = jobResult.rows[0];
     const jobType = jobData.job_type || 'enrichment'; // Default to enrichment for backward compatibility
+    
+    // Get user info for error logging context
+    const userResult = await pgPool.query(
+      'SELECT id, email FROM users WHERE id = $1',
+      [jobData.user_id]
+    );
+    const userData = userResult.rows[0];
+    
+    // Set job context for error logging
+    currentJobContext = {
+      userId: jobData.user_id,
+      userEmail: userData?.email || 'unknown',
+      jobId: jobId
+    };
     
     // Check if job is already cancelled before starting
     if (jobData.status === 'cancelled') {

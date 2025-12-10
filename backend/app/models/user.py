@@ -18,6 +18,7 @@ class User(Base):
     api_key = Column(UUID(as_uuid=True), unique=True, default=uuid.uuid4)
     catchall_verifier_api_key = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

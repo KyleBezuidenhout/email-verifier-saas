@@ -21,6 +21,7 @@ def run_migrations():
         from migrate_add_mx_record import migrate as migrate_mx_record
         from migrate_add_mx_provider import migrate as migrate_mx_provider
         from migrate_add_extra_data import migrate as migrate_extra_data
+        from migrate_add_is_admin import run_migration as migrate_is_admin
         
         # Run migrations
         migrate_catchall_key()
@@ -28,6 +29,7 @@ def run_migrations():
         migrate_mx_record()
         migrate_mx_provider()
         migrate_extra_data()
+        migrate_is_admin()
         
         print("✓ All migrations completed successfully!")
         return True

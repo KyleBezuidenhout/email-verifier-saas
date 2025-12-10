@@ -14,6 +14,9 @@ security = HTTPBearer(auto_error=False)
 security_required = HTTPBearer()
 
 
+ADMIN_EMAIL = "ben@superwave.io"
+
+
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -75,5 +78,23 @@ async def get_current_user(
     
     # No authentication provided
     raise credentials_exception
+
+
+async def require_admin(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """
+    Require the current user to be an admin.
+    Checks both is_admin flag and hardcoded admin email as fallback.
+    """
+    is_admin = getattr(current_user, 'is_admin', False) or current_user.email == ADMIN_EMAIL
+    
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
+    return current_user
 
 
