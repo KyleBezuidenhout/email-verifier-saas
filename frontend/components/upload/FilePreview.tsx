@@ -23,7 +23,7 @@ const COLUMN_VARIATIONS: Record<keyof ColumnMapping, string[]> = {
   last_name: ["lastname", "last", "lname", "surname", "familyname", "last_name"],
   website: ["website", "domain", "companywebsite", "companydomain", "url", "companyurl", "company_website", "corporatewebsite", "corporate_website", "corporate-website", "primarydomain", "organization_primary_domain", "organizationprimarydomain"],
   email: ["email", "emailaddress", "e-mail", "email_address", "mail"],
-  company_size: ["companysize", "company_size", "size", "employees", "employeecount", "headcount", "organizationsize", "organization_size", "orgsize", "org_size", "teamsize", "team_size", "staffcount", "staff_count", "numberofemployees", "num_employees", "employeesnumber"],
+  company_size: ["companysize", "company_size", "size", "employees", "employeecount", "headcount", "organizationsize", "organization_size", "orgsize", "org_size", "teamsize", "team_size", "staffcount", "staff_count", "numberofemployees", "num_employees", "employeesnumber", "linkedincompanyemployeecount", "linkedin_company_employee_count", "linkedin-company-employee-count", "linkedincompanyemployee", "linkedin_company_employee", "linkedin-company-employee"],
 };
 
 const getRequiredColumns = (mode?: 'enrichment' | 'verification'): (keyof ColumnMapping)[] => {
