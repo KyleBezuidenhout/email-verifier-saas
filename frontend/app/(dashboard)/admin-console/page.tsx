@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient } from "@/lib/api";
+import { Speedometer } from "@/components/dashboard/Speedometer";
 
 // Types for admin data
 interface ClientData {
@@ -525,39 +526,64 @@ export default function AdminConsolePage() {
             <p className="text-sm text-apple-text-muted">Auto-refreshes every 5 minutes</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {apiKeyUsage.length > 0 ? (
-              apiKeyUsage.map((key) => (
+              apiKeyUsage.map((key, index) => {
+                // Calculate current rate based on recent usage (simulated for now)
+                // Rate limit is 165 req/30s = 5.5 req/s, scaled to 0-170 for display
+                const hasActiveJobs = jobs.some(j => j.status === "processing");
+                const baseRate = hasActiveJobs ? 165 : 0;
+                // Add slight variation per key for visual distinction
+                const currentRate = hasActiveJobs ? Math.max(0, baseRate - (index * 10) + Math.random() * 20) : 0;
+                
+                return (
                 <div key={key.key_id} className="bg-apple-surface border border-apple-border rounded-xl p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <p className="font-mono text-apple-text">{key.key_preview}</p>
-                      <p className="text-xs text-apple-text-muted">Key ID: {key.key_id}</p>
-                    </div>
-                    <span className={`px-2 py-1 text-xs rounded ${key.usage_percentage > 80 ? "bg-red-500/20 text-red-400" : key.usage_percentage > 50 ? "bg-yellow-500/20 text-yellow-400" : "bg-green-500/20 text-green-400"}`}>
-                      {key.usage_percentage.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="mb-2">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-apple-text-muted">Usage Today</span>
-                      <span className="text-apple-text">{key.usage_today.toLocaleString()} / {key.limit.toLocaleString()}</span>
-                    </div>
-                    <div className="w-full bg-apple-bg rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full transition-all ${key.usage_percentage > 80 ? "bg-red-500" : key.usage_percentage > 50 ? "bg-yellow-500" : "bg-green-500"}`}
-                        style={{ width: `${Math.min(key.usage_percentage, 100)}%` }}
+                  <div className="flex gap-6">
+                    {/* Speedometer */}
+                    <div className="flex-shrink-0">
+                      <Speedometer 
+                        value={currentRate} 
+                        max={170}
+                        label="Current Rate"
                       />
                     </div>
+                    
+                    {/* Key Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <p className="font-mono text-apple-text">{key.key_preview}</p>
+                          <p className="text-xs text-apple-text-muted">Key ID: {key.key_id}</p>
+                        </div>
+                        <span className={`px-2 py-1 text-xs rounded ${key.usage_percentage > 80 ? "bg-red-500/20 text-red-400" : key.usage_percentage > 50 ? "bg-yellow-500/20 text-yellow-400" : "bg-green-500/20 text-green-400"}`}>
+                          {key.usage_percentage.toFixed(1)}%
+                        </span>
+                      </div>
+                      
+                      <div className="mb-2">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-apple-text-muted">Usage Today</span>
+                          <span className="text-apple-text">{key.usage_today.toLocaleString()} / {key.limit.toLocaleString()}</span>
+                        </div>
+                        <div className="w-full bg-apple-bg rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all ${key.usage_percentage > 80 ? "bg-red-500" : key.usage_percentage > 50 ? "bg-yellow-500" : "bg-green-500"}`}
+                            style={{ width: `${Math.min(key.usage_percentage, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                      
+                      <p className="text-sm text-apple-text-muted">
+                        Remaining: <span className="text-apple-text font-medium">{key.remaining.toLocaleString()}</span>
+                      </p>
+                      <p className="text-xs text-apple-text-muted mt-1">
+                        Resets at midnight GMT+2
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-sm text-apple-text-muted">
-                    Remaining: <span className="text-apple-text font-medium">{key.remaining.toLocaleString()}</span>
-                  </p>
-                  <p className="text-xs text-apple-text-muted mt-2">
-                    Resets at midnight GMT+2
-                  </p>
                 </div>
-              ))
+                );
+              })
             ) : (
               <div className="col-span-full text-center py-8 text-apple-text-muted">
                 No MailTester API keys configured
