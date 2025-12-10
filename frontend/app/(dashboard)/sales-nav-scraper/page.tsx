@@ -55,6 +55,80 @@ export default function SalesNavScraperPage() {
   // FAQ state
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
+  // Define all callback functions BEFORE useEffect hooks to prevent initialization errors
+  const loadAuthStatus = useCallback(async () => {
+    try {
+      const status = await apiClient.getVayneAuthStatus();
+      setAuthStatus(status);
+    } catch (err) {
+      console.error("Failed to load auth status:", err);
+    }
+  }, []);
+
+  const loadCredits = useCallback(async () => {
+    try {
+      const creditsData = await apiClient.getVayneCredits();
+      setCredits(creditsData);
+    } catch (err) {
+      console.error("Failed to load credits:", err);
+    }
+  }, []);
+
+  const loadOrderHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const response = await apiClient.getVayneOrderHistory(10, (historyPage - 1) * 10, historyFilter === "all" ? undefined : historyFilter);
+      setOrderHistory(response.orders);
+      setHistoryTotal(response.total);
+    } catch (err) {
+      console.error("Failed to load order history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [historyPage, historyFilter]);
+
+  const pollOrderStatus = useCallback(async (orderId: string) => {
+    try {
+      const order = await apiClient.getVayneOrder(orderId);
+      setCurrentOrder(order);
+      
+      // Exponential backoff: increase interval if still processing
+      if (order.status === "processing" || order.status === "pending") {
+        setPollingInterval((prev) => Math.min(prev * 1.5, MAX_POLLING_INTERVAL));
+      } else {
+        // Order completed or failed, stop polling
+        setPollingInterval(POLLING_INTERVAL);
+        if (order.status === "completed") {
+          await loadCredits();
+          await loadOrderHistory();
+        }
+      }
+    } catch (err) {
+      console.error("Failed to poll order status:", err);
+      // Continue polling even on error (might be temporary)
+    }
+  }, [loadCredits, loadOrderHistory]);
+
+  const validateUrl = useCallback(async (url: string) => {
+    if (!url.trim()) {
+      setUrlValidation(null);
+      return;
+    }
+    
+    setValidatingUrl(true);
+    try {
+      const check = await apiClient.checkVayneUrl(url);
+      setUrlValidation(check);
+    } catch (err) {
+      setUrlValidation({
+        is_valid: false,
+        error: err instanceof Error ? err.message : "Invalid URL",
+      });
+    } finally {
+      setValidatingUrl(false);
+    }
+  }, []);
+
   // Load auth status and credits on mount
   useEffect(() => {
     // Wrap in try-catch to prevent unhandled errors
@@ -75,8 +149,7 @@ export default function SalesNavScraperPage() {
       }
     };
     loadInitialData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
+  }, [loadAuthStatus, loadCredits, loadOrderHistory]);
 
   // Poll current order if it exists and is processing
   useEffect(() => {
@@ -117,79 +190,6 @@ export default function SalesNavScraperPage() {
       }
     };
   }, [salesNavUrl, validateUrl]);
-
-  const loadAuthStatus = useCallback(async () => {
-    try {
-      const status = await apiClient.getVayneAuthStatus();
-      setAuthStatus(status);
-    } catch (err) {
-      console.error("Failed to load auth status:", err);
-    }
-  }, []);
-
-  const loadCredits = useCallback(async () => {
-    try {
-      const creditsData = await apiClient.getVayneCredits();
-      setCredits(creditsData);
-    } catch (err) {
-      console.error("Failed to load credits:", err);
-    }
-  }, []);
-
-  const validateUrl = useCallback(async (url: string) => {
-    if (!url.trim()) {
-      setUrlValidation(null);
-      return;
-    }
-    
-    setValidatingUrl(true);
-    try {
-      const check = await apiClient.checkVayneUrl(url);
-      setUrlValidation(check);
-    } catch (err) {
-      setUrlValidation({
-        is_valid: false,
-        error: err instanceof Error ? err.message : "Invalid URL",
-      });
-    } finally {
-      setValidatingUrl(false);
-    }
-  }, []);
-
-  const loadOrderHistory = useCallback(async () => {
-    setLoadingHistory(true);
-    try {
-      const response = await apiClient.getVayneOrderHistory(10, (historyPage - 1) * 10, historyFilter === "all" ? undefined : historyFilter);
-      setOrderHistory(response.orders);
-      setHistoryTotal(response.total);
-    } catch (err) {
-      console.error("Failed to load order history:", err);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, [historyPage, historyFilter]);
-
-  const pollOrderStatus = useCallback(async (orderId: string) => {
-    try {
-      const order = await apiClient.getVayneOrder(orderId);
-      setCurrentOrder(order);
-      
-      // Exponential backoff: increase interval if still processing
-      if (order.status === "processing" || order.status === "pending") {
-        setPollingInterval((prev) => Math.min(prev * 1.5, MAX_POLLING_INTERVAL));
-      } else {
-        // Order completed or failed, stop polling
-        setPollingInterval(POLLING_INTERVAL);
-        if (order.status === "completed") {
-          await loadCredits();
-          await loadOrderHistory();
-        }
-      }
-    } catch (err) {
-      console.error("Failed to poll order status:", err);
-      // Continue polling even on error (might be temporary)
-    }
-  }, [loadCredits, loadOrderHistory]);
 
   const handleUpdateAuth = async () => {
     if (!liAtCookie.trim()) {
