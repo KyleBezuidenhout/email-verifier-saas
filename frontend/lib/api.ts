@@ -1,4 +1,17 @@
-import { LoginRequest, RegisterRequest, AuthResponse, User, Job, Lead, UploadResponse } from "@/types";
+import { 
+  LoginRequest, 
+  RegisterRequest, 
+  AuthResponse, 
+  User, 
+  Job, 
+  Lead, 
+  UploadResponse,
+  VayneAuthStatus,
+  VayneCredits,
+  VayneUrlCheck,
+  VayneOrder,
+  VayneOrderCreate
+} from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
 
@@ -472,7 +485,7 @@ class ApiClient {
   // VAYNE API ENDPOINTS (Sales Nav Scraper)
   // ============================================
 
-  async getVayneAuthStatus(): Promise<import("@/types").VayneAuthStatus> {
+  async getVayneAuthStatus(): Promise<VayneAuthStatus> {
     return this.request("/api/v1/vayne/auth");
   }
 
@@ -483,25 +496,25 @@ class ApiClient {
     });
   }
 
-  async getVayneCredits(): Promise<import("@/types").VayneCredits> {
+  async getVayneCredits(): Promise<VayneCredits> {
     return this.request("/api/v1/vayne/credits");
   }
 
-  async checkVayneUrl(sales_nav_url: string): Promise<import("@/types").VayneUrlCheck> {
+  async checkVayneUrl(sales_nav_url: string): Promise<VayneUrlCheck> {
     return this.request("/api/v1/vayne/url-check", {
       method: "POST",
       body: JSON.stringify({ sales_nav_url }),
     });
   }
 
-  async createVayneOrder(order: import("@/types").VayneOrderCreate): Promise<{ order_id: string; message: string }> {
+  async createVayneOrder(order: VayneOrderCreate): Promise<{ order_id: string; message: string }> {
     return this.request("/api/v1/vayne/orders", {
       method: "POST",
       body: JSON.stringify(order),
     });
   }
 
-  async getVayneOrder(orderId: string): Promise<import("@/types").VayneOrder> {
+  async getVayneOrder(orderId: string): Promise<VayneOrder> {
     return this.request(`/api/v1/vayne/orders/${orderId}`);
   }
 
@@ -526,7 +539,7 @@ class ApiClient {
   }
 
   async getVayneOrderHistory(limit = 10, offset = 0, status?: string): Promise<{
-    orders: import("@/types").VayneOrder[];
+    orders: VayneOrder[];
     total: number;
   }> {
     let url = `/api/v1/vayne/orders?limit=${limit}&offset=${offset}`;
