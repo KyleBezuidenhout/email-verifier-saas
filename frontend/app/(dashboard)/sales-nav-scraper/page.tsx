@@ -191,6 +191,11 @@ export default function SalesNavScraperPage() {
     };
   }, [salesNavUrl, validateUrl]);
 
+  // Reload order history when filter or page changes
+  useEffect(() => {
+    loadOrderHistory();
+  }, [historyFilter, historyPage, loadOrderHistory]);
+
   const handleUpdateAuth = async () => {
     if (!liAtCookie.trim()) {
       setError("Please enter your LinkedIn session cookie");
@@ -657,13 +662,11 @@ export default function SalesNavScraperPage() {
           <select
             value={historyFilter}
             onChange={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               const newFilter = e.target.value;
               setHistoryFilter(newFilter);
               setHistoryPage(1);
-              // Manually trigger loadOrderHistory after state updates
-              setTimeout(() => {
-                loadOrderHistory();
-              }, 0);
             }}
             className="px-3 py-1 bg-apple-bg border border-apple-border rounded-lg text-sm text-apple-text focus:outline-none focus:ring-2 focus:ring-apple-accent"
           >
