@@ -231,26 +231,15 @@ export default function ResultsPage() {
         <p className="mt-2 text-apple-text-muted">Job ID: {jobId}</p>
       </div>
 
-      {/* Summary Banner */}
-      {totalVerified > 0 && (
+      {/* Hit Rate Summary Banner */}
+      {job && (
         <div className="mb-8 bg-apple-surface border border-apple-border rounded-lg p-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h2 className="text-2xl font-bold text-apple-text mb-2">
-                ✅ Verified {totalVerified} emails in {processingTime} minutes for ${totalCost.toFixed(2)}
-              </h2>
-              <div className="flex flex-wrap gap-4 text-sm">
-                <span className="text-apple-text-muted">
-                  Cost per email: <strong className="text-apple-text">${costPerEmail.toFixed(2)}</strong>
-                </span>
-                {savings > 0 && (
-                  <span className="text-apple-accent">
-                    💰 You saved <strong>${savings.toFixed(2)}</strong> vs competitors
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
+          <h2 className="text-3xl font-bold text-[#007AFF]">
+            {job.job_type === "enrichment"
+              ? `${job.total_leads > 0 ? (((validLeads.length + catchallLeads.length) / job.total_leads) * 100).toFixed(1) : "0.0"}% of Emails Were Found`
+              : `${job.total_leads > 0 ? ((validLeads.length / job.total_leads) * 100).toFixed(1) : "0.0"}% of Emails Are Valid`
+            }
+          </h2>
         </div>
       )}
 
