@@ -7,7 +7,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, ADMIN_EMAIL
 from app.schemas.lead import LeadResponse
 
 router = APIRouter()
@@ -27,8 +27,15 @@ async def get_results(
             detail="Invalid job ID format"
         )
     
-    # Verify job belongs to user
-    job = db.query(Job).filter(Job.id == job_uuid, Job.user_id == current_user.id).first()
+    # Verify job belongs to user (or user is ben@superwave.io admin)
+    # Only ben@superwave.io can view other clients' jobs
+    if current_user.email == ADMIN_EMAIL:
+        # Admin can view any job
+        job = db.query(Job).filter(Job.id == job_uuid).first()
+    else:
+        # Regular users can only view their own jobs
+        job = db.query(Job).filter(Job.id == job_uuid, Job.user_id == current_user.id).first()
+    
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

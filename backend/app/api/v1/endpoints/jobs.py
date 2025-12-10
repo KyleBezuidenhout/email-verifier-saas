@@ -447,7 +447,14 @@ async def get_job(
             detail="Invalid job ID format"
         )
     
-    job = db.query(Job).filter(Job.id == job_uuid, Job.user_id == current_user.id).first()
+    # Only ben@superwave.io can view other clients' jobs
+    if current_user.email == ADMIN_EMAIL:
+        # Admin can view any job
+        job = db.query(Job).filter(Job.id == job_uuid).first()
+    else:
+        # Regular users can only view their own jobs
+        job = db.query(Job).filter(Job.id == job_uuid, Job.user_id == current_user.id).first()
+    
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
