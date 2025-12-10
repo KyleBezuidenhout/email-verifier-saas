@@ -7,6 +7,7 @@ import { apiClient } from "@/lib/api";
 import { JobTable } from "@/components/dashboard/JobTable";
 import { QuickStats } from "@/components/dashboard/QuickStats";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { ErrorModal } from "@/components/common/ErrorModal";
 import { DropZone } from "@/components/upload/DropZone";
 import { FilePreview, ColumnMapping } from "@/components/upload/FilePreview";
 import { formatFileSize } from "@/lib/utils";
@@ -27,6 +28,10 @@ export default function VerifyEmailsPage() {
   const [uploadError, setUploadError] = useState("");
   const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
   const [isMappingValid, setIsMappingValid] = useState(false);
+  
+  // Error modal state
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState("");
 
   useEffect(() => {
     loadJobs();
@@ -115,7 +120,9 @@ export default function VerifyEmailsPage() {
       
       // Don't redirect - let user stay on verify-emails page to see the job in the list
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      const errorMessage = err instanceof Error ? err.message : "Upload failed";
+      setErrorModalMessage(errorMessage);
+      setShowErrorModal(true);
     } finally {
       setUploading(false);
     }
@@ -265,6 +272,13 @@ export default function VerifyEmailsPage() {
         </p>
       </div>
       <JobTable jobs={filteredJobs} onDelete={handleDelete} onCancel={handleCancel} />
+
+      {/* Error Modal */}
+      <ErrorModal
+        isOpen={showErrorModal}
+        onClose={() => setShowErrorModal(false)}
+        message={errorModalMessage}
+      />
     </div>
   );
 }
