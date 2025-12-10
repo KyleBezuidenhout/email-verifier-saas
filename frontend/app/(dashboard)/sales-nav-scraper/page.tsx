@@ -54,9 +54,16 @@ export default function SalesNavScraperPage() {
 
   // Load auth status and credits on mount
   useEffect(() => {
-    loadAuthStatus();
-    loadCredits();
-    loadOrderHistory();
+    // Wrap in try-catch to prevent unhandled errors
+    try {
+      loadAuthStatus();
+      loadCredits();
+      loadOrderHistory();
+    } catch (err) {
+      console.error("Error loading initial data:", err);
+      setError("Failed to load page data. Please refresh the page.");
+      setShowErrorModal(true);
+    }
   }, [loadAuthStatus, loadCredits, loadOrderHistory]);
 
   // Poll current order if it exists and is processing
@@ -280,7 +287,9 @@ export default function SalesNavScraperPage() {
     setCurrentOrder(null);
   };
 
-  const usagePercentage = credits ? (credits.leads_scraped_today / credits.daily_limit) * 100 : 0;
+  const usagePercentage = credits && credits.daily_limit > 0 
+    ? (credits.leads_scraped_today / credits.daily_limit) * 100 
+    : 0;
   const progressColor = usagePercentage < 50 ? "bg-green-500" : usagePercentage < 80 ? "bg-yellow-500" : "bg-red-500";
 
   return (
