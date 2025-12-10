@@ -900,12 +900,14 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
     }
   }
   
+  // Return 1 for valid/catchall only if that's the final result type for this person
+  // (not counting all permutations that were catchall)
   return {
     personKey,
     finalLeadId,
     resultType,
-    validFound,
-    catchallFound,
+    validFound: resultType === 'valid' ? 1 : 0,
+    catchallFound: resultType === 'catchall' ? 1 : 0,
     apiCalls,
     savedCalls,
   };
