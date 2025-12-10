@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
 import { VayneAuthStatus, VayneCredits, VayneUrlCheck, VayneOrder, VayneOrderCreate } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
@@ -51,10 +51,6 @@ export default function SalesNavScraperPage() {
   
   // FAQ state
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  
-  // CSV data for enrichment
-  const [csvData, setCsvData] = useState<string | null>(null);
-  const [csvFilename, setCsvFilename] = useState<string>("");
 
   // Load auth status and credits on mount
   useEffect(() => {
@@ -80,6 +76,7 @@ export default function SalesNavScraperPage() {
       }
       setPollingInterval(POLLING_INTERVAL); // Reset to initial interval
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentOrder, pollingInterval]);
 
   // Debounced URL validation
@@ -98,9 +95,11 @@ export default function SalesNavScraperPage() {
     }
     
     return () => {
-      if (urlDebounceTimer) clearTimeout(urlDebounceTimer);
+      if (urlDebounceTimer) {
+        clearTimeout(urlDebounceTimer);
+      }
     };
-  }, [salesNavUrl]);
+  }, [salesNavUrl, validateUrl]);
 
   const loadAuthStatus = async () => {
     try {
@@ -120,7 +119,7 @@ export default function SalesNavScraperPage() {
     }
   };
 
-  const validateUrl = async (url: string) => {
+  const validateUrl = useCallback(async (url: string) => {
     if (!url.trim()) {
       setUrlValidation(null);
       return;
@@ -138,7 +137,7 @@ export default function SalesNavScraperPage() {
     } finally {
       setValidatingUrl(false);
     }
-  };
+  }, []);
 
   const handleUpdateAuth = async () => {
     if (!liAtCookie.trim()) {
@@ -247,11 +246,10 @@ export default function SalesNavScraperPage() {
       // Download CSV first
       const blob = await apiClient.exportVayneOrder(orderId);
       const text = await blob.text();
-      setCsvData(text);
-      setCsvFilename(`sales-nav-${orderId}.csv`);
+      const filename = `sales-nav-${orderId}.csv`;
       
       // Navigate to enrichment page with CSV data
-      router.push(`/find-valid-emails?source=Sales Nav&csvData=${encodeURIComponent(text)}&filename=${encodeURIComponent(csvFilename)}`);
+      router.push(`/find-valid-emails?source=Sales Nav&csvData=${encodeURIComponent(text)}&filename=${encodeURIComponent(filename)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to prepare leads for enrichment");
       setShowErrorModal(true);
