@@ -610,6 +610,8 @@ async function processJob(jobId) {
     let processedCount = 0;
     let validCount = 0;
     let catchallCount = 0;
+    let lastProgressUpdate = Date.now();
+    const PROGRESS_INTERVAL_MS = 3000; // Update progress every 3 seconds
     
     // Process leads in batches
     const batchSize = 10;
@@ -631,14 +633,14 @@ async function processJob(jobId) {
           
           processedCount++;
           
-          // Update job progress every 10 leads
-          if (processedCount % 10 === 0) {
+          // Update job progress every 3 seconds
+          if (Date.now() - lastProgressUpdate >= PROGRESS_INTERVAL_MS) {
             await updateJobStatus(jobId, 'processing', {
               processed_leads: processedCount,
               valid_emails_found: validCount,
               catchall_emails_found: catchallCount,
             });
-            
+            lastProgressUpdate = Date.now();
             console.log(`Progress: ${processedCount}/${totalLeads} (${Math.round(processedCount / totalLeads * 100)}%)`);
           }
         } catch (error) {
@@ -987,6 +989,8 @@ async function processJobFromQueue(jobId) {
       let validCount = 0;
       let catchallCount = 0;
       const finalResultIds = [];
+      let lastProgressUpdate = Date.now();
+      const PROGRESS_INTERVAL_MS = 3000; // Update progress every 3 seconds
       
       // Process leads sequentially with 170ms delay between each API call (speedrun mode)
       const DELAY_MS = 170; // Fixed delay between API calls
@@ -1029,14 +1033,15 @@ async function processJobFromQueue(jobId) {
           
           processedCount++;
           
-          // Update progress every 10 leads
-          if (processedCount % 10 === 0) {
+          // Update progress every 3 seconds
+          if (Date.now() - lastProgressUpdate >= PROGRESS_INTERVAL_MS) {
             const progressPercent = Math.round((processedCount / totalLeads) * 100);
             await updateJobStatus(jobId, 'processing', {
               processed_leads: processedCount,
               valid_emails_found: validCount,
               catchall_emails_found: catchallCount,
             });
+            lastProgressUpdate = Date.now();
             console.log(`Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Valid: ${validCount} | Catchall: ${catchallCount}`);
           }
           
@@ -1165,6 +1170,8 @@ async function processJobFromQueue(jobId) {
     let totalApiCalls = 0;
     let savedApiCalls = 0;
     const finalResultIds = [];
+    let lastProgressUpdate = Date.now();
+    const PROGRESS_INTERVAL_MS = 3000; // Update progress every 3 seconds
     
     // Process people in parallel batches of 10
     const BATCH_SIZE = 10;
@@ -1219,17 +1226,20 @@ async function processJobFromQueue(jobId) {
         return { status: 'cancelled', message: 'Job was cancelled during processing' };
       }
       
-      // Update progress after each batch
-      const progressPercent = Math.round((completedPeopleCount / uniquePeopleCount) * 100);
-      
-      await updateJobStatus(jobId, 'processing', {
-        processed_leads: completedPeopleCount,
-        valid_emails_found: validCount,
-        catchall_emails_found: catchallCount,
-      });
-      
-      const rlStatus = await rateLimiter.getStatus();
-      console.log(`Progress: ${completedPeopleCount}/${uniquePeopleCount} people (${progressPercent}%) | API calls: ${totalApiCalls} | Saved: ${savedApiCalls} | Tokens: ${rlStatus.availableTokens}/${rlStatus.maxTokens}`);
+      // Update progress after each batch (or if 3 seconds have passed)
+      if (Date.now() - lastProgressUpdate >= PROGRESS_INTERVAL_MS || i + BATCH_SIZE >= peopleArray.length) {
+        const progressPercent = Math.round((completedPeopleCount / uniquePeopleCount) * 100);
+        
+        await updateJobStatus(jobId, 'processing', {
+          processed_leads: completedPeopleCount,
+          valid_emails_found: validCount,
+          catchall_emails_found: catchallCount,
+        });
+        lastProgressUpdate = Date.now();
+        
+        const rlStatus = await rateLimiter.getStatus();
+        console.log(`Progress: ${completedPeopleCount}/${uniquePeopleCount} people (${progressPercent}%) | API calls: ${totalApiCalls} | Saved: ${savedApiCalls} | Tokens: ${rlStatus.availableTokens}/${rlStatus.maxTokens}`);
+      }
     }
     
     // Unmark all leads first, then mark final results
