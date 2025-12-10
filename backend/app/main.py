@@ -1,12 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import asyncio
 import sys
 import os
 
 from app.core.config import settings
-from app.api.v1.endpoints import auth, jobs, results, test, admin
+from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -68,6 +67,8 @@ async def run_migrations_on_startup():
         from migrate_add_mx_record import migrate as migrate_mx_record
         from migrate_add_mx_provider import migrate as migrate_mx_provider
         from migrate_add_is_admin import run_migration as migrate_is_admin
+        from migrate_add_job_source import migrate as migrate_job_source
+        from migrate_add_vayne_orders import migrate as migrate_vayne_orders
         
         print("Running database migrations on startup...")
         migrate_catchall_key()
@@ -76,6 +77,8 @@ async def run_migrations_on_startup():
         migrate_mx_record()
         migrate_mx_provider()
         migrate_is_admin()
+        migrate_job_source()
+        migrate_vayne_orders()
         print("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
@@ -87,5 +90,5 @@ app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/api/v1/results", tags=["results"])
 app.include_router(test.router, prefix="/api/v1", tags=["test"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
-
+app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])
 

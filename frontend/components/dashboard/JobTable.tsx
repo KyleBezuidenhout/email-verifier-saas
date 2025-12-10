@@ -85,7 +85,14 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                 onClick={(e) => handleRowClick(job.id, e)}
               >
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-apple-text">
-                  {job.id.slice(0, 8)}...
+                  <div className="flex items-center gap-2">
+                    <span>{job.id.slice(0, 8)}...</span>
+                    {job.source === "Sales Nav" && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-blue-500/20 text-blue-400 rounded-full">
+                        Sales Nav
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
                   {formatDate(job.created_at)}

@@ -16,6 +16,7 @@ export interface Job {
   user_id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   job_type?: 'enrichment' | 'verification';
+  source?: string; // e.g., "Sales Nav"
   original_filename?: string;
   total_leads: number;
   processed_leads: number;
@@ -80,5 +81,45 @@ export interface JobProgress {
 export interface UploadResponse {
   job_id: string;
   message: string;
+}
+
+// Vayne API Types
+export interface VayneAuthStatus {
+  is_connected: boolean;
+  linkedin_email?: string;
+}
+
+export interface VayneCredits {
+  available_credits: number;
+  leads_scraped_today: number;
+  daily_limit: number;
+  subscription_plan?: string;
+  subscription_expires_at?: string;
+}
+
+export interface VayneUrlCheck {
+  is_valid: boolean;
+  estimated_results?: number;
+  error?: string;
+}
+
+export interface VayneOrder {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  sales_nav_url: string;
+  export_format: 'simple' | 'advanced';
+  only_qualified: boolean;
+  leads_found?: number;
+  leads_qualified?: number;
+  progress_percentage?: number;
+  estimated_completion?: string;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface VayneOrderCreate {
+  sales_nav_url: string;
+  export_format: 'simple' | 'advanced';
+  only_qualified: boolean;
 }
 

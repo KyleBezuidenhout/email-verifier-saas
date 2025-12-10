@@ -38,6 +38,23 @@ export default function FindValidEmailsPage() {
 
   useEffect(() => {
     loadJobs();
+    
+    // Check for CSV data from Sales Nav Scraper
+    const urlParams = new URLSearchParams(window.location.search);
+    const csvData = urlParams.get("csvData");
+    const filename = urlParams.get("filename") || "sales-nav-leads.csv";
+    const source = urlParams.get("source");
+    
+    if (csvData && source === "Sales Nav") {
+      // Create a File object from the CSV data
+      const blob = new Blob([decodeURIComponent(csvData)], { type: "text/csv" });
+      const file = new File([blob], filename, { type: "text/csv" });
+      setSelectedFile(file);
+      
+      // Clean up URL params
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, "", newUrl);
+    }
   }, []);
 
   const loadJobs = async () => {
@@ -102,12 +119,17 @@ export default function FindValidEmailsPage() {
     setUploadError("");
 
     try {
+      // Check if this is from Sales Nav Scraper
+      const urlParams = new URLSearchParams(window.location.search);
+      const source = urlParams.get("source");
+      
       const response = await apiClient.uploadFile(selectedFile, {
         company_size: companySize || undefined,
         column_first_name: columnMapping.first_name,
         column_last_name: columnMapping.last_name,
         column_website: columnMapping.website,
         column_company_size: columnMapping.company_size || undefined,
+        source: source === "Sales Nav" ? "Sales Nav" : undefined,
       });
       
       // Reset upload state

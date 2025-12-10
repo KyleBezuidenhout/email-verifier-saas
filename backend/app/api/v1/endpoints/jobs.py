@@ -61,6 +61,7 @@ async def upload_file(
     column_last_name: Optional[str] = Form(None),
     column_website: Optional[str] = Form(None),
     column_company_size: Optional[str] = Form(None),
+    source: Optional[str] = Form(None),  # e.g., "Sales Nav"
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -164,6 +165,7 @@ async def upload_file(
         valid_emails_found=0,
         catchall_emails_found=0,
         cost_in_credits=0,
+        source=source,  # Tag job with source (e.g., "Sales Nav")
     )
     db.add(job)
     db.commit()

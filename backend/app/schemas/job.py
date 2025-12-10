@@ -9,6 +9,7 @@ class JobResponse(BaseModel):
     user_id: UUID
     status: str
     job_type: Optional[str] = "enrichment"  # enrichment or verification
+    source: Optional[str] = None  # e.g., "Sales Nav"
     original_filename: Optional[str]
     total_leads: int
     processed_leads: int

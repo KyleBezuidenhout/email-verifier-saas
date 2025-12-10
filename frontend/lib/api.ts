@@ -210,6 +210,7 @@ class ApiClient {
       column_last_name?: string;
       column_website?: string;
       column_company_size?: string;
+      source?: string; // e.g., "Sales Nav"
     }
   ): Promise<UploadResponse> {
     return this.requestWithFile<UploadResponse>("/api/v1/jobs/upload", file, options);
@@ -464,6 +465,72 @@ class ApiClient {
   }> {
     let url = `/api/v1/admin/errors?limit=${limit}&offset=${offset}`;
     if (date) url += `&date=${date}`;
+    return this.request(url);
+  }
+
+  // ============================================
+  // VAYNE API ENDPOINTS (Sales Nav Scraper)
+  // ============================================
+
+  async getVayneAuthStatus(): Promise<import("@/types").VayneAuthStatus> {
+    return this.request("/api/v1/vayne/auth");
+  }
+
+  async updateVayneAuth(li_at_cookie: string): Promise<{ message: string }> {
+    return this.request("/api/v1/vayne/auth", {
+      method: "PATCH",
+      body: JSON.stringify({ li_at_cookie }),
+    });
+  }
+
+  async getVayneCredits(): Promise<import("@/types").VayneCredits> {
+    return this.request("/api/v1/vayne/credits");
+  }
+
+  async checkVayneUrl(sales_nav_url: string): Promise<import("@/types").VayneUrlCheck> {
+    return this.request("/api/v1/vayne/url-check", {
+      method: "POST",
+      body: JSON.stringify({ sales_nav_url }),
+    });
+  }
+
+  async createVayneOrder(order: import("@/types").VayneOrderCreate): Promise<{ order_id: string; message: string }> {
+    return this.request("/api/v1/vayne/orders", {
+      method: "POST",
+      body: JSON.stringify(order),
+    });
+  }
+
+  async getVayneOrder(orderId: string): Promise<import("@/types").VayneOrder> {
+    return this.request(`/api/v1/vayne/orders/${orderId}`);
+  }
+
+  async exportVayneOrder(orderId: string): Promise<Blob> {
+    const url = `${this.baseUrl}/api/v1/vayne/orders/${orderId}/export`;
+    const token = this.getToken();
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        detail: response.statusText,
+      }));
+      throw new Error(error.detail || "Export failed");
+    }
+
+    return response.blob();
+  }
+
+  async getVayneOrderHistory(limit = 10, offset = 0, status?: string): Promise<{
+    orders: import("@/types").VayneOrder[];
+    total: number;
+  }> {
+    let url = `/api/v1/vayne/orders?limit=${limit}&offset=${offset}`;
+    if (status) url += `&status=${status}`;
     return this.request(url);
   }
 }
