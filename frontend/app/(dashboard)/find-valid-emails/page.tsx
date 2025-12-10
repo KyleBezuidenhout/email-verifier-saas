@@ -85,11 +85,11 @@ export default function FindValidEmailsPage() {
     }
 
     // Company size is required - either from CSV column mapping OR from dropdown selection
-    const hasCompanySizeFromCSV = columnMapping.company_size && columnMapping.company_size.trim() !== "";
-    const hasCompanySizeFromDropdown = companySize && companySize.trim() !== "";
+    const hasCompanySizeFromCSV = !!(columnMapping.company_size && columnMapping.company_size.trim() !== "");
+    const hasCompanySizeFromDropdown = !!(companySize && companySize.trim() !== "");
     
     if (!hasCompanySizeFromCSV && !hasCompanySizeFromDropdown) {
-      setUploadError("Company size is required. Either map the company size column from your CSV, or select a size from Advanced Options.");
+      setUploadError("Company size is required. Please select a company size range from the Advanced Options.");
       return;
     }
 
@@ -235,39 +235,53 @@ export default function FindValidEmailsPage() {
 
             <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
 
-            <div className="border-t border-apple-border pt-6">
-              <h3 className="text-lg font-medium text-apple-text mb-4">
-                Advanced Options
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <label
-                    htmlFor="company-size"
-                    className="block text-sm font-medium text-apple-text-muted mb-2"
-                  >
-                    Company Size {columnMapping?.company_size ? "(mapped from CSV)" : "(required if not mapped)"}
-                  </label>
-                  <select
-                    id="company-size"
-                    value={companySize}
-                    onChange={(e) => setCompanySize(e.target.value)}
-                    className={`apple-input w-full ${!columnMapping?.company_size && !companySize ? "border-apple-warning" : ""}`}
-                    disabled={!!columnMapping?.company_size}
-                  >
-                    <option value="">{columnMapping?.company_size ? `Using: ${columnMapping.company_size}` : "Select company size"}</option>
-                    <option value="1-50">1-50 employees</option>
-                    <option value="51-200">51-200 employees</option>
-                    <option value="201-500">201-500 employees</option>
-                    <option value="500+">500+ employees</option>
-                  </select>
-                  {!columnMapping?.company_size && !companySize && (
-                    <p className="mt-1 text-xs text-apple-warning">
-                      Required: Select a company size or map the column from your CSV
-                    </p>
-                  )}
+            {/* Only show Advanced Options if company_size is NOT mapped from CSV */}
+            {!columnMapping?.company_size && (
+              <div className="border-t border-apple-border pt-6">
+                <h3 className="text-lg font-medium text-apple-text mb-4">
+                  Advanced Options
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <label
+                      htmlFor="company-size"
+                      className="block text-sm font-medium text-apple-text-muted mb-2"
+                    >
+                      Company Size (required - not detected in CSV)
+                    </label>
+                    <select
+                      id="company-size"
+                      value={companySize}
+                      onChange={(e) => setCompanySize(e.target.value)}
+                      className={`apple-input w-full ${!companySize ? "border-apple-warning" : ""}`}
+                    >
+                      <option value="">-- Select company size range --</option>
+                      <option value="1-50">1-50 employees (Small)</option>
+                      <option value="51-200">51-200 employees (Medium)</option>
+                      <option value="201-500">201-500 employees (Mid-Market)</option>
+                      <option value="500+">500+ employees (Enterprise)</option>
+                    </select>
+                    {!companySize && (
+                      <p className="mt-1 text-xs text-apple-warning">
+                        Required: Select a company size range to optimize email permutation order
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+            
+            {/* Show confirmation if company_size IS mapped */}
+            {columnMapping?.company_size && (
+              <div className="border-t border-apple-border pt-6">
+                <div className="flex items-center gap-2 text-apple-success">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-sm">Company size mapped from CSV column: <strong>{columnMapping.company_size}</strong></span>
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end space-x-4 pt-6 border-t border-apple-border">
               <button
