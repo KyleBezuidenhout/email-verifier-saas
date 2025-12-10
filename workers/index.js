@@ -1596,5 +1596,73 @@ healthServer.listen(HEALTH_PORT, '0.0.0.0', () => {
   console.log(`✅ Health check server running on port ${HEALTH_PORT}`);
 });
 
+// ============================================
+// ORPHANED JOB RECOVERY
+// ============================================
+// Detects jobs stuck in "processing" state and re-queues them
+// This handles cases where workers restart mid-job
+
+const ORPHAN_CHECK_INTERVAL = 5 * 60 * 1000; // Check every 5 minutes
+const ORPHAN_TIMEOUT_MINUTES = 10; // Jobs stuck for 10+ minutes are considered orphaned
+
+async function recoverOrphanedJobs() {
+  try {
+    console.log(`\n[${new Date().toISOString()}] 🔍 Checking for orphaned jobs...`);
+    
+    // Find jobs that have been "processing" for more than ORPHAN_TIMEOUT_MINUTES
+    // without any progress updates (updated_at hasn't changed)
+    const orphanedJobs = await pgPool.query(`
+      SELECT id, user_id, job_type, total_leads, processed_leads, created_at, updated_at
+      FROM jobs 
+      WHERE status = 'processing' 
+      AND updated_at < NOW() - INTERVAL '${ORPHAN_TIMEOUT_MINUTES} minutes'
+      ORDER BY created_at ASC
+    `);
+    
+    if (orphanedJobs.rows.length === 0) {
+      console.log(`   No orphaned jobs found ✓`);
+      return;
+    }
+    
+    console.log(`   ⚠️ Found ${orphanedJobs.rows.length} orphaned job(s)!`);
+    
+    for (const job of orphanedJobs.rows) {
+      const jobId = job.id;
+      const progress = job.total_leads > 0 
+        ? Math.round((job.processed_leads / job.total_leads) * 100) 
+        : 0;
+      
+      console.log(`   📋 Recovering job ${jobId} (${job.job_type}, ${progress}% complete, stuck since ${job.updated_at})`);
+      
+      try {
+        // Reset job status to pending
+        await pgPool.query(
+          `UPDATE jobs SET status = 'pending', updated_at = NOW() WHERE id = $1`,
+          [jobId]
+        );
+        
+        // Re-queue to Redis
+        await redisClient.lPush('simple-email-verification-queue', jobId);
+        
+        console.log(`   ✅ Job ${jobId} re-queued successfully!`);
+      } catch (requeueError) {
+        console.error(`   ❌ Failed to re-queue job ${jobId}:`, requeueError.message);
+      }
+    }
+    
+    console.log(`   Job recovery complete.\n`);
+  } catch (error) {
+    console.error(`Error checking for orphaned jobs:`, error.message);
+  }
+}
+
+// Start orphan recovery checker
+setInterval(recoverOrphanedJobs, ORPHAN_CHECK_INTERVAL);
+
+// Run initial check after 1 minute (give Redis time to connect)
+setTimeout(recoverOrphanedJobs, 60 * 1000);
+
+console.log(`🔄 Orphaned job recovery: Checking every ${ORPHAN_CHECK_INTERVAL / 60000} minutes (timeout: ${ORPHAN_TIMEOUT_MINUTES} min)`);
+
 // Start simple queue poller
 pollSimpleQueue().catch(console.error);
