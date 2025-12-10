@@ -657,6 +657,8 @@ export default function SalesNavScraperPage() {
           <select
             value={historyFilter}
             onChange={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               setHistoryFilter(e.target.value);
               setHistoryPage(1);
             }}
