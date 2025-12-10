@@ -14,7 +14,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=True)
     company_name = Column(String(255), nullable=True)
-    credits = Column(Integer, default=10)
+    credits = Column(Integer, default=100)
     api_key = Column(UUID(as_uuid=True), unique=True, default=uuid.uuid4)
     catchall_verifier_api_key = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)

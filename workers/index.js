@@ -114,6 +114,9 @@ async function logVerificationError(userId, userEmail, jobId, errorType, errorMe
 // Current job context for error logging
 let currentJobContext = { userId: null, userEmail: null, jobId: null };
 
+// Admin email constant - admin has infinite credits
+const ADMIN_EMAIL = 'ben@superwave.io';
+
 // ============================================
 // MX PROVIDER PARSING
 // ============================================
@@ -735,12 +738,21 @@ async function processJob(jobId) {
       completed_at: new Date(),
     });
     
-    // Deduct credits
+    // Deduct credits (skip for admin, ensure credits never go below 0)
     if (costInCredits > 0) {
-      await pgPool.query(
-        'UPDATE users SET credits = credits - $1 WHERE id = $2',
-        [costInCredits, jobData.user_id]
-      );
+      // Check if user is admin
+      const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
+      const userEmail = userResult.rows[0]?.email;
+      
+      if (userEmail !== ADMIN_EMAIL) {
+        // Use GREATEST to ensure credits never go below 0
+        await pgPool.query(
+          'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
+          [costInCredits, jobData.user_id]
+        );
+      } else {
+        console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
+      }
     }
     
     console.log(`Job ${jobId} completed successfully!`);
@@ -1066,12 +1078,20 @@ async function processJobFromQueue(jobId) {
         completed_at: new Date(),
       });
       
-      // Deduct credits
+      // Deduct credits (skip for admin, ensure credits never go below 0)
       if (costInCredits > 0) {
-        await pgPool.query(
-          'UPDATE users SET credits = credits - $1 WHERE id = $2',
-          [costInCredits, jobData.user_id]
-        );
+        // Check if user is admin
+        const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
+        const userEmail = userResult.rows[0]?.email;
+        
+        if (userEmail !== ADMIN_EMAIL) {
+          await pgPool.query(
+            'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
+            [costInCredits, jobData.user_id]
+          );
+        } else {
+          console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
+        }
       }
       
       console.log(`\n========================================`);
@@ -1231,12 +1251,20 @@ async function processJobFromQueue(jobId) {
       completed_at: new Date(),
     });
     
-    // Deduct credits
+    // Deduct credits (skip for admin, ensure credits never go below 0)
     if (costInCredits > 0) {
-      await pgPool.query(
-        'UPDATE users SET credits = credits - $1 WHERE id = $2',
-        [costInCredits, jobData.user_id]
-      );
+      // Check if user is admin
+      const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
+      const userEmail = userResult.rows[0]?.email;
+      
+      if (userEmail !== ADMIN_EMAIL) {
+        await pgPool.query(
+          'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
+          [costInCredits, jobData.user_id]
+        );
+      } else {
+        console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
+      }
     }
     
     console.log(`\n========================================`);

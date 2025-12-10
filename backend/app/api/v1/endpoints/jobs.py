@@ -12,7 +12,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, ADMIN_EMAIL
 from app.schemas.job import JobResponse, JobUploadResponse, JobProgressResponse
 from app.services.permutation import generate_email_permutations, normalize_domain
 from app.core.config import settings
@@ -142,6 +142,16 @@ async def upload_file(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No valid rows found in CSV after mapping"
+        )
+    
+    # Check credits (1 credit per lead) - skip for admin
+    leads_count = len(remapped_rows)
+    is_admin = current_user.email == ADMIN_EMAIL or getattr(current_user, 'is_admin', False)
+    
+    if not is_admin and current_user.credits < leads_count:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {leads_count} credits. Please top up your account."
         )
     
     # Create job - total_leads = unique people (not permutations)
@@ -314,6 +324,16 @@ async def upload_verify_file(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No valid rows with email addresses found in CSV"
+        )
+    
+    # Check credits (1 credit per email to verify) - skip for admin
+    leads_count = len(remapped_rows)
+    is_admin = current_user.email == ADMIN_EMAIL or getattr(current_user, 'is_admin', False)
+    
+    if not is_admin and current_user.credits < leads_count:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {leads_count} credits. Please top up your account."
         )
     
     # Create job with job_type="verification"

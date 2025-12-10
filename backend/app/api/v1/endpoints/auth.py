@@ -31,7 +31,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
         hashed_password=hashed_password,
         full_name=user_data.full_name,
         company_name=user_data.company_name,
-        credits=10,  # Default credits
+        credits=100,  # Default credits for new users
     )
     
     db.add(new_user)
