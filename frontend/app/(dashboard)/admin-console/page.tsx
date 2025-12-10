@@ -461,13 +461,15 @@ export default function AdminConsolePage() {
               </thead>
               <tbody className="divide-y divide-apple-border">
                 {jobs.map((job) => {
-                  // Enrichment: (valid + catchall) / total | Verification: valid / total
+                  // Enrichment: (valid + catchall) / total unique leads | Verification: valid / total
+                  // Cap at 100% to handle any data inconsistencies
                   const isEnrichment = job.job_type === "enrichment";
-                  const hitRateValue = job.total_leads > 0
+                  const rawHitRate = job.total_leads > 0
                     ? isEnrichment
-                      ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100).toFixed(1)
-                      : ((job.valid_emails_found) / job.total_leads * 100).toFixed(1)
-                    : "0.0";
+                      ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100)
+                      : ((job.valid_emails_found) / job.total_leads * 100)
+                    : 0;
+                  const hitRateValue = Math.min(rawHitRate, 100).toFixed(1);
                   return (
                   <tr 
                     key={job.id} 
