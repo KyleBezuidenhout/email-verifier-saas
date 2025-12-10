@@ -1180,12 +1180,16 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
 }
 
 // Helper function to check if job is cancelled
+// Check if job is cancelled OR deleted (both should stop processing)
 async function isJobCancelled(jobId) {
   const result = await pgPool.query(
     'SELECT status FROM jobs WHERE id = $1',
     [jobId]
   );
-  return result.rows.length > 0 && result.rows[0].status === 'cancelled';
+  // Return true if:
+  // 1. Job doesn't exist (was deleted) - rows.length === 0
+  // 2. Job exists but status is 'cancelled'
+  return result.rows.length === 0 || result.rows[0].status === 'cancelled';
 }
 
 // Process job from simple queue with EARLY EXIT + PARALLEL PEOPLE optimization
