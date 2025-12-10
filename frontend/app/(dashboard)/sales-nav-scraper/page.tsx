@@ -49,21 +49,32 @@ export default function SalesNavScraperPage() {
   const [error, setError] = useState("");
   const [showErrorModal, setShowErrorModal] = useState(false);
   
+  // Loading state
+  const [initialLoading, setInitialLoading] = useState(true);
+  
   // FAQ state
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   // Load auth status and credits on mount
   useEffect(() => {
     // Wrap in try-catch to prevent unhandled errors
-    try {
-      loadAuthStatus();
-      loadCredits();
-      loadOrderHistory();
-    } catch (err) {
-      console.error("Error loading initial data:", err);
-      setError("Failed to load page data. Please refresh the page.");
-      setShowErrorModal(true);
-    }
+    const loadInitialData = async () => {
+      try {
+        setInitialLoading(true);
+        await Promise.all([
+          loadAuthStatus(),
+          loadCredits(),
+          loadOrderHistory()
+        ]);
+      } catch (err) {
+        console.error("Error loading initial data:", err);
+        setError("Failed to load page data. Please refresh the page.");
+        setShowErrorModal(true);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+    loadInitialData();
   }, [loadAuthStatus, loadCredits, loadOrderHistory]);
 
   // Poll current order if it exists and is processing
@@ -291,6 +302,17 @@ export default function SalesNavScraperPage() {
     ? (credits.leads_scraped_today / credits.daily_limit) * 100 
     : 0;
   const progressColor = usagePercentage < 50 ? "bg-green-500" : usagePercentage < 80 ? "bg-yellow-500" : "bg-red-500";
+
+  // Show loading state while initial data is being fetched
+  if (initialLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <LoadingSpinner size="lg" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
