@@ -254,75 +254,60 @@ export default function ResultsPage() {
         </div>
       )}
 
+      {/* Stats Blocks - Click to Filter */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-apple-surface border border-apple-border p-6 rounded-lg">
+        <button
+          onClick={() => setFilter("all")}
+          className={`text-left bg-apple-surface border p-6 rounded-lg transition-all hover:border-apple-accent ${
+            filter === "all" ? "border-apple-accent ring-2 ring-apple-accent/20" : "border-apple-border"
+          }`}
+        >
           <p className="text-sm text-apple-text-muted">Total Leads</p>
           <p className="text-2xl font-bold text-apple-text">{job.total_leads}</p>
-        </div>
-        <div className="bg-apple-surface border border-apple-border p-6 rounded-lg">
+        </button>
+        <button
+          onClick={() => setFilter("valid")}
+          className={`text-left bg-apple-surface border p-6 rounded-lg transition-all hover:border-apple-accent ${
+            filter === "valid" ? "border-apple-accent ring-2 ring-apple-accent/20" : "border-apple-border"
+          }`}
+        >
           <p className="text-sm text-apple-text-muted">Valid Emails</p>
           <p className="text-2xl font-bold text-apple-accent">
             {validLeads.length}
           </p>
-        </div>
-        <div className="bg-apple-surface border border-apple-border p-6 rounded-lg">
+        </button>
+        <button
+          onClick={() => setFilter("catchall")}
+          className={`text-left bg-apple-surface border p-6 rounded-lg transition-all hover:border-yellow-500 ${
+            filter === "catchall" ? "border-yellow-500 ring-2 ring-yellow-500/20" : "border-apple-border"
+          }`}
+        >
           <p className="text-sm text-apple-text-muted">Catchall Emails</p>
-          <p className="text-2xl font-bold text-apple-accent">
+          <p className="text-2xl font-bold text-yellow-500">
             {catchallLeads.length}
           </p>
-        </div>
-        <div className="bg-apple-surface border border-apple-border p-6 rounded-lg">
+        </button>
+        <button
+          onClick={() => setFilter("invalid")}
+          className={`text-left bg-apple-surface border p-6 rounded-lg transition-all hover:border-red-500 ${
+            filter === "invalid" ? "border-red-500 ring-2 ring-red-500/20" : "border-apple-border"
+          }`}
+        >
           <p className="text-sm text-apple-text-muted">Not Found</p>
-          <p className="text-2xl font-bold text-apple-error">
+          <p className="text-2xl font-bold text-red-500">
             {notFoundLeads.length}
           </p>
-        </div>
+        </button>
       </div>
 
       <div className="bg-apple-surface border border-apple-border rounded-lg p-6">
         <div className="mb-4">
-          {/* Status Filter */}
-          <div className="flex space-x-2 mb-3">
-            <button
-              onClick={() => setFilter("all")}
-              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                filter === "all"
-                  ? "bg-apple-accent text-white font-medium"
-                  : "bg-apple-surface border border-apple-border text-apple-text-muted hover:bg-apple-surface"
-              }`}
-            >
-              All ({filteredLeads.length})
-            </button>
-            <button
-              onClick={() => setFilter("valid")}
-              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                filter === "valid"
-                  ? "bg-apple-accent text-white font-medium"
-                  : "bg-apple-surface border border-apple-border text-apple-text-muted hover:bg-apple-surface"
-              }`}
-            >
-              Valid ({filteredValidLeads.length})
-            </button>
-            <button
-              onClick={() => setFilter("catchall")}
-              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                filter === "catchall"
-                  ? "bg-apple-accent text-white font-medium"
-                  : "bg-apple-surface border border-apple-border text-apple-text-muted hover:bg-apple-surface"
-              }`}
-            >
-              Catchall ({filteredCatchallLeads.length})
-            </button>
-            <button
-              onClick={() => setFilter("invalid")}
-              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                filter === "invalid"
-                  ? "bg-apple-accent text-white font-medium"
-                  : "bg-apple-surface border border-apple-border text-apple-text-muted hover:bg-apple-surface"
-              }`}
-            >
-              Invalid ({filteredNotFoundLeads.length})
-            </button>
+          {/* Current Filter Info & MX Provider Filter */}
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
+            <div className="text-sm text-apple-text-muted">
+              Showing <span className="font-medium text-apple-text">{filteredLeads.length}</span> {filter === "all" ? "leads" : filter === "valid" ? "valid emails" : filter === "catchall" ? "catchall emails" : "not found"}
+              {mxFilters.length > 0 && <span> • Filtered by: {mxFilters.join(", ")}</span>}
+            </div>
           </div>
           
           {/* MX Provider Filter */}

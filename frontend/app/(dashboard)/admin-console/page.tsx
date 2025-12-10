@@ -291,7 +291,7 @@ export default function AdminConsolePage() {
 
           {/* Credit Assignment Section */}
           <div className="bg-apple-surface border border-apple-border rounded-xl p-6">
-            <h2 className="text-lg font-semibold text-apple-text mb-4">Assign Credits to Client</h2>
+            <h2 className="text-lg font-semibold text-apple-text mb-4">Update Client Credits</h2>
             <div className="flex flex-wrap gap-4 items-end">
               <div className="flex-1 min-w-[200px]">
                 <label className="block text-sm text-apple-text-muted mb-2">Select Client</label>
@@ -309,7 +309,7 @@ export default function AdminConsolePage() {
                 </select>
               </div>
               <div className="w-[150px]">
-                <label className="block text-sm text-apple-text-muted mb-2">Credit Amount</label>
+                <label className="block text-sm text-apple-text-muted mb-2">Update credit amount to:</label>
                 <input
                   type="number"
                   min="0"
@@ -324,7 +324,7 @@ export default function AdminConsolePage() {
                 disabled={creditLoading}
                 className="px-6 py-2 bg-apple-accent text-white rounded-lg font-medium hover:bg-apple-accent/90 disabled:opacity-50 transition-all"
               >
-                {creditLoading ? "Updating..." : "Assign Credits"}
+                {creditLoading ? "Updating..." : "Update Credits"}
               </button>
             </div>
             {creditMessage && (

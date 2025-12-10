@@ -726,8 +726,8 @@ async function processJob(jobId) {
       finalCatchallCount = finalResults.filter(r => r.verification_status === 'catchall').length;
     }
     
-    // Calculate cost
-    const costInCredits = finalValidCount + finalCatchallCount;
+    // Calculate cost (1 credit per lead processed)
+    const costInCredits = jobData.total_leads;
     
     // Mark job as completed
     await updateJobStatus(jobId, 'completed', {
@@ -750,6 +750,7 @@ async function processJob(jobId) {
           'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
           [costInCredits, jobData.user_id]
         );
+        console.log(`Deducted ${costInCredits} credits from user ${userEmail}`);
       } else {
         console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
       }
@@ -757,6 +758,7 @@ async function processJob(jobId) {
     
     console.log(`Job ${jobId} completed successfully!`);
     console.log(`Final results: ${finalValidCount} valid, ${finalCatchallCount} catchall`);
+    console.log(`Credits charged: ${costInCredits} (1 per lead)`);
     
     return {
       status: 'completed',
@@ -1066,8 +1068,8 @@ async function processJobFromQueue(jobId) {
         );
       }
       
-      // Calculate cost (only charged for valid + catchall results)
-      const costInCredits = validCount + catchallCount;
+      // Calculate cost (1 credit per lead processed)
+      const costInCredits = jobData.total_leads;
       
       // Mark job as completed
       await updateJobStatus(jobId, 'completed', {
@@ -1089,6 +1091,7 @@ async function processJobFromQueue(jobId) {
             'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
             [costInCredits, jobData.user_id]
           );
+          console.log(`Deducted ${costInCredits} credits from user ${userEmail}`);
         } else {
           console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
         }
@@ -1097,6 +1100,7 @@ async function processJobFromQueue(jobId) {
       console.log(`\n========================================`);
       console.log(`Verification job ${jobId} completed successfully!`);
       console.log(`Final results: ${validCount} valid, ${catchallCount} catchall, ${processedCount} total processed`);
+      console.log(`Credits charged: ${costInCredits} (1 per lead)`);
       console.log(`========================================\n`);
       
       return {
@@ -1239,8 +1243,8 @@ async function processJobFromQueue(jobId) {
       );
     }
     
-    // Calculate cost (only charged for valid + catchall results)
-    const costInCredits = validCount + catchallCount;
+    // Calculate cost (1 credit per unique person/lead)
+    const costInCredits = uniquePeopleCount;
     
     // Mark job as completed
     await updateJobStatus(jobId, 'completed', {
@@ -1262,6 +1266,7 @@ async function processJobFromQueue(jobId) {
           'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
           [costInCredits, jobData.user_id]
         );
+        console.log(`Deducted ${costInCredits} credits from user ${userEmail}`);
       } else {
         console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
       }
@@ -1270,6 +1275,7 @@ async function processJobFromQueue(jobId) {
     console.log(`\n========================================`);
     console.log(`Job ${jobId} completed successfully!`);
     console.log(`Final results: ${validCount} valid, ${catchallCount} catchall`);
+    console.log(`Credits charged: ${costInCredits} (1 per lead)`);
     console.log(`Total API calls: ${totalApiCalls} (saved ${savedApiCalls} calls with early exit)`);
     if (totalApiCalls + savedApiCalls > 0) {
       console.log(`Efficiency: ${Math.round((savedApiCalls / (totalApiCalls + savedApiCalls)) * 100)}% reduction in API calls`);

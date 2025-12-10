@@ -190,7 +190,9 @@ export function Sidebar() {
                   </svg>
                   <span className="text-xs text-apple-text-muted">Credits</span>
                 </div>
-                <span className="text-sm font-bold text-apple-accent">{user.credits?.toLocaleString() || 0}</span>
+                <span className="text-sm font-bold text-apple-accent">
+                  {user.is_admin ? "∞" : (user.credits?.toLocaleString() || 0)}
+                </span>
               </div>
             </div>
 
