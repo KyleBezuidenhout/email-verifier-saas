@@ -84,6 +84,15 @@ export default function FindValidEmailsPage() {
       return;
     }
 
+    // Company size is required - either from CSV column mapping OR from dropdown selection
+    const hasCompanySizeFromCSV = columnMapping.company_size && columnMapping.company_size.trim() !== "";
+    const hasCompanySizeFromDropdown = companySize && companySize.trim() !== "";
+    
+    if (!hasCompanySizeFromCSV && !hasCompanySizeFromDropdown) {
+      setUploadError("Company size is required. Either map the company size column from your CSV, or select a size from Advanced Options.");
+      return;
+    }
+
     if (selectedFile.size > 10 * 1024 * 1024) {
       setUploadError("File size must be less than 10MB");
       return;
@@ -236,20 +245,26 @@ export default function FindValidEmailsPage() {
                     htmlFor="company-size"
                     className="block text-sm font-medium text-apple-text-muted mb-2"
                   >
-                    Company Size (optional)
+                    Company Size {columnMapping?.company_size ? "(mapped from CSV)" : "(required if not mapped)"}
                   </label>
                   <select
                     id="company-size"
                     value={companySize}
                     onChange={(e) => setCompanySize(e.target.value)}
-                    className="apple-input w-full"
+                    className={`apple-input w-full ${!columnMapping?.company_size && !companySize ? "border-apple-warning" : ""}`}
+                    disabled={!!columnMapping?.company_size}
                   >
-                    <option value="">Select company size</option>
+                    <option value="">{columnMapping?.company_size ? `Using: ${columnMapping.company_size}` : "Select company size"}</option>
                     <option value="1-50">1-50 employees</option>
                     <option value="51-200">51-200 employees</option>
                     <option value="201-500">201-500 employees</option>
                     <option value="500+">500+ employees</option>
                   </select>
+                  {!columnMapping?.company_size && !companySize && (
+                    <p className="mt-1 text-xs text-apple-warning">
+                      Required: Select a company size or map the column from your CSV
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
