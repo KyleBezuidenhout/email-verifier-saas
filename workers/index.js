@@ -1239,10 +1239,11 @@ async function processJobFromQueue(jobId) {
       const PROGRESS_INTERVAL_MS = 3000; // Update progress every 3 seconds
       
       // Batch size for parallel processing (uses all API keys simultaneously!)
-      // With 2 keys: 10 parallel requests = both keys working at full speed
-      const BATCH_SIZE = Math.max(10, MAILTESTER_API_KEYS.length * 5);
+      // Larger batch = better pipeline efficiency (rate limiter still controls actual speed)
+      // Safe max: 20-30 concurrent requests waiting in queue
+      const BATCH_SIZE = Math.max(20, MAILTESTER_API_KEYS.length * 10);
       
-      console.log(`Starting verification with per-key rate limiters: ${totalLeads} leads (batch size: ${BATCH_SIZE})`);
+      console.log(`Starting verification with global rate limiter: ${totalLeads} leads (batch size: ${BATCH_SIZE})`);
       console.log(`Using ${MAILTESTER_API_KEYS.length} API keys = ${MAILTESTER_API_KEYS.length}x speed!`);
       
       // Process leads in parallel batches
@@ -1420,8 +1421,9 @@ async function processJobFromQueue(jobId) {
     let lastProgressUpdate = Date.now();
     const PROGRESS_INTERVAL_MS = 3000; // Update progress every 3 seconds
     
-    // Process people in parallel batches of 10
-    const BATCH_SIZE = 10;
+    // Process people in parallel batches
+    // Larger batch = better pipeline efficiency (rate limiter still controls actual speed)
+    const BATCH_SIZE = Math.max(20, MAILTESTER_API_KEYS.length * 10);
     
     for (let i = 0; i < peopleArray.length; i += BATCH_SIZE) {
       // Check if job was cancelled before processing batch
