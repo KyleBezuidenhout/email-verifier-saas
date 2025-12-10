@@ -1601,13 +1601,34 @@ healthServer.listen(HEALTH_PORT, '0.0.0.0', () => {
 // ============================================
 // Detects jobs stuck in "processing" state and re-queues them
 // This handles cases where workers restart mid-job
+// Uses distributed lock to ensure only ONE worker runs this at a time
 
 const ORPHAN_CHECK_INTERVAL = 5 * 60 * 1000; // Check every 5 minutes
 const ORPHAN_TIMEOUT_MINUTES = 10; // Jobs stuck for 10+ minutes are considered orphaned
+const ORPHAN_LOCK_KEY = 'orphan_recovery_lock';
+const ORPHAN_LOCK_TTL = 60; // Lock expires after 60 seconds (safety)
 
 async function recoverOrphanedJobs() {
+  // Distributed lock - only one worker runs orphan check at a time
+  if (!redisClient.isReady) {
+    console.log(`\n[${new Date().toISOString()}] ⏳ Redis not ready, skipping orphan check`);
+    return;
+  }
+  
   try {
-    console.log(`\n[${new Date().toISOString()}] 🔍 Checking for orphaned jobs...`);
+    // Try to acquire lock (NX = only if not exists, EX = expire after TTL)
+    const gotLock = await redisClient.set(ORPHAN_LOCK_KEY, process.pid.toString(), {
+      NX: true,
+      EX: ORPHAN_LOCK_TTL
+    });
+    
+    if (!gotLock) {
+      // Another worker is already running the check
+      console.log(`\n[${new Date().toISOString()}] 🔒 Another worker is running orphan check, skipping...`);
+      return;
+    }
+    
+    console.log(`\n[${new Date().toISOString()}] 🔍 Checking for orphaned jobs (got lock)...`);
     
     // Find jobs that have been "processing" for more than ORPHAN_TIMEOUT_MINUTES
     // without any progress updates (updated_at hasn't changed)
@@ -1651,8 +1672,17 @@ async function recoverOrphanedJobs() {
     }
     
     console.log(`   Job recovery complete.\n`);
+    
+    // Release lock
+    await redisClient.del(ORPHAN_LOCK_KEY);
   } catch (error) {
     console.error(`Error checking for orphaned jobs:`, error.message);
+    // Release lock on error too
+    try {
+      await redisClient.del(ORPHAN_LOCK_KEY);
+    } catch (lockError) {
+      // Ignore lock release errors
+    }
   }
 }
 
