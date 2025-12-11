@@ -33,8 +33,9 @@ class Settings(BaseSettings):
     # Vayne API (Sales Nav Scraper)
     VAYNE_API_KEY: str = ""
     VAYNE_API_BASE_URL: str = "https://www.vayne.io"
-    VAYNE_API_POLLING_INTERVAL: int = 5000  # 5 seconds in milliseconds
-    VAYNE_API_POLLING_MAX_INTERVAL: int = 30000  # 30 seconds max in milliseconds
+    VAYNE_API_POLLING_INTERVAL: int = 5000  # 5 seconds in milliseconds (deprecated, kept for compatibility)
+    VAYNE_API_POLLING_MAX_INTERVAL: int = 30000  # 30 seconds max in milliseconds (deprecated)
+    WEBHOOK_BASE_URL: str = "https://www.billionverifier.io"  # Base URL for webhook endpoints
 
     # App
     APP_NAME: str = "Email Verifier SaaS"

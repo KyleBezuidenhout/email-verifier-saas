@@ -33,6 +33,7 @@ from app.schemas.vayne import (
     VayneOrderCreateResponse,
     VayneOrderResponse,
     VayneOrderListResponse,
+    VayneWebhookPayload,
 )
 from app.services.vayne_client import get_vayne_client
 from app.core.config import settings
@@ -197,12 +198,14 @@ async def create_order(
                 detail=f"Insufficient credits. You have {current_user.credits} credits but this order requires approximately {estimated_leads} credits."
             )
         
-        # Create order with Vayne API
+        # Create order with Vayne API (include webhook URL)
+        webhook_url = f"{settings.WEBHOOK_BASE_URL}/api/webhooks/vayne/orders"
         vayne_order = await vayne_client.create_order(
             sales_nav_url=order_data.sales_nav_url,
             export_format=order_data.export_format,
             only_qualified=order_data.only_qualified,
-            li_at_cookie=latest_order.linkedin_cookie
+            li_at_cookie=latest_order.linkedin_cookie,
+            webhook_url=webhook_url
         )
         
         # Store order in database
@@ -264,28 +267,8 @@ async def get_order(
             detail="Order not found"
         )
     
-    # Sync with Vayne API if order is still processing
-    if order.status in ["pending", "processing"] and order.vayne_order_id:
-        try:
-            vayne_client = get_vayne_client()
-            vayne_order_data = await vayne_client.get_order(order.vayne_order_id)
-            
-            # Update order status from Vayne API
-            order.status = vayne_order_data.get("status", order.status)
-            order.leads_found = vayne_order_data.get("leads_found")
-            order.leads_qualified = vayne_order_data.get("leads_qualified")
-            order.progress_percentage = vayne_order_data.get("progress_percentage", 0)
-            order.estimated_completion = vayne_order_data.get("estimated_completion")
-            
-            if order.status == "completed":
-                order.completed_at = datetime.utcnow()
-            
-            db.commit()
-            db.refresh(order)
-        except Exception:
-            # If sync fails, return stored data
-            pass
-    
+    # Return order directly from database (webhooks keep it updated)
+    # No need to sync with Vayne API - webhooks handle real-time updates
     return VayneOrderResponse(
         id=str(order.id),
         status=order.status,
@@ -395,4 +378,66 @@ async def get_order_history(
         ],
         total=total
     )
+
+
+# ============================================
+# WEBHOOK ENDPOINT (Public, no auth required)
+# ============================================
+
+@router.post("/webhook")
+async def vayne_webhook(
+    payload: VayneWebhookPayload,
+    db: Session = Depends(get_db)
+):
+    """
+    Webhook endpoint for Vayne API to send order status updates.
+    This endpoint is public (no auth required) but validates payload structure.
+    """
+    try:
+        # Find order by Vayne's order_id
+        order = db.query(VayneOrder).filter(
+            VayneOrder.vayne_order_id == payload.order_id
+        ).first()
+        
+        if not order:
+            # Order not found - might be from a different system or deleted
+            print(f"⚠️ Webhook received for unknown order_id: {payload.order_id}")
+            return {"status": "ok", "message": "Order not found (ignored)"}
+        
+        # Update order with webhook data
+        order.status = payload.status
+        if payload.progress_percentage is not None:
+            order.progress_percentage = payload.progress_percentage
+        if payload.leads_found is not None:
+            order.leads_found = payload.leads_found
+        if payload.leads_qualified is not None:
+            order.leads_qualified = payload.leads_qualified
+        if payload.estimated_completion:
+            try:
+                # Parse estimated_completion if it's a datetime string
+                order.estimated_completion = payload.estimated_completion
+            except Exception:
+                pass
+        
+        # Set completed_at if order is completed
+        if payload.status == "completed":
+            order.completed_at = datetime.utcnow()
+        elif payload.status == "failed":
+            # Store error message if available
+            if payload.error_message:
+                # Note: VayneOrder model might need an error_message field
+                # For now, we'll just log it
+                print(f"Order {payload.order_id} failed: {payload.error_message}")
+        
+        db.commit()
+        db.refresh(order)
+        
+        print(f"✅ Webhook processed for order {payload.order_id}: status={payload.status}")
+        return {"status": "ok", "message": "Webhook processed successfully"}
+        
+    except Exception as e:
+        print(f"❌ Error processing webhook: {e}")
+        db.rollback()
+        # Still return 200 to prevent Vayne from retrying
+        return {"status": "error", "message": str(e)}
 

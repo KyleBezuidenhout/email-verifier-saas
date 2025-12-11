@@ -96,6 +96,16 @@ export default function AdminConsolePage() {
   const [jobs, setJobs] = useState<AdminJob[]>([]);
   const [apiKeyUsage, setApiKeyUsage] = useState<ApiKeyUsage[]>([]);
   const [omniCredits, setOmniCredits] = useState<{ available: number } | null>(null);
+  const [vayneStats, setVayneStats] = useState<{
+    available_credits: number;
+    leads_scraped_today: number;
+    daily_limit: number;
+    subscription_plan?: string | null;
+    subscription_expires_at?: string | null;
+    calls_today: number;
+    date: string;
+    error?: string;
+  } | null>(null);
   const [errors, setErrors] = useState<ErrorLog[]>([]);
   const [errorSummary, setErrorSummary] = useState<{ total_errors: number; by_type: Record<string, number> } | null>(null);
   const [chartData, setChartData] = useState<ChartData[]>([]);
@@ -152,6 +162,15 @@ export default function AdminConsolePage() {
       setApiKeyUsage(res.mailtester_keys);
       if (res.omniverifier && "available" in res.omniverifier) {
         setOmniCredits(res.omniverifier);
+      }
+      
+      // Fetch Vayne stats
+      try {
+        const vayneRes = await apiClient.getAdminVayneStats();
+        setVayneStats(vayneRes);
+      } catch (vayneErr) {
+        console.error("Failed to fetch Vayne stats:", vayneErr);
+        // Don't set error state, just log it
       }
     } catch (err) {
       console.error("Failed to fetch API key usage:", err);
@@ -673,6 +692,56 @@ export default function AdminConsolePage() {
               <h3 className="text-lg font-semibold text-apple-text mb-4">OmniVerifier Credits</h3>
               <p className="text-3xl font-bold text-apple-accent">{omniCredits.available.toLocaleString()}</p>
               <p className="text-sm text-apple-text-muted">Available catchall verification credits</p>
+            </div>
+          )}
+
+          {/* Vayne API Stats (Admin Only - Hidden from regular clients) */}
+          {vayneStats && (
+            <div className="bg-apple-surface border border-apple-border rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-apple-text mb-4">Vayne API Account</h3>
+              {vayneStats.error ? (
+                <div className="text-red-400 text-sm">
+                  Error loading Vayne stats: {vayneStats.error}
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-apple-text-muted">Account Balance</p>
+                      <p className="text-2xl font-bold text-apple-accent">{vayneStats.available_credits.toLocaleString()}</p>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-apple-border">
+                      <div>
+                        <p className="text-sm text-apple-text-muted">API Calls Today</p>
+                        <p className="text-lg font-semibold text-apple-text">{vayneStats.calls_today.toLocaleString()}</p>
+                      </div>
+                      {vayneStats.daily_limit > 0 && (
+                        <div className="text-right">
+                          <p className="text-sm text-apple-text-muted">Daily Limit</p>
+                          <p className="text-lg font-semibold text-apple-text">{vayneStats.daily_limit.toLocaleString()}</p>
+                        </div>
+                      )}
+                    </div>
+                    {vayneStats.leads_scraped_today > 0 && (
+                      <div className="pt-2 border-t border-apple-border">
+                        <p className="text-sm text-apple-text-muted">Leads Scraped Today</p>
+                        <p className="text-lg font-semibold text-apple-text">{vayneStats.leads_scraped_today.toLocaleString()}</p>
+                      </div>
+                    )}
+                    {vayneStats.subscription_plan && (
+                      <div className="pt-2 border-t border-apple-border">
+                        <p className="text-sm text-apple-text-muted">Subscription Plan</p>
+                        <p className="text-sm font-medium text-apple-text">{vayneStats.subscription_plan}</p>
+                        {vayneStats.subscription_expires_at && (
+                          <p className="text-xs text-apple-text-muted mt-1">
+                            Expires: {new Date(vayneStats.subscription_expires_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

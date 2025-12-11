@@ -11,6 +11,7 @@ from typing import Dict, Optional, Any
 from datetime import datetime
 
 from app.core.config import settings
+from app.services.vayne_usage_tracker import get_vayne_usage_tracker
 
 
 class VayneClient:
@@ -53,7 +54,17 @@ class VayneClient:
                     continue
                 
                 response.raise_for_status()
-                return response.json()
+                result = response.json()
+                
+                # Track API usage (increment after successful call)
+                try:
+                    tracker = get_vayne_usage_tracker()
+                    tracker.increment_usage()
+                except Exception as e:
+                    # Don't fail the request if tracking fails
+                    print(f"Warning: Failed to track Vayne API usage: {e}")
+                
+                return result
                 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429 and attempt < retries - 1:
@@ -104,18 +115,25 @@ class VayneClient:
         sales_nav_url: str,
         export_format: str,
         only_qualified: bool,
-        li_at_cookie: str
+        li_at_cookie: str,
+        webhook_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a new scraping order."""
+        order_data = {
+            "sales_nav_url": sales_nav_url,
+            "export_format": export_format,
+            "only_qualified": only_qualified,
+            "li_at_cookie": li_at_cookie,
+        }
+        
+        # Add webhook URL if provided
+        if webhook_url:
+            order_data["secondary_webhook"] = webhook_url
+        
         return await self._request(
             "POST",
             "/api/orders",
-            data={
-                "sales_nav_url": sales_nav_url,
-                "export_format": export_format,
-                "only_qualified": only_qualified,
-                "li_at_cookie": li_at_cookie,
-            }
+            data=order_data
         )
 
     async def get_order(self, order_id: str) -> Dict[str, Any]:

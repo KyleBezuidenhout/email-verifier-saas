@@ -92,3 +92,10 @@ app.include_router(test.router, prefix="/api/v1", tags=["test"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])
 
+# Public webhook router (no auth required)
+# Import webhook function directly
+from app.api.v1.endpoints.vayne import vayne_webhook
+webhook_router = APIRouter()
+webhook_router.add_api_route("/orders", vayne_webhook, methods=["POST"])
+app.include_router(webhook_router, prefix="/api/webhooks/vayne", tags=["webhooks"])
+

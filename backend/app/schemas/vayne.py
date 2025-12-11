@@ -70,3 +70,14 @@ class VayneOrderListResponse(BaseModel):
     orders: list[VayneOrderResponse]
     total: int
 
+
+class VayneWebhookPayload(BaseModel):
+    """Webhook payload from Vayne API when order status changes."""
+    order_id: str  # Vayne's order ID
+    status: str  # pending, processing, completed, failed
+    progress_percentage: Optional[int] = None
+    leads_found: Optional[int] = None
+    leads_qualified: Optional[int] = None
+    estimated_completion: Optional[str] = None
+    error_message: Optional[str] = None
+

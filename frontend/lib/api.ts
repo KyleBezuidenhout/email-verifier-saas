@@ -457,6 +457,19 @@ class ApiClient {
     return this.request("/api/v1/admin/api-keys/usage");
   }
 
+  async getAdminVayneStats(): Promise<{
+    available_credits: number;
+    leads_scraped_today: number;
+    daily_limit: number;
+    subscription_plan?: string | null;
+    subscription_expires_at?: string | null;
+    calls_today: number;
+    date: string;
+    error?: string;
+  }> {
+    return this.request("/api/v1/admin/api-keys/vayne-stats");
+  }
+
   async getAdminErrors(date?: string, limit = 100, offset = 0): Promise<{
     errors: Array<{
       timestamp: string;

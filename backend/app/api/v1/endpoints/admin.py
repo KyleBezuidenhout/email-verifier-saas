@@ -24,6 +24,8 @@ from app.api.dependencies import require_admin
 from app.services.usage_tracker import get_usage_tracker
 from app.services.error_logger import get_error_logger
 from app.services.omniverifier_client import OmniVerifierClient
+from app.services.vayne_usage_tracker import get_vayne_usage_tracker
+from app.services.vayne_client import get_vayne_client
 
 router = APIRouter()
 
@@ -464,6 +466,39 @@ async def get_api_key_usage(
         "total_mailtester_keys": len(keys_usage),
         "total_remaining": sum(k["remaining"] for k in keys_usage)
     }
+
+
+@router.get("/api-keys/vayne-stats")
+async def get_vayne_stats(
+    admin: User = Depends(require_admin)
+):
+    """Get Vayne API account balance and usage statistics."""
+    try:
+        # Get usage tracker stats
+        usage_tracker = get_vayne_usage_tracker()
+        usage_stats = usage_tracker.get_daily_stats()
+        
+        # Get account balance from Vayne API
+        vayne_client = get_vayne_client()
+        credits_data = await vayne_client.get_credits()
+        
+        return {
+            "available_credits": credits_data.get("available_credits", 0),
+            "leads_scraped_today": credits_data.get("leads_scraped_today", 0),
+            "daily_limit": credits_data.get("daily_limit", 0),
+            "subscription_plan": credits_data.get("subscription_plan"),
+            "subscription_expires_at": credits_data.get("subscription_expires_at"),
+            "calls_today": usage_stats.get("calls_today", 0),
+            "date": usage_stats.get("date")
+        }
+    except Exception as e:
+        # Return error if Vayne API is unavailable
+        return {
+            "error": str(e),
+            "available_credits": 0,
+            "calls_today": usage_tracker.get_usage_today() if 'usage_tracker' in locals() else 0,
+            "daily_limit": 0
+        }
 
 
 # ============================================

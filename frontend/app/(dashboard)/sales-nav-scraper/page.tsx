@@ -7,8 +7,7 @@ import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useRouter } from "next/navigation";
 
-const POLLING_INTERVAL = 5000; // 5 seconds
-const MAX_POLLING_INTERVAL = 30000; // 30 seconds max with exponential backoff
+const REFRESH_INTERVAL = 10000; // 10 seconds - refresh from our database (not Vayne API)
 
 export default function SalesNavScraperPage() {
   const router = useRouter();
@@ -35,8 +34,7 @@ export default function SalesNavScraperPage() {
   // Order state
   const [currentOrder, setCurrentOrder] = useState<VayneOrder | null>(null);
   const [creatingOrder, setCreatingOrder] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState(POLLING_INTERVAL);
-  const [pollingTimer, setPollingTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [refreshTimer, setRefreshTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   
   // Order history state
   const [orderHistory, setOrderHistory] = useState<VayneOrder[]>([]);
@@ -87,25 +85,20 @@ export default function SalesNavScraperPage() {
     }
   }, [historyPage, historyFilter]);
 
-  const pollOrderStatus = useCallback(async (orderId: string) => {
+  const refreshOrderStatus = useCallback(async (orderId: string) => {
     try {
+      // Refresh from our database (webhooks keep it updated)
       const order = await apiClient.getVayneOrder(orderId);
       setCurrentOrder(order);
       
-      // Exponential backoff: increase interval if still processing
-      if (order.status === "processing" || order.status === "pending") {
-        setPollingInterval((prev) => Math.min(prev * 1.5, MAX_POLLING_INTERVAL));
-      } else {
-        // Order completed or failed, stop polling
-        setPollingInterval(POLLING_INTERVAL);
-        if (order.status === "completed") {
-          await loadCredits();
-          await loadOrderHistory();
-        }
+      // If order completed or failed, refresh credits and history
+      if (order.status === "completed" || order.status === "failed") {
+        await loadCredits();
+        await loadOrderHistory();
       }
     } catch (err) {
-      console.error("Failed to poll order status:", err);
-      // Continue polling even on error (might be temporary)
+      console.error("Failed to refresh order status:", err);
+      // Continue refreshing even on error (might be temporary)
     }
   }, [loadCredits, loadOrderHistory]);
 
@@ -151,25 +144,24 @@ export default function SalesNavScraperPage() {
     loadInitialData();
   }, [loadAuthStatus, loadCredits, loadOrderHistory]);
 
-  // Poll current order if it exists and is processing
+  // Refresh current order status from database (webhooks keep it updated)
   useEffect(() => {
     if (currentOrder && (currentOrder.status === "pending" || currentOrder.status === "processing")) {
-      const timer = setTimeout(() => {
-        pollOrderStatus(currentOrder.id);
-      }, pollingInterval);
-      setPollingTimer(timer);
+      const timer = setInterval(() => {
+        refreshOrderStatus(currentOrder.id);
+      }, REFRESH_INTERVAL);
+      setRefreshTimer(timer);
       return () => {
-        clearTimeout(timer);
+        clearInterval(timer);
       };
     } else {
-      if (pollingTimer) {
-        clearTimeout(pollingTimer);
-        setPollingTimer(null);
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        setRefreshTimer(null);
       }
-      setPollingInterval(POLLING_INTERVAL); // Reset to initial interval
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentOrder, pollingInterval, pollOrderStatus]);
+  }, [currentOrder, refreshOrderStatus]);
 
   // Debounced URL validation
   useEffect(() => {
@@ -241,7 +233,7 @@ export default function SalesNavScraperPage() {
       const response = await apiClient.createVayneOrder(orderData);
       const order = await apiClient.getVayneOrder(response.order_id);
       setCurrentOrder(order);
-      setPollingInterval(POLLING_INTERVAL); // Reset polling interval
+      // Order status will be refreshed automatically via webhooks
       await loadCredits(); // Refresh credits after order creation
       await loadOrderHistory(); // Refresh history
     } catch (err) {
