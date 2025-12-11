@@ -44,7 +44,9 @@ class VayneOrderCreateRequest(BaseModel):
 
 
 class VayneOrderCreateResponse(BaseModel):
+    success: bool = True
     order_id: str
+    status: str = "pending"
     message: str
 
 

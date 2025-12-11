@@ -216,7 +216,9 @@ async def create_order(
         db.refresh(order)
         
         return VayneOrderCreateResponse(
+            success=True,
             order_id=str(order.id),
+            status="pending",
             message="Scraping order created successfully"
         )
         
