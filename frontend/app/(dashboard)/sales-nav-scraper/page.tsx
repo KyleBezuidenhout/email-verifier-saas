@@ -104,18 +104,27 @@ export default function SalesNavScraperPage() {
       const order = await apiClient.getVayneOrder(orderId);
       setCurrentOrder(order);
       
+      // Log polling status for debugging
+      if (order.vayne_order_id) {
+        console.log(`🔄 Polling order ${orderId}: scraping_status=${order.scraping_status}, progress=${order.progress_percentage}%`);
+      } else {
+        console.log(`⏳ Waiting for worker to process order ${orderId} (vayne_order_id not set yet)`);
+      }
+      
       // Parse scraping_status from Vayne API
       const scrapingStatus = order.scraping_status;
       
       // If scraping is finished, call export endpoint to store CSV
       if (scrapingStatus === "finished" && !order.csv_file_path) {
+        console.log(`✅ Scraping finished, exporting CSV for order ${orderId}...`);
         try {
           await apiClient.exportVayneOrder(orderId);
           // Refresh order to get updated csv_file_path
           const updatedOrder = await apiClient.getVayneOrder(orderId);
           setCurrentOrder(updatedOrder);
+          console.log(`✅ CSV exported and stored: ${updatedOrder.csv_file_path}`);
         } catch (exportErr) {
-          console.error("Failed to export CSV:", exportErr);
+          console.error("❌ Failed to export CSV:", exportErr);
           // Continue polling - export might not be ready yet
         }
       }
@@ -126,7 +135,7 @@ export default function SalesNavScraperPage() {
         await loadOrderHistory();
       }
     } catch (err) {
-      console.error("Failed to refresh order status:", err);
+      console.error("❌ Failed to refresh order status:", err);
       // Continue refreshing even on error (might be temporary)
     }
   }, [loadCredits, loadOrderHistory]);
@@ -177,6 +186,7 @@ export default function SalesNavScraperPage() {
   useEffect(() => {
     if (currentOrder) {
       const scrapingStatus = currentOrder.scraping_status;
+      const hasVayneOrderId = !!currentOrder.vayne_order_id;
       
       // Stop polling when scraping is finished or failed
       if (scrapingStatus === "finished" || scrapingStatus === "failed" || currentOrder.status === "failed") {
@@ -187,7 +197,8 @@ export default function SalesNavScraperPage() {
         return;
       }
       
-      // Poll every 5 seconds (will work once vayne_order_id is set by worker)
+      // Poll every 5 seconds
+      // Even if vayne_order_id isn't set yet, keep polling so we detect when worker sets it
       const timer = setInterval(() => {
         refreshOrderStatus(currentOrder.id);
       }, REFRESH_INTERVAL);
@@ -228,6 +239,28 @@ export default function SalesNavScraperPage() {
   useEffect(() => {
     loadOrderHistory();
   }, [historyFilter, historyPage, loadOrderHistory]);
+
+  // Restore currentOrder from history if page is refreshed
+  // This ensures polling continues even after page reload
+  useEffect(() => {
+    if (orderHistory.length > 0 && !currentOrder) {
+      // Find the most recent active order (processing, pending, queued, or not finished)
+      const activeOrder = orderHistory.find(
+        order => 
+          order.status === "processing" || 
+          order.status === "pending" || 
+          order.status === "queued" ||
+          (order.scraping_status && 
+           order.scraping_status !== "finished" && 
+           order.scraping_status !== "failed" &&
+           !order.csv_file_path) // Not completed yet
+      );
+      if (activeOrder) {
+        console.log("🔄 Restored active order from history:", activeOrder.id);
+        setCurrentOrder(activeOrder);
+      }
+    }
+  }, [orderHistory, currentOrder]);
 
 
   const handleStartScraping = async () => {

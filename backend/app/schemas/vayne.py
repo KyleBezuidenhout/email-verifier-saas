@@ -54,6 +54,7 @@ class VayneOrderResponse(BaseModel):
     id: str
     status: str  # pending, processing, completed, failed
     scraping_status: Optional[str] = None  # Direct from Vayne: initialization, scraping, finished, failed
+    vayne_order_id: Optional[str] = None  # Vayne's order ID (set by worker)
     sales_nav_url: str
     export_format: str
     only_qualified: bool

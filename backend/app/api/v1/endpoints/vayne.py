@@ -440,6 +440,7 @@ async def get_order(
         id=str(order.id),
         status=order.status,
         scraping_status=scraping_status,  # Direct from Vayne API
+        vayne_order_id=order.vayne_order_id,  # So frontend knows when worker has processed it
         sales_nav_url=order.sales_nav_url,
         export_format=order.export_format,
         only_qualified=order.only_qualified,
