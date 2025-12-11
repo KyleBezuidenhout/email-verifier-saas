@@ -345,6 +345,40 @@ async def get_order(
     )
 
 
+@router.delete("/orders/{order_id}", response_model=VayneOrderDeleteResponse, status_code=status.HTTP_200_OK)
+async def delete_order(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete an order from the user's order history. Note: Credits are not refunded. Works for any order status."""
+    try:
+        order_uuid = UUID(order_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid order ID format"
+        )
+    
+    order = db.query(VayneOrder).filter(
+        VayneOrder.id == order_uuid,
+        VayneOrder.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Delete the order (credits are not refunded - this is just removing from history)
+    # Works for any status: pending, processing, completed, failed, queued
+    db.delete(order)
+    db.commit()
+    
+    return VayneOrderDeleteResponse(status="ok", message="Order deleted successfully")
+
+
 @router.post("/orders/{order_id}/export")
 async def export_order(
     order_id: str,
@@ -401,48 +435,6 @@ async def export_order(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to export order: {str(e)}"
         )
-
-
-async def delete_order(
-    order_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Delete an order from the user's order history. Note: Credits are not refunded. Works for any order status."""
-    try:
-        order_uuid = UUID(order_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid order ID format"
-        )
-    
-    order = db.query(VayneOrder).filter(
-        VayneOrder.id == order_uuid,
-        VayneOrder.user_id == current_user.id
-    ).first()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
-    
-    # Delete the order (credits are not refunded - this is just removing from history)
-    # Works for any status: pending, processing, completed, failed, queued
-    db.delete(order)
-    db.commit()
-    
-    return VayneOrderDeleteResponse(status="ok", message="Order deleted successfully")
-
-# Register DELETE route with explicit methods
-router.add_api_route(
-    "/orders/{order_id}",
-    delete_order,
-    methods=["DELETE"],
-    response_model=VayneOrderDeleteResponse,
-    status_code=status.HTTP_200_OK
-)
 
 
 @router.get("/orders", response_model=VayneOrderListResponse)
