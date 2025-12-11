@@ -1,0 +1,25 @@
+{
+  "name": "email-verifier-saas",
+  "version": "1.0.0",
+  "description": "Email Verifier SaaS - Monorepo root",
+  "private": true,
+  "scripts": {
+    "install:frontend": "cd frontend && npm install",
+    "install:workers": "cd workers && npm install",
+    "install:all": "npm run install:frontend && npm run install:workers",
+    "dev": "npm run dev:frontend",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:workers": "cd workers && npm run start",
+    "build": "npm run build:frontend",
+    "build:frontend": "cd frontend && npm run build",
+    "start": "npm run start:frontend",
+    "start:frontend": "cd frontend && npm run start",
+    "start:workers": "cd workers && npm run start",
+    "lint": "npm run lint:frontend",
+    "lint:frontend": "cd frontend && npm run lint"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+
