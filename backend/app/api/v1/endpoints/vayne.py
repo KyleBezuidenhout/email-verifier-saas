@@ -403,13 +403,12 @@ async def export_order(
         )
 
 
-@router.delete("/orders/{order_id}", response_model=VayneOrderDeleteResponse, status_code=status.HTTP_200_OK)
 async def delete_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Delete an order from the user's order history. Note: Credits are not refunded."""
+    """Delete an order from the user's order history. Note: Credits are not refunded. Works for any order status."""
     try:
         order_uuid = UUID(order_id)
     except ValueError:
@@ -430,10 +429,20 @@ async def delete_order(
         )
     
     # Delete the order (credits are not refunded - this is just removing from history)
+    # Works for any status: pending, processing, completed, failed, queued
     db.delete(order)
     db.commit()
     
     return VayneOrderDeleteResponse(status="ok", message="Order deleted successfully")
+
+# Register DELETE route with explicit methods
+router.add_api_route(
+    "/orders/{order_id}",
+    delete_order,
+    methods=["DELETE"],
+    response_model=VayneOrderDeleteResponse,
+    status_code=status.HTTP_200_OK
+)
 
 
 @router.get("/orders", response_model=VayneOrderListResponse)
