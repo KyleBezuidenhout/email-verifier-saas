@@ -34,6 +34,7 @@ from app.schemas.vayne import (
     VayneOrderCreateResponse,
     VayneOrderResponse,
     VayneOrderListResponse,
+    VayneOrderDeleteResponse,
     VayneWebhookPayload,
 )
 from app.services.vayne_client import get_vayne_client
@@ -402,7 +403,7 @@ async def export_order(
         )
 
 
-@router.delete("/orders/{order_id}")
+@router.delete("/orders/{order_id}", response_model=VayneOrderDeleteResponse, status_code=status.HTTP_200_OK)
 async def delete_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
@@ -432,7 +433,7 @@ async def delete_order(
     db.delete(order)
     db.commit()
     
-    return {"status": "ok", "message": "Order deleted successfully"}
+    return VayneOrderDeleteResponse(status="ok", message="Order deleted successfully")
 
 
 @router.get("/orders", response_model=VayneOrderListResponse)
