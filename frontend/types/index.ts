@@ -121,5 +121,6 @@ export interface VayneOrderCreate {
   sales_nav_url: string;
   export_format: 'simple' | 'advanced';
   only_qualified: boolean;
+  li_at_cookie: string;  // Required for each order
 }
 

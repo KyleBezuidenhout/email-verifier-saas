@@ -17,6 +17,7 @@ from uuid import UUID
 from datetime import datetime
 import io
 import csv
+import redis
 
 from app.db.session import get_db
 from app.models.user import User
@@ -37,6 +38,9 @@ from app.schemas.vayne import (
 )
 from app.services.vayne_client import get_vayne_client
 from app.core.config import settings
+
+# Initialize Redis connection for queue
+redis_client = redis.from_url(settings.REDIS_URL)
 
 router = APIRouter()
 
@@ -171,17 +175,12 @@ async def create_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new scraping order."""
-    # Get LinkedIn cookie for this user
-    latest_order = db.query(VayneOrder).filter(
-        VayneOrder.user_id == current_user.id,
-        VayneOrder.linkedin_cookie.isnot(None)
-    ).order_by(desc(VayneOrder.created_at)).first()
-    
-    if not latest_order or not latest_order.linkedin_cookie:
+    """Create a new scraping order - queues it for worker processing."""
+    # Require cookie for each order
+    if not order_data.li_at_cookie or not order_data.li_at_cookie.strip():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="LinkedIn authentication required. Please connect your LinkedIn account first."
+            detail="LinkedIn session cookie (li_at) is required for each scraping order."
         )
     
     # Check credits (1 credit per lead estimated)
@@ -204,53 +203,39 @@ async def create_order(
                 detail=f"Insufficient credits. You have {current_user.credits} credits but this order requires approximately {estimated_leads} credits."
             )
         
-        # Create order with Vayne API (include webhook URL)
-        webhook_url = f"{settings.WEBHOOK_BASE_URL}/api/webhooks/vayne/orders"
-        vayne_order = await vayne_client.create_order(
-            sales_nav_url=order_data.sales_nav_url,
-            export_format=order_data.export_format,
-            only_qualified=order_data.only_qualified,
-            li_at_cookie=latest_order.linkedin_cookie,
-            webhook_url=webhook_url
-        )
-        
-        # Vayne client now returns the order object directly (already extracted from nested response)
-        # Extract order ID (already converted to string by client)
-        vayne_order_id = str(vayne_order.get("id", ""))
-        
-        # Map scraping_status to our status
-        scraping_status = vayne_order.get("scraping_status", "initialization")
-        status_mapping = {
-            "initialization": "pending",
-            "scraping": "processing",
-            "finished": "completed",
-            "failed": "failed"
-        }
-        order_status = status_mapping.get(scraping_status, "pending")
-        
-        # Store order in database
+        # Create order record with "queued" status
+        # Worker will update cookie, create Vayne order, and update status
         order = VayneOrder(
             user_id=current_user.id,
-            vayne_order_id=vayne_order_id,
             sales_nav_url=order_data.sales_nav_url,
             export_format=order_data.export_format,
             only_qualified=order_data.only_qualified,
-            linkedin_cookie=latest_order.linkedin_cookie,
-            status=order_status,
-            leads_found=vayne_order.get("total", estimated_leads)  # Use total from order or fallback to estimated
+            linkedin_cookie=order_data.li_at_cookie,  # Store cookie for worker
+            status="queued",  # Worker will process and update status
+            leads_found=estimated_leads,
         )
         db.add(order)
         db.commit()
         db.refresh(order)
         
-        # Deduct credits (1 credit per lead)
+        # Deduct credits immediately (1 credit per lead)
         if not is_admin:
             current_user.credits -= estimated_leads
             db.commit()
         
+        # Queue order for worker processing
+        try:
+            queue_name = "vayne-order-queue"
+            redis_client.lpush(queue_name, str(order.id))
+            print(f"✅ Queued Vayne order {order.id} to Redis queue '{queue_name}'")
+        except Exception as e:
+            print(f"Failed to queue order: {e}")
+            # Order is still created, but worker won't process it automatically
+            # Could add retry logic or manual processing here
+        
         return VayneOrderCreateResponse(
             order_id=str(order.id),
-            message="Order created successfully"
+            message="Order queued for processing"
         )
         
     except HTTPException:

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
-import { VayneAuthStatus, VayneCredits, VayneUrlCheck, VayneOrder, VayneOrderCreate } from "@/types";
+import { VayneCredits, VayneUrlCheck, VayneOrder, VayneOrderCreate } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useRouter } from "next/navigation";
@@ -12,11 +12,9 @@ const REFRESH_INTERVAL = 10000; // 10 seconds - refresh from our database (not V
 export default function SalesNavScraperPage() {
   const router = useRouter();
   
-  // Auth state
-  const [authStatus, setAuthStatus] = useState<VayneAuthStatus | null>(null);
+  // Auth state (cookie required for each order)
   const [liAtCookie, setLiAtCookie] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [updatingAuth, setUpdatingAuth] = useState(false);
   
   // Credits state
   const [credits, setCredits] = useState<VayneCredits | null>(null);
@@ -54,15 +52,6 @@ export default function SalesNavScraperPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   // Define all callback functions BEFORE useEffect hooks to prevent initialization errors
-  const loadAuthStatus = useCallback(async () => {
-    try {
-      const status = await apiClient.getVayneAuthStatus();
-      setAuthStatus(status);
-    } catch (err) {
-      console.error("Failed to load auth status:", err);
-    }
-  }, []);
-
   const loadCredits = useCallback(async () => {
     try {
       const creditsData = await apiClient.getVayneCredits();
@@ -129,7 +118,6 @@ export default function SalesNavScraperPage() {
       try {
         setInitialLoading(true);
         await Promise.all([
-          loadAuthStatus(),
           loadCredits(),
           loadOrderHistory()
         ]);
@@ -142,7 +130,7 @@ export default function SalesNavScraperPage() {
       }
     };
     loadInitialData();
-  }, [loadAuthStatus, loadCredits, loadOrderHistory]);
+  }, [loadCredits, loadOrderHistory]);
 
   // Refresh current order status from database (webhooks keep it updated)
   useEffect(() => {
@@ -188,26 +176,6 @@ export default function SalesNavScraperPage() {
     loadOrderHistory();
   }, [historyFilter, historyPage, loadOrderHistory]);
 
-  const handleUpdateAuth = async () => {
-    if (!liAtCookie.trim()) {
-      setError("Please enter your LinkedIn session cookie");
-      setShowErrorModal(true);
-      return;
-    }
-    
-    setUpdatingAuth(true);
-    try {
-      await apiClient.updateVayneAuth(liAtCookie);
-      setShowAuthModal(false);
-      setLiAtCookie("");
-      await loadAuthStatus();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update authentication");
-      setShowErrorModal(true);
-    } finally {
-      setUpdatingAuth(false);
-    }
-  };
 
   const handleStartScraping = async () => {
     if (!salesNavUrl.trim() || !urlValidation?.is_valid) {
@@ -216,8 +184,9 @@ export default function SalesNavScraperPage() {
       return;
     }
     
-    if (!authStatus?.is_connected) {
-      setError("Please connect your LinkedIn account first");
+    // Require cookie for each scrape
+    if (!liAtCookie.trim()) {
+      setError("Please enter your LinkedIn session cookie (li_at) to start scraping");
       setShowErrorModal(true);
       return;
     }
@@ -228,11 +197,13 @@ export default function SalesNavScraperPage() {
         sales_nav_url: salesNavUrl,
         export_format: exportFormat,
         only_qualified: onlyQualified,
+        li_at_cookie: liAtCookie,  // Send cookie with order request
       };
       
       const response = await apiClient.createVayneOrder(orderData);
       const order = await apiClient.getVayneOrder(response.order_id);
       setCurrentOrder(order);
+      setLiAtCookie(""); // Clear cookie after use (require fresh one for next scrape)
       // Order status will be refreshed automatically via webhooks
       await loadCredits(); // Refresh credits after order creation
       await loadOrderHistory(); // Refresh history
@@ -241,8 +212,7 @@ export default function SalesNavScraperPage() {
       if (errorMessage.includes("insufficient") || errorMessage.includes("credits")) {
         setError("Insufficient credits. Please top up your account.");
       } else if (errorMessage.includes("401") || errorMessage.includes("authentication")) {
-        setError("LinkedIn authentication failed. Please update your session cookie.");
-        await loadAuthStatus();
+        setError("LinkedIn authentication failed. Please check your session cookie and try again.");
       } else {
         setError(errorMessage || "Failed to create order");
       }
@@ -294,6 +264,7 @@ export default function SalesNavScraperPage() {
     setExportFormat("simple");
     setOnlyQualified(false);
     setCurrentOrder(null);
+    setLiAtCookie(""); // Clear cookie
   };
 
   const usagePercentage = credits && credits.daily_limit > 0 
@@ -327,26 +298,24 @@ export default function SalesNavScraperPage() {
         onClose={() => setShowErrorModal(false)}
       />
 
-      {/* Authentication Status Card */}
+      {/* LinkedIn Cookie Input Card */}
       <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            {authStatus?.is_connected ? (
+            {liAtCookie.trim() ? (
               <>
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 <div>
-                  <p className="text-sm font-medium text-apple-text">LinkedIn Account Connected</p>
-                  {authStatus.linkedin_email && (
-                    <p className="text-xs text-apple-text-muted">{authStatus.linkedin_email}</p>
-                  )}
+                  <p className="text-sm font-medium text-apple-text">LinkedIn Cookie Ready</p>
+                  <p className="text-xs text-apple-text-muted">Cookie entered - ready to scrape</p>
                 </div>
               </>
             ) : (
               <>
                 <div className="w-3 h-3 rounded-full bg-red-500"></div>
                 <div>
-                  <p className="text-sm font-medium text-apple-text">LinkedIn Account Not Connected</p>
-                  <p className="text-xs text-apple-text-muted">Connect your LinkedIn account to start scraping</p>
+                  <p className="text-sm font-medium text-apple-text">LinkedIn Cookie Required</p>
+                  <p className="text-xs text-apple-text-muted">Enter your session cookie to start scraping</p>
                 </div>
               </>
             )}
@@ -355,7 +324,7 @@ export default function SalesNavScraperPage() {
             onClick={() => setShowAuthModal(true)}
             className="px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors text-sm font-medium"
           >
-            {authStatus?.is_connected ? "Update Session" : "Connect LinkedIn Account"}
+            {liAtCookie.trim() ? "Update Cookie" : "Connect LinkedIn Account"}
           </button>
         </div>
       </div>
@@ -368,10 +337,10 @@ export default function SalesNavScraperPage() {
             <h3 className="text-xl font-semibold text-apple-text mb-4">LinkedIn Authentication</h3>
             <p className="text-sm text-apple-text-muted mb-4">
               Enter your LinkedIn session cookie (<code className="bg-apple-bg px-1 py-0.5 rounded">li_at</code>) to authenticate.
+              <strong className="block mt-2">A fresh cookie is required for each scraping order.</strong>
             </p>
             <p className="text-xs text-apple-text-muted mb-4">
-              <strong>Why should I fetch a new cookie?</strong> LinkedIn cookies expire after a period of inactivity. 
-              If scraping fails with authentication errors, you may need to fetch a fresh cookie from your browser.
+              <strong>How to get your cookie:</strong> Open browser developer tools (F12), go to Application/Storage → Cookies → linkedin.com, copy the "li_at" value.
             </p>
             <input
               type="text"
@@ -382,16 +351,21 @@ export default function SalesNavScraperPage() {
             />
             <div className="flex gap-3">
               <button
-                onClick={handleUpdateAuth}
-                disabled={updatingAuth}
-                className="flex-1 px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors disabled:opacity-50"
+                onClick={() => {
+                  if (liAtCookie.trim()) {
+                    setShowAuthModal(false);
+                  } else {
+                    setError("Please enter your LinkedIn session cookie");
+                    setShowErrorModal(true);
+                  }
+                }}
+                className="flex-1 px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors"
               >
-                {updatingAuth ? "Updating..." : "Update Session"}
+                Save Cookie
               </button>
               <button
                 onClick={() => {
                   setShowAuthModal(false);
-                  setLiAtCookie("");
                 }}
                 className="px-4 py-2 bg-apple-surface border border-apple-border rounded-lg hover:bg-apple-card transition-colors"
               >
@@ -547,7 +521,7 @@ export default function SalesNavScraperPage() {
       <div className="flex gap-3 mb-6">
         <button
           onClick={handleStartScraping}
-          disabled={!urlValidation?.is_valid || !authStatus?.is_connected || creatingOrder}
+          disabled={!urlValidation?.is_valid || !liAtCookie.trim() || creatingOrder}
           className="flex-1 px-6 py-3 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
         >
           {creatingOrder ? (
