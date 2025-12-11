@@ -273,8 +273,53 @@ async def get_order(
             detail="Order not found"
         )
     
-    # Return order directly from database (webhooks keep it updated)
-    # No need to sync with Vayne API - webhooks handle real-time updates
+    # Fallback: Sync with Vayne API if order is still pending/processing and has vayne_order_id
+    # This ensures status updates even if webhooks fail
+    if order.vayne_order_id and order.status in ["pending", "processing", "queued"]:
+        try:
+            vayne_client = get_vayne_client()
+            vayne_order = await vayne_client.get_order(order.vayne_order_id)
+            
+            # vayne_client.get_order() already maps scraping_status to status
+            new_status = vayne_order.get("status", order.status)
+            
+            # Update order if status changed or if we have new data
+            needs_update = False
+            if new_status != order.status:
+                order.status = new_status
+                needs_update = True
+            
+            # Update progress (vayne_client already calculates this)
+            new_progress = vayne_order.get("progress_percentage", order.progress_percentage)
+            if new_progress != order.progress_percentage:
+                order.progress_percentage = new_progress
+                needs_update = True
+            
+            # Update leads_found (vayne_client already maps this)
+            new_leads_found = vayne_order.get("leads_found", order.leads_found)
+            if new_leads_found != order.leads_found:
+                order.leads_found = new_leads_found
+                needs_update = True
+            
+            # Update leads_qualified
+            new_leads_qualified = vayne_order.get("leads_qualified", order.leads_qualified)
+            if new_leads_qualified != order.leads_qualified:
+                order.leads_qualified = new_leads_qualified
+                needs_update = True
+            
+            # Set completed_at if completed
+            if new_status == "completed" and not order.completed_at:
+                order.completed_at = datetime.utcnow()
+                needs_update = True
+            
+            if needs_update:
+                db.commit()
+                db.refresh(order)
+                print(f"✅ Synced order {order_id} with Vayne API: status={new_status}, progress={new_progress}%, leads={new_leads_found}")
+        except Exception as e:
+            # Don't fail the request if sync fails - just log it
+            print(f"⚠️ Failed to sync order {order_id} with Vayne API: {e}")
+    
     return VayneOrderResponse(
         id=str(order.id),
         status=order.status,
