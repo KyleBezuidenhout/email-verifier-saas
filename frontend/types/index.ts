@@ -105,7 +105,7 @@ export interface VayneUrlCheck {
 
 export interface VayneOrder {
   id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'queued' | 'pending' | 'processing' | 'completed' | 'failed';
   sales_nav_url: string;
   export_format: 'simple' | 'advanced';
   only_qualified: boolean;
