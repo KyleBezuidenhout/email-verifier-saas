@@ -7,7 +7,7 @@ import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useRouter } from "next/navigation";
 
-const REFRESH_INTERVAL = 10000; // 10 seconds - refresh from our database (not Vayne API)
+const REFRESH_INTERVAL = 10000; // 10 seconds - refresh from our database (which syncs with Vayne API)
 
 export default function SalesNavScraperPage() {
   const router = useRouter();

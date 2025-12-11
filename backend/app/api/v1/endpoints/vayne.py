@@ -249,7 +249,13 @@ async def create_order(
 
 async def _sync_order_with_vayne(order: VayneOrder, db: Session) -> bool:
     """Sync a single order with Vayne API. Returns True if updated."""
-    if not order.vayne_order_id or order.status not in ["pending", "processing", "queued"]:
+    # Sync if order has vayne_order_id and is not already completed/failed
+    if not order.vayne_order_id or order.status == "failed":
+        return False
+    
+    # Also sync if status is "processing" and might be ready to complete
+    if order.status == "completed":
+        # Already completed - no need to sync
         return False
     
     try:
@@ -257,13 +263,39 @@ async def _sync_order_with_vayne(order: VayneOrder, db: Session) -> bool:
         vayne_order = await vayne_client.get_order(order.vayne_order_id)
         
         # vayne_client.get_order() already maps scraping_status to status
-        new_status = vayne_order.get("status", order.status)
+        vayne_status = vayne_order.get("status", order.status)
         
         # Update order if status changed or if we have new data
         needs_update = False
-        if new_status != order.status:
-            order.status = new_status
-            needs_update = True
+        
+        # If Vayne says "finished", verify export is available before marking as completed
+        if vayne_status == "completed":
+            # Try to verify export is available
+            try:
+                # Attempt to export (this will fail if export isn't ready)
+                await vayne_client.export_order(order.vayne_order_id, order.export_format)
+                # Export succeeded - mark as completed
+                new_status = "completed"
+                if order.status != "completed":
+                    order.status = "completed"
+                    needs_update = True
+                if not order.completed_at:
+                    order.completed_at = datetime.utcnow()
+                    needs_update = True
+                print(f"✅ Order {order.id} export verified via sync - marking as completed")
+            except Exception as export_error:
+                # Export not ready yet - keep as processing
+                print(f"⏳ Order {order.id} export not ready yet via sync: {export_error}. Keeping status as processing.")
+                new_status = "processing"
+                if order.status != "processing":
+                    order.status = "processing"
+                    needs_update = True
+        else:
+            # For other statuses, use Vayne's status directly
+            new_status = vayne_status
+            if new_status != order.status:
+                order.status = new_status
+                needs_update = True
         
         # Update progress (vayne_client already calculates this)
         new_progress = vayne_order.get("progress_percentage", order.progress_percentage)
@@ -281,11 +313,6 @@ async def _sync_order_with_vayne(order: VayneOrder, db: Session) -> bool:
         new_leads_qualified = vayne_order.get("leads_qualified", order.leads_qualified)
         if new_leads_qualified != order.leads_qualified:
             order.leads_qualified = new_leads_qualified
-            needs_update = True
-        
-        # Set completed_at if completed
-        if new_status == "completed" and not order.completed_at:
-            order.completed_at = datetime.utcnow()
             needs_update = True
         
         if needs_update:
@@ -491,10 +518,26 @@ async def vayne_webhook(
         status_mapping = {
             "initialization": "pending",
             "scraping": "processing",
-            "finished": "completed",
+            "finished": "processing",  # Don't mark as completed yet - verify export first
             "failed": "failed"
         }
         new_status = status_mapping.get(scraping_status, order.status)
+        
+        # If Vayne says "finished", verify export is available before marking as completed
+        if scraping_status == "finished" and order.vayne_order_id:
+            try:
+                vayne_client = get_vayne_client()
+                # Try to export (this will fail if export isn't ready)
+                await vayne_client.export_order(order.vayne_order_id, order.export_format)
+                # Export succeeded - mark as completed
+                new_status = "completed"
+                order.completed_at = datetime.utcnow()
+                print(f"✅ Order {order_id} (Vayne ID: {order.vayne_order_id}) export verified via webhook - marking as completed")
+            except Exception as export_error:
+                # Export not ready yet - keep as processing
+                print(f"⏳ Order {order_id} (Vayne ID: {order.vayne_order_id}) export not ready yet via webhook: {export_error}. Keeping status as processing.")
+                new_status = "processing"
+        
         order.status = new_status
         
         # Map progress percentage: (scraped / total) * 100
