@@ -246,15 +246,63 @@ export default function SalesNavScraperPage() {
 
   const handleEnrichLeads = async (orderId: string) => {
     try {
-      // Download CSV first
+      // Download CSV from Vayne
       const blob = await apiClient.exportVayneOrder(orderId);
       const text = await blob.text();
       const filename = `sales-nav-${orderId}.csv`;
       
-      // Navigate to enrichment page with CSV data
-      router.push(`/find-valid-emails?source=Sales Nav&csvData=${encodeURIComponent(text)}&filename=${encodeURIComponent(filename)}`);
+      // Create File object from CSV data
+      const csvFile = new File([text], filename, { type: "text/csv" });
+      
+      // Parse CSV header to auto-detect column mappings
+      const lines = text.split('\n').filter(line => line.trim());
+      if (lines.length === 0) {
+        throw new Error("CSV file is empty");
+      }
+      
+      const headers = lines[0].split(',').map(h => h.trim());
+      
+      // Auto-detect column mappings using same logic as FilePreview
+      const normalizeHeader = (h: string) => h.toLowerCase().replace(/[\s_-]/g, "");
+      const normalizedHeaders = headers.map(normalizeHeader);
+      
+      const COLUMN_VARIATIONS: Record<string, string[]> = {
+        first_name: ["firstname", "first", "fname", "givenname", "first_name"],
+        last_name: ["lastname", "last", "lname", "surname", "familyname", "last_name"],
+        website: ["website", "domain", "companywebsite", "companydomain", "url", "companyurl", "company_website", "corporatewebsite", "corporate_website", "corporate-website", "primarydomain", "organization_primary_domain", "organizationprimarydomain"],
+        company_size: ["companysize", "company_size", "size", "employees", "employeecount", "headcount", "organizationsize", "organization_size", "orgsize", "org_size", "teamsize", "team_size", "staffcount", "staff_count", "numberofemployees", "num_employees", "employeesnumber", "linkedincompanyemployeecount", "linkedin_company_employee_count", "linkedin-company-employee-count", "linkedincompanyemployee", "linkedin_company_employee", "linkedin-company-employee"],
+      };
+      
+      const autoDetectColumn = (targetColumn: string): string | undefined => {
+        const variations = COLUMN_VARIATIONS[targetColumn] || [];
+        for (let i = 0; i < normalizedHeaders.length; i++) {
+          if (variations.includes(normalizedHeaders[i])) {
+            return headers[i]; // Return original header name
+          }
+        }
+        return undefined;
+      };
+      
+      const columnMapping = {
+        first_name: autoDetectColumn("first_name"),
+        last_name: autoDetectColumn("last_name"),
+        website: autoDetectColumn("website"),
+        company_size: autoDetectColumn("company_size"),
+      };
+      
+      // Upload file directly with auto-mapping and source tag
+      const response = await apiClient.uploadFile(csvFile, {
+        column_first_name: columnMapping.first_name,
+        column_last_name: columnMapping.last_name,
+        column_website: columnMapping.website,
+        column_company_size: columnMapping.company_size,
+        source: "Sales Nav", // Tag the job
+      });
+      
+      // Redirect to enrich job history page
+      router.push(`/find-valid-emails?jobId=${response.job_id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to prepare leads for enrichment");
+      setError(err instanceof Error ? err.message : "Failed to start enrichment");
       setShowErrorModal(true);
     }
   };
@@ -798,14 +846,20 @@ export default function SalesNavScraperPage() {
                           {order.status === "completed" && (
                             <>
                               <button
-                                onClick={() => handleDownloadCSV(order.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDownloadCSV(order.id);
+                                }}
                                 className="text-xs px-2 py-1 bg-apple-accent text-white rounded hover:bg-apple-accent/90"
                               >
                                 Download
                               </button>
                               <button
-                                onClick={() => handleEnrichLeads(order.id)}
-                                className="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEnrichLeads(order.id);
+                                }}
+                                className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
                               >
                                 Enrich
                               </button>
