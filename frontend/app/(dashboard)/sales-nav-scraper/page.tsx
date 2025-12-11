@@ -42,12 +42,18 @@ export default function SalesNavScraperPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   
   // Deleted orders (client-side only, stored in localStorage)
-  const [deletedOrderIds, setDeletedOrderIds] = useState<Set<string>>(() => {
+  const [deletedOrderIds, setDeletedOrderIds] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('vayne_deleted_orders');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
+      try {
+        const stored = localStorage.getItem('vayne_deleted_orders');
+        return stored ? JSON.parse(stored) : [];
+      } catch (e) {
+        // If localStorage has invalid data, clear it
+        localStorage.removeItem('vayne_deleted_orders');
+        return [];
+      }
     }
-    return new Set();
+    return [];
   });
   
   // Error state
@@ -79,12 +85,12 @@ export default function SalesNavScraperPage() {
     try {
       const response = await apiClient.getVayneOrderHistory(10, (historyPage - 1) * 10, historyFilter === "all" ? undefined : historyFilter);
       // Filter out deleted orders (client-side only)
-      const filteredOrders = response.orders.filter(order => !deletedOrderIds.has(order.id));
+      const deletedSet = new Set(deletedOrderIds);
+      const filteredOrders = response.orders.filter(order => !deletedSet.has(order.id));
       setOrderHistory(filteredOrders);
       // Adjust total count based on filtered orders
-      setHistoryTotal(Math.max(0, response.total - Array.from(deletedOrderIds).filter(id => 
-        response.orders.some(o => o.id === id)
-      ).length));
+      const deletedOnPage = response.orders.filter(o => deletedSet.has(o.id)).length;
+      setHistoryTotal(Math.max(0, response.total - deletedOnPage));
     } catch (err) {
       console.error("Failed to load order history:", err);
     } finally {
@@ -349,14 +355,19 @@ export default function SalesNavScraperPage() {
   const handleConfirmDelete = () => {
     if (!orderToDelete) return;
     
-    // Add to deleted orders set (client-side only)
-    const newDeletedIds = new Set(deletedOrderIds);
-    newDeletedIds.add(orderToDelete);
+    // Add to deleted orders array (client-side only)
+    const newDeletedIds = deletedOrderIds.includes(orderToDelete) 
+      ? deletedOrderIds 
+      : [...deletedOrderIds, orderToDelete];
     setDeletedOrderIds(newDeletedIds);
     
     // Store in localStorage for persistence
     if (typeof window !== 'undefined') {
-      localStorage.setItem('vayne_deleted_orders', JSON.stringify(Array.from(newDeletedIds)));
+      try {
+        localStorage.setItem('vayne_deleted_orders', JSON.stringify(newDeletedIds));
+      } catch (e) {
+        console.error('Failed to save deleted orders to localStorage:', e);
+      }
     }
     
     // Remove from current order history view
