@@ -5,7 +5,7 @@ import sys
 import os
 
 from app.core.config import settings
-from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne
+from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne, vayne_direct
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -93,7 +93,7 @@ app.include_router(results.router, prefix="/api/v1/results", tags=["results"])
 app.include_router(test.router, prefix="/api/v1", tags=["test"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])  # Legacy endpoint
-app.include_router(vayne.router, prefix="/api/vayne", tags=["vayne"])  # New direct API endpoint
+app.include_router(vayne_direct.router, prefix="/api/vayne", tags=["vayne"])  # New direct API endpoint
 
 # Public webhook router (no auth required)
 # Import webhook function directly
