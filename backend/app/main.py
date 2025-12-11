@@ -92,7 +92,8 @@ app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/api/v1/results", tags=["results"])
 app.include_router(test.router, prefix="/api/v1", tags=["test"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
-app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])
+app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])  # Legacy endpoint
+app.include_router(vayne.router, prefix="/api/vayne", tags=["vayne"])  # New direct API endpoint
 
 # Public webhook router (no auth required)
 # Import webhook function directly

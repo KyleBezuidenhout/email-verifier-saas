@@ -80,9 +80,9 @@ class VayneClient:
         
         raise Exception("Max retries exceeded")
 
-    async def check_authentication(self, li_at_cookie: str) -> Dict[str, Any]:
+    async def check_authentication(self, linkedin_cookie: str) -> Dict[str, Any]:
         """Check if LinkedIn authentication is valid."""
-        # Vayne API returns: { "linkedin_authentication": "active", "has_cookie": true }
+        # Vayne API returns: { "linkedin_authentication": "active" | "checking", ... }
         response = await self._request(
             "GET",
             "/api/linkedin_authentication"
@@ -90,25 +90,25 @@ class VayneClient:
         
         # Map to our expected format
         linkedin_auth = response.get("linkedin_authentication", "")
-        has_cookie = response.get("has_cookie", False)
         
         return {
-            "is_connected": linkedin_auth == "active" and has_cookie,
+            "is_connected": linkedin_auth == "active" or linkedin_auth == "checking",
             "linkedin_email": None  # Not provided by Vayne API
         }
 
-    async def update_authentication(self, li_at_cookie: str) -> Dict[str, Any]:
+    async def update_authentication(self, linkedin_cookie: str) -> Dict[str, Any]:
         """Update LinkedIn session cookie."""
-        # Vayne API returns: { "linkedin_cookie": "AQEDARabcdef123456789..." }
+        # Vayne API expects: { "session_cookie": "..." }
+        # Vayne API returns: { "linkedin_authentication": "active" | "checking", ... }
         response = await self._request(
             "PATCH",
             "/api/linkedin_authentication",
-            data={"li_at_cookie": li_at_cookie}
+            data={"session_cookie": linkedin_cookie}
         )
         
         # Return the cookie that was set
         return {
-            "linkedin_cookie": response.get("linkedin_cookie", li_at_cookie),
+            "linkedin_cookie": linkedin_cookie,  # Return the cookie we sent
             "message": "LinkedIn authentication updated successfully"
         }
 
@@ -137,22 +137,16 @@ class VayneClient:
     async def create_order(
         self,
         sales_nav_url: str,
-        export_format: str,
-        only_qualified: bool,
-        li_at_cookie: str,
-        webhook_url: Optional[str] = None
+        linkedin_cookie: str
     ) -> Dict[str, Any]:
-        """Create a new scraping order."""
-        # Vayne API expects: url, name, export_format, secondary_webhook, etc.
+        """Create a new scraping order with hardcoded advanced format."""
+        # Vayne API expects: url, export_format, qualified_leads_only
+        # Hardcode export_format to "advanced" and qualified_leads_only to False per specification
         order_data = {
             "url": sales_nav_url,
-            "export_format": export_format,
-            "only_qualified": only_qualified,
+            "export_format": "advanced",
+            "qualified_leads_only": False,
         }
-        
-        # Add webhook URL if provided
-        if webhook_url:
-            order_data["secondary_webhook"] = webhook_url
         
         # Vayne API returns: { "order": { "id": 123, ... } }
         response = await self._request(
@@ -209,7 +203,7 @@ class VayneClient:
         
         return order
 
-    async def export_order(self, order_id: str, export_format: str = "simple") -> bytes:
+    async def export_order(self, order_id: str, export_format: str = "advanced") -> bytes:
         """Export order results as CSV. Tries requested format first, falls back to available format."""
         # First, check what exports are available
         order_response = await self._request("GET", f"/api/orders/{order_id}")

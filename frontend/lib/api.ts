@@ -504,10 +504,10 @@ class ApiClient {
     return this.request("/api/v1/vayne/auth");
   }
 
-  async updateVayneAuth(li_at_cookie: string): Promise<{ message: string }> {
-    return this.request("/api/v1/vayne/auth", {
+  async updateVayneAuth(linkedin_cookie: string): Promise<{ message: string }> {
+    return this.request("/api/vayne/auth", {
       method: "PATCH",
-      body: JSON.stringify({ li_at_cookie }),
+      body: JSON.stringify({ linkedin_cookie }),
     });
   }
 
@@ -522,27 +522,40 @@ class ApiClient {
     });
   }
 
-  async createVayneOrder(order: VayneOrderCreate): Promise<{ order_id: string; message: string }> {
-    return this.request("/api/v1/vayne/orders", {
+  async createVayneOrder(order: VayneOrderCreate): Promise<{ success: boolean; order_id: string; status: string; message: string }> {
+    return this.request("/api/vayne/orders", {
       method: "POST",
       body: JSON.stringify(order),
     });
   }
 
+  async getVayneOrderStatus(orderId: string): Promise<{
+    success: boolean;
+    order_id: string;
+    status: string;
+    scraped: number;
+    total: number;
+    matching: number;
+    scraping_status: string;
+    progress_percentage: number;
+  }> {
+    return this.request(`/api/vayne/orders/${orderId}/status`);
+  }
+
   async getVayneOrder(orderId: string): Promise<VayneOrder> {
-    return this.request(`/api/v1/vayne/orders/${orderId}`);
+    return this.request(`/api/vayne/orders/${orderId}`);
   }
 
   async exportVayneOrder(orderId: string): Promise<{ status: string; message: string; csv_file_path?: string }> {
     // This endpoint stores CSV in R2, doesn't return the file
-    return this.request<{ status: string; message: string; csv_file_path?: string }>(`/api/v1/vayne/orders/${orderId}/export`, {
+    return this.request<{ status: string; message: string; csv_file_path?: string }>(`/api/vayne/orders/${orderId}/export`, {
       method: "POST",
     });
   }
 
   async downloadVayneOrderCSV(orderId: string): Promise<Blob> {
-    // This endpoint downloads CSV from R2
-    const url = `${this.baseUrl}/api/v1/vayne/orders/${orderId}/csv`;
+    // This endpoint downloads CSV from R2 (matches specification GET /api/vayne/orders/:id/export)
+    const url = `${this.baseUrl}/api/vayne/orders/${orderId}/export`;
     const token = this.getToken();
     const response = await fetch(url, {
       method: "GET",
@@ -555,7 +568,7 @@ class ApiClient {
       const error = await response.json().catch(() => ({
         detail: response.statusText,
       }));
-      throw new Error(error.detail || "Failed to download CSV");
+      throw new Error(error.detail || "Failed to export order. The order may still be processing.");
     }
 
     return response.blob();

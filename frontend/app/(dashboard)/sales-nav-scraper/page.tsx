@@ -13,7 +13,7 @@ export default function SalesNavScraperPage() {
   const router = useRouter();
   
   // Auth state (cookie required for each order)
-  const [liAtCookie, setLiAtCookie] = useState("");
+  const [linkedinCookie, setLinkedinCookie] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
   
   // Credits state
@@ -100,19 +100,18 @@ export default function SalesNavScraperPage() {
 
   const refreshOrderStatus = useCallback(async (orderId: string) => {
     try {
-      // Poll Vayne API directly for real-time status
+      // Poll status endpoint for real-time updates (matches specification)
+      const statusData = await apiClient.getVayneOrderStatus(orderId);
+      
+      // Update current order with status data
       const order = await apiClient.getVayneOrder(orderId);
       setCurrentOrder(order);
       
       // Log polling status for debugging
-      if (order.vayne_order_id) {
-        console.log(`🔄 Polling order ${orderId}: scraping_status=${order.scraping_status}, progress=${order.progress_percentage}%`);
-      } else {
-        console.log(`⏳ Waiting for worker to process order ${orderId} (vayne_order_id not set yet)`);
-      }
+      console.log(`🔄 Polling order ${orderId}: scraping_status=${statusData.scraping_status}, progress=${statusData.progress_percentage}%`);
       
-      // Parse scraping_status from Vayne API
-      const scrapingStatus = order.scraping_status;
+      // Parse scraping_status from status endpoint
+      const scrapingStatus = statusData.scraping_status;
       
       // If scraping is finished, call export endpoint to store CSV
       if (scrapingStatus === "finished" && !order.csv_file_path) {
@@ -130,7 +129,7 @@ export default function SalesNavScraperPage() {
       }
       
       // If order completed or failed, refresh credits and history
-      if (order.status === "completed" || order.status === "failed" || scrapingStatus === "finished") {
+      if (statusData.status === "completed" || statusData.status === "failed" || scrapingStatus === "finished") {
         await loadCredits();
         await loadOrderHistory();
       }
@@ -244,12 +243,11 @@ export default function SalesNavScraperPage() {
   // This ensures polling continues even after page reload
   useEffect(() => {
     if (orderHistory.length > 0 && !currentOrder) {
-      // Find the most recent active order (processing, pending, queued, or not finished)
+      // Find the most recent active order (processing, pending, or not finished)
       const activeOrder = orderHistory.find(
         order => 
           order.status === "processing" || 
-          order.status === "pending" || 
-          order.status === "queued" ||
+          order.status === "pending" ||
           (order.scraping_status && 
            order.scraping_status !== "finished" && 
            order.scraping_status !== "failed" &&
@@ -271,8 +269,8 @@ export default function SalesNavScraperPage() {
     }
     
     // Require cookie for each scrape
-    if (!liAtCookie.trim()) {
-      setError("Please enter your LinkedIn session cookie (li_at) to start scraping");
+    if (!linkedinCookie.trim()) {
+      setError("Please enter your LinkedIn session cookie to start scraping");
       setShowErrorModal(true);
       return;
     }
@@ -281,16 +279,14 @@ export default function SalesNavScraperPage() {
     try {
       const orderData: VayneOrderCreate = {
         sales_nav_url: salesNavUrl,
-        export_format: exportFormat,
-        only_qualified: onlyQualified,
-        li_at_cookie: liAtCookie,  // Send cookie with order request
+        linkedin_cookie: linkedinCookie,  // Send cookie with order request
       };
       
       const response = await apiClient.createVayneOrder(orderData);
       const order = await apiClient.getVayneOrder(response.order_id);
       setCurrentOrder(order);
-      setLiAtCookie(""); // Clear cookie after use (require fresh one for next scrape)
-      // Order status will be refreshed automatically via webhooks
+      setLinkedinCookie(""); // Clear cookie after use (require fresh one for next scrape)
+      // Order status will be refreshed automatically via polling
       await loadCredits(); // Refresh credits after order creation
       await loadOrderHistory(); // Refresh history
     } catch (err) {
@@ -471,7 +467,7 @@ export default function SalesNavScraperPage() {
     setExportFormat("simple");
     setOnlyQualified(false);
     setCurrentOrder(null);
-    setLiAtCookie(""); // Clear cookie
+    setLinkedinCookie(""); // Clear cookie
   };
 
   const usagePercentage = credits && credits.daily_limit > 0 
@@ -562,7 +558,7 @@ export default function SalesNavScraperPage() {
       <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            {liAtCookie.trim() ? (
+            {linkedinCookie.trim() ? (
               <>
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 <div>
@@ -584,7 +580,7 @@ export default function SalesNavScraperPage() {
             onClick={() => setShowAuthModal(true)}
             className="px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors text-sm font-medium"
           >
-            {liAtCookie.trim() ? "Update Cookie" : "Connect LinkedIn Account"}
+            {linkedinCookie.trim() ? "Update Cookie" : "Connect LinkedIn Account"}
           </button>
         </div>
       </div>
@@ -604,15 +600,15 @@ export default function SalesNavScraperPage() {
             </p>
             <input
               type="text"
-              value={liAtCookie}
-              onChange={(e) => setLiAtCookie(e.target.value)}
+              value={linkedinCookie}
+              onChange={(e) => setLinkedinCookie(e.target.value)}
               placeholder="Paste your li_at cookie here"
               className="w-full px-4 py-2 bg-apple-bg border border-apple-border rounded-lg text-apple-text mb-4 focus:outline-none focus:ring-2 focus:ring-apple-accent"
             />
             <div className="flex gap-3">
               <button
                 onClick={() => {
-                  if (liAtCookie.trim()) {
+                  if (linkedinCookie.trim()) {
                     setShowAuthModal(false);
                   } else {
                     setError("Please enter your LinkedIn session cookie");
@@ -781,7 +777,7 @@ export default function SalesNavScraperPage() {
       <div className="flex gap-3 mb-6">
         <button
           onClick={handleStartScraping}
-          disabled={!urlValidation?.is_valid || !liAtCookie.trim() || creatingOrder}
+          disabled={!urlValidation?.is_valid || !linkedinCookie.trim() || creatingOrder}
           className="flex-1 px-6 py-3 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
         >
           {creatingOrder ? (

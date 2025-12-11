@@ -13,7 +13,7 @@ class VayneAuthStatusResponse(BaseModel):
 
 
 class VayneAuthUpdateRequest(BaseModel):
-    li_at_cookie: str
+    linkedin_cookie: str
 
 
 class VayneAuthUpdateResponse(BaseModel):
@@ -40,9 +40,7 @@ class VayneUrlCheckResponse(BaseModel):
 
 class VayneOrderCreateRequest(BaseModel):
     sales_nav_url: str
-    export_format: str  # "simple" or "advanced"
-    only_qualified: bool = False
-    li_at_cookie: str  # Required for each order
+    linkedin_cookie: str  # Required for each order
 
 
 class VayneOrderCreateResponse(BaseModel):
