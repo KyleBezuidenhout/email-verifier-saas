@@ -21,7 +21,26 @@ python scripts/verify_endpoints.py your@email.com yourpassword
 - Order status endpoint path: `/api/vayne/orders/{order_id}/status`
 - All endpoints return expected status codes
 
-### 2. `verify_order_flow.py`
+### 2. `verify_status_endpoint.py`
+Simplified verification script to test order status endpoint behavior.
+
+**Usage:**
+```bash
+# Test with existing order (will fetch most recent order if not provided)
+python scripts/verify_status_endpoint.py your@email.com yourpassword
+
+# Test with specific order ID
+python scripts/verify_status_endpoint.py your@email.com yourpassword <order_id>
+```
+
+**What it verifies:**
+- Authentication works
+- Can fetch recent orders if no order_id provided
+- Status endpoint works correctly
+- Immediate vs delayed status checks behave as expected
+- Multiple status polls work correctly
+
+### 3. `verify_order_flow.py`
 Tests the complete order creation and status polling flow to identify the timing issue.
 
 **Usage:**
@@ -33,19 +52,19 @@ python scripts/verify_order_flow.py your@email.com yourpassword
 1. URL validation works
 2. Order creation succeeds
 3. Order exists in database
-4. **Order status endpoint returns 404 immediately after creation (THE BUG)**
+4. **Order status endpoint behavior immediately after creation**
 5. Order status endpoint works after a delay
 6. Multiple status polls work correctly
 
-**Key Test:** Step 4 specifically tests the bug - checking order status immediately after creation should fail with 404, confirming the timing issue.
+**Key Test:** Step 4 tests the order status endpoint immediately after creation to verify the fix.
 
-### 3. `verify_with_curl.sh`
+### 4. `verify_with_curl.sh`
 Quick curl-based tests for manual verification.
 
 **Usage:**
 ```bash
-# First, get an auth token
-TOKEN=$(curl -X POST http://localhost:8000/api/v1/auth/login \
+# First, get an auth token (using Railway URL by default)
+TOKEN=$(curl -X POST https://api.billionverifier.io/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"your@email.com","password":"yourpassword"}' \
   | jq -r '.access_token')
@@ -67,11 +86,18 @@ The scripts use the following test data (provided by user):
 
 ## Configuration
 
-All scripts use `http://localhost:8000` as the default backend URL. To change this:
+All scripts default to Railway production URL: `https://api.billionverifier.io`. To change this:
 
 **Python scripts:**
+Set the `API_URL` environment variable:
+```bash
+export API_URL="https://your-backend-url.com"
+python scripts/verify_endpoints.py your@email.com yourpassword
+```
+
+Or modify the `BASE_URL` variable in each script:
 ```python
-BASE_URL = "https://your-backend-url.com"
+BASE_URL = os.getenv("API_URL", "https://your-backend-url.com")
 ```
 
 **Bash script:**
@@ -97,21 +123,26 @@ bash scripts/verify_with_curl.sh $TOKEN
 ## Running All Tests
 
 ```bash
-# 1. Get auth token
-TOKEN=$(curl -X POST http://localhost:8000/api/v1/auth/login \
+# 1. Get auth token (using Railway URL)
+TOKEN=$(curl -X POST https://api.billionverifier.io/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"your@email.com","password":"yourpassword"}' \
   | jq -r '.access_token')
 
 # 2. Test endpoints
-python scripts/verify_endpoints.py your@email.com yourpassword
+python3 scripts/verify_endpoints.py your@email.com yourpassword
 
-# 3. Test full flow
-python scripts/verify_order_flow.py your@email.com yourpassword
+# 3. Test status endpoint
+python3 scripts/verify_status_endpoint.py your@email.com yourpassword
 
-# 4. Quick curl test
+# 4. Test full flow (creates new order)
+python3 scripts/verify_order_flow.py your@email.com yourpassword
+
+# 5. Quick curl test
 bash scripts/verify_with_curl.sh $TOKEN
 ```
+
+**Note:** All scripts default to Railway production URL (`https://api.billionverifier.io`). For local testing, set the `API_URL` environment variable to `http://localhost:8000`.
 
 ## Troubleshooting
 

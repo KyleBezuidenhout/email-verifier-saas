@@ -250,6 +250,18 @@ class VayneClient:
             print(f"⚠️ Error checking export status: {e}")
             return None
 
+    async def trigger_export(self, order_id: str, export_format: str = "advanced") -> Dict[str, Any]:
+        """
+        Trigger export generation for an order and return the order with exports.
+        This calls POST /api/orders/{id}/export and returns the order response.
+        """
+        response = await self._request(
+            "POST",
+            f"/api/orders/{order_id}/export",
+            data={"export_format": export_format}
+        )
+        return response  # Returns {"order": {...}} with exports populated
+
     async def export_order_with_retry(
         self,
         order_id: str,

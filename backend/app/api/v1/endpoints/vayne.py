@@ -42,6 +42,8 @@ from app.schemas.vayne import (
     VayneOrderResponse,
     VayneOrderListResponse,
     VayneWebhookPayload,
+    VayneExportInfo,
+    VayneExportsInfo,
 )
 from app.services.vayne_client import get_vayne_client
 from app.core.config import settings
@@ -456,6 +458,7 @@ async def get_order(
     scraping_status = None
     vayne_progress = order.progress_percentage
     vayne_leads_found = order.leads_found
+    exports_info = None
     
     if order.vayne_order_id:
         try:
@@ -477,6 +480,25 @@ async def get_order(
             # Update progress and leads from Vayne API
             vayne_progress = vayne_order.get("progress_percentage", order.progress_percentage)
             vayne_leads_found = vayne_order.get("leads_found", order.leads_found)
+            
+            # Extract exports information from Vayne API response
+            vayne_exports = vayne_order.get("exports", {})
+            if vayne_exports:
+                simple_export = vayne_exports.get("simple", {})
+                advanced_export = vayne_exports.get("advanced", {})
+                
+                # Only create exports_info if at least one export exists
+                if simple_export or advanced_export:
+                    exports_info = VayneExportsInfo(
+                        simple=VayneExportInfo(
+                            status=simple_export.get("status", ""),
+                            file_url=simple_export.get("file_url")
+                        ) if simple_export and simple_export.get("status") else None,
+                        advanced=VayneExportInfo(
+                            status=advanced_export.get("status", ""),
+                            file_url=advanced_export.get("file_url")
+                        ) if advanced_export and advanced_export.get("status") else None
+                    )
             
             # Update database if status changed (but keep scraping_status for frontend)
             if mapped_status != order.status and order.status not in ["completed", "failed"]:
@@ -506,6 +528,7 @@ async def get_order(
         created_at=order.created_at.isoformat(),
         completed_at=order.completed_at.isoformat() if order.completed_at else None,
         csv_file_path=order.csv_file_path,
+        exports=exports_info,
     )
 
 
@@ -560,29 +583,65 @@ async def export_order(
             detail=f"Failed to check order status: {str(e)}"
         )
     
-    # If CSV already stored, return success
-    if order.csv_file_path:
-        return {"status": "success", "message": "CSV already exported", "csv_file_path": order.csv_file_path}
+    # Helper function to extract exports info from Vayne response
+    def get_exports_info(exports_data):
+        if not exports_data:
+            return None
+        simple_export = exports_data.get("simple", {})
+        advanced_export = exports_data.get("advanced", {})
+        if simple_export or advanced_export:
+            return VayneExportsInfo(
+                simple=VayneExportInfo(
+                    status=simple_export.get("status", ""),
+                    file_url=simple_export.get("file_url")
+                ) if simple_export and simple_export.get("status") else None,
+                advanced=VayneExportInfo(
+                    status=advanced_export.get("status", ""),
+                    file_url=advanced_export.get("file_url")
+                ) if advanced_export and advanced_export.get("status") else None
+            )
+        return None
     
-    # Export CSV from Vayne with retry logic (always use advanced format per specification)
+    # Trigger export generation in Vayne API
+    # This will generate the export and return the order with exports populated
+    exports_from_vayne = {}
+    try:
+        export_response = await vayne_client.trigger_export(order.vayne_order_id, order.export_format or "advanced")
+        vayne_order_with_exports = export_response.get("order", {})
+        exports_from_vayne = vayne_order_with_exports.get("exports", {})
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to trigger export in Vayne: {str(e)}. Export may not be ready yet, please try again in a few seconds."
+        )
+    
+    # If CSV already stored, return success with exports info
+    if order.csv_file_path:
+        exports_info = get_exports_info(exports_from_vayne)
+        return {
+            "status": "success", 
+            "message": "CSV already exported", 
+            "csv_file_path": order.csv_file_path,
+            "exports": exports_info.model_dump() if exports_info else None
+        }
+    
+    # Export CSV from Vayne with retry logic (optional - only if we want to store in R2)
+    # If exports are already available from trigger_export, we can return them immediately
+    exports_info = get_exports_info(exports_from_vayne)
+    
+    # Try to download and store CSV in R2 (optional - exports URLs are already available)
     try:
         # Use retry-based export to wait for export to be ready
         csv_data = await vayne_client.export_order_with_retry(
             order.vayne_order_id, 
-            "advanced",
+            order.export_format or "advanced",
             max_retries=5,
             initial_delay=2.0,
             max_delay=30.0
         )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to export CSV from Vayne: {str(e)}. Export may not be ready yet, please try again in a few seconds."
-        )
-    
-    # Store CSV in R2
-    csv_file_path = f"vayne-orders/{order.id}/export.csv"
-    try:
+        
+        # Store CSV in R2
+        csv_file_path = f"vayne-orders/{order.id}/export.csv"
         s3_client.put_object(
             Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
             Key=csv_file_path,
@@ -599,13 +658,20 @@ async def export_order(
         
         print(f"✅ Stored CSV for order {order.id} in R2: {csv_file_path}")
         
-        return {"status": "success", "message": "CSV exported and stored successfully", "csv_file_path": csv_file_path}
+        return {
+            "status": "success", 
+            "message": "CSV exported and stored successfully", 
+            "csv_file_path": csv_file_path,
+            "exports": exports_info.model_dump() if exports_info else None
+        }
     except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to store CSV in R2: {str(e)}"
-        )
+        # Even if download fails, return exports info if available from trigger_export
+        logger.warning(f"Failed to download CSV for order {order.id}: {e}, but exports may be available")
+        return {
+            "status": "export_triggered",
+            "message": f"Export triggered successfully. CSV download failed but export URLs are available in the response. Error: {str(e)}",
+            "exports": exports_info.model_dump() if exports_info else None
+        }
 
 
 @router.get("/orders/{order_id}/export")
@@ -738,11 +804,48 @@ async def get_order_history(
         if order.vayne_order_id and order.status in ["pending", "processing"]:
             await _sync_order_with_vayne(order, db)
     
-    return VayneOrderListResponse(
-        orders=[
+    # Build response with exports info for orders that likely have exports
+    order_responses = []
+    vayne_client = get_vayne_client()
+    
+    for order in orders:
+        exports_info = None
+        scraping_status = None
+        
+        # Fetch exports for completed orders or orders with vayne_order_id
+        if order.vayne_order_id and order.status in ["completed", "processing"]:
+            try:
+                vayne_order = await vayne_client.get_order(order.vayne_order_id)
+                scraping_status = vayne_order.get("scraping_status")
+                
+                # Extract exports if available
+                vayne_exports = vayne_order.get("exports", {})
+                if vayne_exports:
+                    simple_export = vayne_exports.get("simple", {})
+                    advanced_export = vayne_exports.get("advanced", {})
+                    
+                    # Only create exports_info if at least one export exists
+                    if simple_export or advanced_export:
+                        exports_info = VayneExportsInfo(
+                            simple=VayneExportInfo(
+                                status=simple_export.get("status", ""),
+                                file_url=simple_export.get("file_url")
+                            ) if simple_export and simple_export.get("status") else None,
+                            advanced=VayneExportInfo(
+                                status=advanced_export.get("status", ""),
+                                file_url=advanced_export.get("file_url")
+                            ) if advanced_export and advanced_export.get("status") else None
+                        )
+            except Exception as e:
+                # If fetching exports fails, continue without exports info
+                logger.debug(f"Failed to fetch exports for order {order.id}: {e}")
+        
+        order_responses.append(
             VayneOrderResponse(
                 id=str(order.id),
                 status=order.status,
+                scraping_status=scraping_status,
+                vayne_order_id=order.vayne_order_id,
                 sales_nav_url=order.sales_nav_url,
                 export_format=order.export_format,
                 only_qualified=order.only_qualified,
@@ -752,9 +855,13 @@ async def get_order_history(
                 estimated_completion=order.estimated_completion,
                 created_at=order.created_at.isoformat(),
                 completed_at=order.completed_at.isoformat() if order.completed_at else None,
+                csv_file_path=order.csv_file_path,
+                exports=exports_info,
             )
-            for order in orders
-        ],
+        )
+    
+    return VayneOrderListResponse(
+        orders=order_responses,
         total=total
     )
 

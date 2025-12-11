@@ -118,6 +118,16 @@ export interface VayneOrder {
   completed_at?: string;
   csv_file_path?: string;  // R2 path to exported CSV
   vayne_order_id?: string;  // Vayne's order ID
+  exports?: {
+    simple?: {
+      status: string;
+      file_url?: string;
+    };
+    advanced?: {
+      status: string;
+      file_url?: string;
+    };
+  };
 }
 
 export interface VayneOrderCreate {

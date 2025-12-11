@@ -50,6 +50,16 @@ class VayneOrderCreateResponse(BaseModel):
     message: str
 
 
+class VayneExportInfo(BaseModel):
+    status: str  # completed, processing, etc.
+    file_url: Optional[str] = None  # Direct S3 URL from Vayne
+
+
+class VayneExportsInfo(BaseModel):
+    simple: Optional[VayneExportInfo] = None
+    advanced: Optional[VayneExportInfo] = None
+
+
 class VayneOrderResponse(BaseModel):
     id: str
     status: str  # pending, processing, completed, failed
@@ -65,6 +75,7 @@ class VayneOrderResponse(BaseModel):
     created_at: str
     completed_at: Optional[str] = None
     csv_file_path: Optional[str] = None  # R2 path to exported CSV
+    exports: Optional[VayneExportsInfo] = None  # Direct export URLs from Vayne API
 
     class Config:
         from_attributes = True

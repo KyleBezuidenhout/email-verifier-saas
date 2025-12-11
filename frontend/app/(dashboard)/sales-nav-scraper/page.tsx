@@ -351,15 +351,39 @@ export default function SalesNavScraperPage() {
 
   const handleDownloadCSV = async (orderId: string) => {
     try {
-      const blob = await apiClient.downloadVayneOrderCSV(orderId);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `sales-nav-leads-${orderId}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      // First, get the order to check if export URLs are available
+      const order = await apiClient.getVayneOrder(orderId);
+      
+      // Check if we have direct export URLs from Vayne
+      const exportUrl = order.exports?.advanced?.file_url || order.exports?.simple?.file_url;
+      
+      if (exportUrl) {
+        // Download directly from Vayne's S3 URL
+        const response = await fetch(exportUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to download CSV: ${response.statusText}`);
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `sales-nav-leads-${orderId}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        // Fall back to our API endpoint
+        const blob = await apiClient.downloadVayneOrderCSV(orderId);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `sales-nav-leads-${orderId}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to download CSV");
       setShowErrorModal(true);
@@ -913,7 +937,7 @@ export default function SalesNavScraperPage() {
                 </span>
               </div>
             )}
-            {currentOrder.scraping_status === "finished" && currentOrder.csv_file_path && (
+            {currentOrder.scraping_status === "finished" && (currentOrder.csv_file_path || currentOrder.exports?.advanced?.file_url || currentOrder.exports?.simple?.file_url) && (
               <div className="flex gap-3 pt-4 border-t border-apple-border">
                 <button
                   onClick={() => handleDownloadCSV(currentOrder.id)}
@@ -1000,7 +1024,7 @@ export default function SalesNavScraperPage() {
                       <td className="px-4 py-3 text-sm text-apple-text-muted capitalize">{order.export_format}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2 items-center">
-                          {order.scraping_status === "finished" && order.csv_file_path && (
+                          {order.scraping_status === "finished" && (order.csv_file_path || order.exports?.advanced?.file_url || order.exports?.simple?.file_url) && (
                             <>
                               <button
                                 onClick={(e) => {

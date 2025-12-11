@@ -2,7 +2,8 @@
 
 ## Prerequisites
 
-1. **Backend must be running** on `http://localhost:8000`
+1. **Backend must be running** (scripts default to Railway: `https://api.billionverifier.io`)
+   - For local testing, set `API_URL=http://localhost:8000` environment variable
 2. **Python 3** with `requests` module installed
 3. **Valid user credentials** for authentication
 
@@ -60,15 +61,27 @@ This will:
 4. Test delayed status check (should work)
 5. Poll status multiple times
 
-#### Option C: Quick Curl Test (Requires Auth Token)
+#### Option C: Status Endpoint Test (Requires Auth)
 
-First, get an auth token:
+Tests order status endpoint with existing or new orders:
 
 ```bash
-TOKEN=$(curl -X POST http://localhost:8000/api/v1/auth/login \
+# Uses most recent order if no order_id provided
+python3 scripts/verify_status_endpoint.py your@email.com yourpassword
+
+# Test with specific order ID
+python3 scripts/verify_status_endpoint.py your@email.com yourpassword <order_id>
+```
+
+#### Option D: Quick Curl Test (Requires Auth Token)
+
+First, get an auth token (defaults to Railway):
+
+```bash
+TOKEN=$(curl -X POST https://api.billionverifier.io/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"your@email.com","password":"yourpassword"}' \
-  | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+  | jq -r '.access_token')
 ```
 
 Then run the curl verification:
@@ -79,24 +92,25 @@ bash scripts/verify_with_curl.sh $TOKEN
 
 ## Expected Results
 
-### Before Fix:
+### Current Behavior (After Fix):
 - ✅ Order creation succeeds
 - ✅ Order exists in database
-- ❌ **Order status endpoint returns 404 immediately after creation** (THE BUG)
-- ✅ Order status endpoint works after 1-2 second delay
-
-### After Fix:
-- ✅ Order creation succeeds
-- ✅ Order exists in database
-- ✅ Order status endpoint works immediately (or handles 404 gracefully with retry)
+- ✅ Order status endpoint works immediately after creation
 - ✅ Order status endpoint works after delay
+- ✅ Multiple status polls work correctly
+
+**Note:** If you see 404 errors on order status immediately after creation, this indicates the timing issue may still exist and needs to be investigated.
 
 ## Troubleshooting
 
 ### "Connection refused" errors
-- Backend is not running
+- Backend is not running (if testing locally)
 - Backend is running on a different port
-- Update `BASE_URL` in the scripts if backend is on a different host/port
+- Set `API_URL` environment variable to test against a different URL:
+  ```bash
+  export API_URL="http://localhost:8000"
+  python3 scripts/verify_endpoints.py your@email.com yourpassword
+  ```
 
 ### "Module not found: requests"
 ```bash
@@ -115,10 +129,13 @@ pip3 install requests
 
 ## What the Scripts Test
 
-1. **verify_endpoints.py**: Tests that all endpoint paths are correctly configured
-2. **verify_order_flow.py**: Tests the complete flow including the 404 bug
-3. **verify_with_curl.sh**: Quick manual verification using curl
+1. **verify_endpoints.py**: Tests that all endpoint paths are correctly configured and accessible
+2. **verify_status_endpoint.py**: Tests order status endpoint behavior with existing orders
+3. **verify_order_flow.py**: Tests the complete flow including order creation and status polling
+4. **verify_with_curl.sh**: Quick manual verification using curl
 
 All scripts use the test data provided:
-- LinkedIn Cookie: (from user)
-- Sales Nav URL: (from user)
+- LinkedIn Cookie: (embedded in scripts)
+- Sales Nav URL: (embedded in scripts)
+
+**Default Configuration:** All scripts default to Railway production URL (`https://api.billionverifier.io`). To test locally, set `export API_URL=http://localhost:8000` before running the scripts.
