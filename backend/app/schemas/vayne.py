@@ -72,11 +72,6 @@ class VayneOrderListResponse(BaseModel):
     total: int
 
 
-class VayneOrderDeleteResponse(BaseModel):
-    status: str
-    message: str
-
-
 class VayneWebhookPayload(BaseModel):
     """Webhook payload from Vayne API when order status changes."""
     order_id: str  # Vayne's order ID
