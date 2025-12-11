@@ -255,19 +255,16 @@ async function pollQueue() {
   if (!redisClient.isReady) {
     console.log('Redis not ready, waiting...');
     await new Promise(resolve => setTimeout(resolve, 1000));
+    pollQueue();
     return;
   }
   
   try {
-    // Pop order ID from queue (blocking pop with 1 second timeout)
-    const orderId = await redisClient.brPop(
-      redisClient.commandOptions({ isolated: true }),
-      QUEUE_NAME,
-      1
-    );
+    // Pop order ID from queue (blocking pop with 2 second timeout)
+    const result = await redisClient.brPop(QUEUE_NAME, 2);
     
-    if (orderId && orderId.element) {
-      const orderIdStr = orderId.element;
+    if (result && result.element) {
+      const orderIdStr = result.element;
       console.log(`\n📦 Got order from queue: ${orderIdStr}`);
       
       // Process order

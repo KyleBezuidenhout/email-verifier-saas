@@ -558,13 +558,15 @@ export default function SalesNavScraperPage() {
                     ? "bg-green-500/20 text-green-400"
                     : currentOrder.status === "failed"
                     ? "bg-red-500/20 text-red-400"
+                    : currentOrder.status === "queued"
+                    ? "bg-blue-500/20 text-blue-400"
                     : "bg-yellow-500/20 text-yellow-400"
                 }`}
               >
                 {currentOrder.status}
               </span>
             </div>
-            {currentOrder && (currentOrder.status === "processing" || currentOrder.status === "pending") && (
+            {currentOrder && (currentOrder.status === "processing" || currentOrder.status === "pending" || currentOrder.status === "queued") && (
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-apple-text-muted">Progress</span>
