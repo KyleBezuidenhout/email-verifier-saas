@@ -41,6 +41,15 @@ export default function SalesNavScraperPage() {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [loadingHistory, setLoadingHistory] = useState(false);
   
+  // Deleted orders (client-side only, stored in localStorage)
+  const [deletedOrderIds, setDeletedOrderIds] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('vayne_deleted_orders');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    }
+    return new Set();
+  });
+  
   // Error state
   const [error, setError] = useState("");
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -48,7 +57,6 @@ export default function SalesNavScraperPage() {
   // Delete confirmation state
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deletingOrder, setDeletingOrder] = useState(false);
   
   // Loading state
   const [initialLoading, setInitialLoading] = useState(true);
@@ -70,14 +78,16 @@ export default function SalesNavScraperPage() {
     setLoadingHistory(true);
     try {
       const response = await apiClient.getVayneOrderHistory(10, (historyPage - 1) * 10, historyFilter === "all" ? undefined : historyFilter);
-      setOrderHistory(response.orders);
-      setHistoryTotal(response.total);
+      // Filter out deleted orders (client-side only)
+      const filteredOrders = response.orders.filter(order => !deletedOrderIds.has(order.id));
+      setOrderHistory(filteredOrders);
+      setHistoryTotal(response.total - deletedOrderIds.size);
     } catch (err) {
       console.error("Failed to load order history:", err);
     } finally {
       setLoadingHistory(false);
     }
-  }, [historyPage, historyFilter]);
+  }, [historyPage, historyFilter, deletedOrderIds]);
 
   const refreshOrderStatus = useCallback(async (orderId: string) => {
     try {
@@ -333,27 +343,29 @@ export default function SalesNavScraperPage() {
     setShowDeleteModal(true);
   };
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = () => {
     if (!orderToDelete) return;
     
-    setDeletingOrder(true);
-    try {
-      await apiClient.deleteVayneOrder(orderToDelete);
-      await loadOrderHistory();
-      
-      // If deleted order was the current order, clear it
-      if (currentOrder && currentOrder.id === orderToDelete) {
-        setCurrentOrder(null);
-      }
-      
-      setShowDeleteModal(false);
-      setOrderToDelete(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete order");
-      setShowErrorModal(true);
-    } finally {
-      setDeletingOrder(false);
+    // Add to deleted orders set (client-side only)
+    const newDeletedIds = new Set(deletedOrderIds);
+    newDeletedIds.add(orderToDelete);
+    setDeletedOrderIds(newDeletedIds);
+    
+    // Store in localStorage for persistence
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vayne_deleted_orders', JSON.stringify(Array.from(newDeletedIds)));
     }
+    
+    // Remove from current order history view
+    setOrderHistory(orderHistory.filter(order => order.id !== orderToDelete));
+    
+    // If deleted order was the current order, clear it
+    if (currentOrder && currentOrder.id === orderToDelete) {
+      setCurrentOrder(null);
+    }
+    
+    setShowDeleteModal(false);
+    setOrderToDelete(null);
   };
 
   const handleCancelDelete = () => {
@@ -462,10 +474,9 @@ export default function SalesNavScraperPage() {
                   e.stopPropagation();
                   handleConfirmDelete();
                 }}
-                disabled={deletingOrder}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
               >
-                {deletingOrder ? "Deleting..." : "Delete Order"}
+                Delete Order
               </button>
             </div>
           </div>

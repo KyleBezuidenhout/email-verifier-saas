@@ -34,7 +34,6 @@ from app.schemas.vayne import (
     VayneOrderCreateResponse,
     VayneOrderResponse,
     VayneOrderListResponse,
-    VayneOrderDeleteResponse,
     VayneWebhookPayload,
 )
 from app.services.vayne_client import get_vayne_client
@@ -343,40 +342,6 @@ async def get_order(
         created_at=order.created_at.isoformat(),
         completed_at=order.completed_at.isoformat() if order.completed_at else None,
     )
-
-
-@router.delete("/orders/{order_id}", response_model=VayneOrderDeleteResponse, status_code=status.HTTP_200_OK)
-async def delete_order(
-    order_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Delete an order from the user's order history. Note: Credits are not refunded. Works for any order status."""
-    try:
-        order_uuid = UUID(order_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid order ID format"
-        )
-    
-    order = db.query(VayneOrder).filter(
-        VayneOrder.id == order_uuid,
-        VayneOrder.user_id == current_user.id
-    ).first()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
-    
-    # Delete the order (credits are not refunded - this is just removing from history)
-    # Works for any status: pending, processing, completed, failed, queued
-    db.delete(order)
-    db.commit()
-    
-    return VayneOrderDeleteResponse(status="ok", message="Order deleted successfully")
 
 
 @router.post("/orders/{order_id}/export")
