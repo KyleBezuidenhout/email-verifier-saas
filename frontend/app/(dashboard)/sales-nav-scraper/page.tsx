@@ -255,12 +255,33 @@ export default function SalesNavScraperPage() {
       const csvFile = new File([text], filename, { type: "text/csv" });
       
       // Parse CSV header to auto-detect column mappings
+      // Handle quoted CSV fields properly
+      const parseCSVLine = (line: string): string[] => {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        result.push(current.trim());
+        return result;
+      };
+      
       const lines = text.split('\n').filter(line => line.trim());
       if (lines.length === 0) {
         throw new Error("CSV file is empty");
       }
       
-      const headers = lines[0].split(',').map(h => h.trim());
+      const headers = parseCSVLine(lines[0]);
       
       // Auto-detect column mappings using same logic as FilePreview
       const normalizeHeader = (h: string) => h.toLowerCase().replace(/[\s_-]/g, "");
