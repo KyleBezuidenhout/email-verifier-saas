@@ -173,8 +173,9 @@ export default function SalesNavScraperPage() {
   }, [loadCredits, loadOrderHistory]);
 
   // Poll Vayne API every 5 seconds until scraping is finished
+  // Start polling immediately when order is created (vayne_order_id will be set by worker later)
   useEffect(() => {
-    if (currentOrder && currentOrder.vayne_order_id) {
+    if (currentOrder) {
       const scrapingStatus = currentOrder.scraping_status;
       
       // Stop polling when scraping is finished or failed
@@ -186,7 +187,7 @@ export default function SalesNavScraperPage() {
         return;
       }
       
-      // Poll every 5 seconds
+      // Poll every 5 seconds (will work once vayne_order_id is set by worker)
       const timer = setInterval(() => {
         refreshOrderStatus(currentOrder.id);
       }, REFRESH_INTERVAL);
