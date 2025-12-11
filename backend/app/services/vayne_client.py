@@ -210,22 +210,52 @@ class VayneClient:
         return order
 
     async def export_order(self, order_id: str, export_format: str = "simple") -> bytes:
-        """Export order results as CSV."""
-        # Vayne API returns: { "order": { "exports": { "simple": { "file_url": "..." } } } }
-        response = await self._request(
-            "POST",
-            f"/api/orders/{order_id}/export",
-            data={"export_format": export_format}
-        )
+        """Export order results as CSV. Tries requested format first, falls back to available format."""
+        # First, check what exports are available
+        order_response = await self._request("GET", f"/api/orders/{order_id}")
+        order_data = order_response.get("order", {})
+        exports = order_data.get("exports", {})
         
-        # Extract order from nested response
-        order = response.get("order", {})
-        exports = order.get("exports", {})
-        export_info = exports.get(export_format, {})
-        file_url = export_info.get("file_url")
+        # Determine which format to use
+        requested_export = exports.get(export_format, {})
+        requested_status = requested_export.get("status")
+        requested_url = requested_export.get("file_url")
         
-        if not file_url:
-            raise Exception(f"Export file URL not available for format: {export_format}")
+        # If requested format is available, use it
+        if requested_status == "completed" and requested_url:
+            file_url = requested_url
+            print(f"✅ Using {export_format} format export")
+        else:
+            # Fallback to any available format
+            for fmt in ["advanced", "simple"]:
+                export_info = exports.get(fmt, {})
+                if export_info.get("status") == "completed" and export_info.get("file_url"):
+                    file_url = export_info.get("file_url")
+                    print(f"⚠️ {export_format} format not available, using {fmt} format instead")
+                    break
+            else:
+                # Try to trigger export for requested format
+                response = await self._request(
+                    "POST",
+                    f"/api/orders/{order_id}/export",
+                    data={"export_format": export_format}
+                )
+                order_export = response.get("order", {})
+                exports_after = order_export.get("exports", {})
+                export_info_after = exports_after.get(export_format, {})
+                file_url = export_info_after.get("file_url")
+                
+                if not file_url:
+                    # Check all formats one more time
+                    for fmt in ["advanced", "simple"]:
+                        export_info = exports_after.get(fmt, {})
+                        if export_info.get("status") == "completed" and export_info.get("file_url"):
+                            file_url = export_info.get("file_url")
+                            print(f"⚠️ Using {fmt} format after export trigger")
+                            break
+                    
+                    if not file_url:
+                        raise Exception(f"Export file URL not available. Requested: {export_format}, Available: {[(k, v.get('status')) for k, v in exports_after.items()]}")
         
         # Download file from S3 URL
         file_response = await self.client.get(file_url)
