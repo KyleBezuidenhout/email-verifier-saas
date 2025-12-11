@@ -724,10 +724,20 @@ export default function AdminConsolePage() {
                         </div>
                       )}
                     </div>
-                    {vayneStats.leads_scraped_today > 0 && (
-                      <div className="pt-2 border-t border-apple-border">
-                        <p className="text-sm text-apple-text-muted">Leads Scraped Today</p>
-                        <p className="text-lg font-semibold text-apple-text">{vayneStats.leads_scraped_today.toLocaleString()}</p>
+                    {(vayneStats.daily_limit_accounts !== undefined || vayneStats.enrichment_credits !== undefined) && (
+                      <div className="pt-2 border-t border-apple-border space-y-2">
+                        {vayneStats.daily_limit_accounts !== undefined && vayneStats.daily_limit_accounts > 0 && (
+                          <div>
+                            <p className="text-sm text-apple-text-muted">Daily Limit (Accounts)</p>
+                            <p className="text-lg font-semibold text-apple-text">{vayneStats.daily_limit_accounts.toLocaleString()}</p>
+                          </div>
+                        )}
+                        {vayneStats.enrichment_credits !== undefined && vayneStats.enrichment_credits > 0 && (
+                          <div>
+                            <p className="text-sm text-apple-text-muted">Enrichment Credits</p>
+                            <p className="text-lg font-semibold text-apple-text">{vayneStats.enrichment_credits.toLocaleString()}</p>
+                          </div>
+                        )}
                       </div>
                     )}
                     {vayneStats.subscription_plan && (
