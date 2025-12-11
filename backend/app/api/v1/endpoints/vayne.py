@@ -123,10 +123,11 @@ async def get_credits(
         credits_data = await vayne_client.get_credits()
         
         # Map Vayne API response to our schema
+        # Vayne API returns: credit_available, daily_limit_leads, daily_limit_accounts, enrichment_credits
         return VayneCreditsResponse(
-            available_credits=credits_data.get("available_credits", 0),
-            leads_scraped_today=credits_data.get("leads_scraped_today", 0),
-            daily_limit=credits_data.get("daily_limit", 0),
+            available_credits=credits_data.get("credit_available", 0),
+            leads_scraped_today=0,  # Not provided by Vayne API, would need separate tracking
+            daily_limit=credits_data.get("daily_limit_leads", 0),
             subscription_plan=credits_data.get("subscription_plan"),
             subscription_expires_at=credits_data.get("subscription_expires_at"),
         )

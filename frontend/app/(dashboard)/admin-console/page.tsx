@@ -100,6 +100,8 @@ export default function AdminConsolePage() {
     available_credits: number;
     leads_scraped_today: number;
     daily_limit: number;
+    daily_limit_accounts?: number;
+    enrichment_credits?: number;
     subscription_plan?: string | null;
     subscription_expires_at?: string | null;
     calls_today: number;
