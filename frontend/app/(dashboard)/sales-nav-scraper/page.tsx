@@ -81,7 +81,10 @@ export default function SalesNavScraperPage() {
       // Filter out deleted orders (client-side only)
       const filteredOrders = response.orders.filter(order => !deletedOrderIds.has(order.id));
       setOrderHistory(filteredOrders);
-      setHistoryTotal(response.total - deletedOrderIds.size);
+      // Adjust total count based on filtered orders
+      setHistoryTotal(Math.max(0, response.total - Array.from(deletedOrderIds).filter(id => 
+        response.orders.some(o => o.id === id)
+      ).length));
     } catch (err) {
       console.error("Failed to load order history:", err);
     } finally {
