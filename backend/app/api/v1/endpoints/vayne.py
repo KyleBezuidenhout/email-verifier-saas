@@ -18,15 +18,17 @@ from datetime import datetime, timedelta
 import io
 import csv
 import boto3
+import redis
 import logging
+
+from app.db.session import get_db
+from app.core.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Constants for stuck order detection
 STUCK_ORDER_THRESHOLD_HOURS = 24  # Orders older than this with pending/processing status are considered stuck
-
-from app.db.session import get_db
 from app.models.user import User
 from app.models.vayne_order import VayneOrder
 from app.api.dependencies import get_current_user, ADMIN_EMAIL
@@ -56,6 +58,9 @@ s3_client = boto3.client(
     aws_secret_access_key=settings.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
     region_name='auto'
 )
+
+# Initialize Redis client for order queue
+redis_client = redis.from_url(settings.REDIS_URL)
 
 router = APIRouter()
 
@@ -166,7 +171,11 @@ async def create_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new scraping order with direct API calls (no queuing)."""
+    """
+    Create a new scraping order and queue it for processing.
+    Implements Step 3 from test_end_to_end_scraping_workflow.py (step3_create_order()).
+    Worker will handle Steps 4-7 (polling, export, CSV storage).
+    """
     # Require cookie for each order
     if not order_data.linkedin_cookie or not order_data.linkedin_cookie.strip():
         raise HTTPException(
@@ -177,7 +186,7 @@ async def create_order(
     try:
         vayne_client = get_vayne_client()
         
-        # Step 1: Update LinkedIn session cookie with Vayne
+        # Step 1: Update LinkedIn session cookie with Vayne (required before URL check)
         try:
             cookie_response = await vayne_client.update_authentication(order_data.linkedin_cookie)
             logger.info(f"LinkedIn authentication updated for user {current_user.id}")
@@ -209,7 +218,7 @@ async def create_order(
                 detail=f"Insufficient credits. You have {current_user.credits} credits but this order requires approximately {estimated_leads} credits."
             )
         
-        # Step 3: Create the scraping order with ADVANCED format (hardcoded per specification)
+        # Step 3: Create the scraping order with Vayne API
         vayne_order = await vayne_client.create_order(
             sales_nav_url=order_data.sales_nav_url,
             linkedin_cookie=order_data.linkedin_cookie
@@ -234,6 +243,14 @@ async def create_order(
         
         db.commit()
         db.refresh(order)
+        
+        # Queue order to Redis for worker processing (Steps 4-7)
+        try:
+            redis_client.lpush("vayne-order-processing", str(order.id))
+            print(f"✅ Queued order {order.id} to Redis queue 'vayne-order-processing'")
+        except Exception as e:
+            # If Redis fails, log but don't fail the request (worker can pick up from DB)
+            print(f"⚠️ Failed to queue order to Redis: {e}")
         
         return VayneOrderCreateResponse(
             success=True,
@@ -799,10 +816,8 @@ async def get_order_history(
     total = query.count()
     orders = query.order_by(desc(VayneOrder.created_at)).offset(offset).limit(limit).all()
     
-    # Sync any pending/processing orders with Vayne API
-    for order in orders:
-        if order.vayne_order_id and order.status in ["pending", "processing"]:
-            await _sync_order_with_vayne(order, db)
+    # Note: Status updates are handled by the background worker and webhook
+    # No need to sync here - worker polls Vayne API and updates database
     
     # Build response with exports info for orders that likely have exports
     order_responses = []

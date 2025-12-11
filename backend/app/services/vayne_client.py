@@ -223,6 +223,34 @@ class VayneClient:
         
         return order
 
+    async def _extract_exports_info(self, order_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract both simple and advanced exports from Vayne's response.
+        Prioritizes simple format, falls back to advanced if needed.
+        
+        Based on test_end_to_end_scraping_workflow.py Step 5-6 structure:
+        - Vayne returns: { "exports": { "simple": {...}, "advanced": {...} } }
+        - Each export has: { "status": "completed", "file_url": "..." }
+        
+        Returns: {
+            "simple": {...},      # Simple export info (status, file_url)
+            "advanced": {...},    # Advanced export info (status, file_url)
+            "preferred": {...}    # The format to use (simple if status=="completed" and file_url exists, else advanced)
+        }
+        """
+        exports = order_data.get("exports", {})
+        simple = exports.get("simple", {})
+        advanced = exports.get("advanced", {})
+        
+        # Prioritize simple: use if status is "completed" and file_url exists
+        preferred = simple if (simple.get("status") == "completed" and simple.get("file_url")) else advanced
+        
+        return {
+            "simple": simple,
+            "advanced": advanced,
+            "preferred": preferred
+        }
+
     async def check_export_ready(self, order_id: str, export_format: str = "advanced") -> Optional[str]:
         """
         Check if export is ready and return the file URL if available.
@@ -306,52 +334,77 @@ class VayneClient:
         raise Exception(f"Export not available after {max_retries} attempts for order {order_id}")
 
     async def export_order(self, order_id: str, export_format: str = "advanced") -> bytes:
-        """Export order results as CSV. Tries requested format first, falls back to available format."""
+        """Export order results as CSV. Uses _extract_exports_info() to prioritize simple format, falls back to advanced."""
         # First, check what exports are available
         order_response = await self._request("GET", f"/api/orders/{order_id}")
         order_data = order_response.get("order", {})
-        exports = order_data.get("exports", {})
+        
+        # Extract exports info using the new method (prioritizes simple)
+        exports_info = await self._extract_exports_info(order_data)
+        simple = exports_info.get("simple", {})
+        advanced = exports_info.get("advanced", {})
+        preferred = exports_info.get("preferred", {})
         
         # Determine which format to use
-        requested_export = exports.get(export_format, {})
-        requested_status = requested_export.get("status")
-        requested_url = requested_export.get("file_url")
+        # Priority: 1) preferred (simple if available), 2) requested format, 3) any available
+        file_url = None
         
-        # If requested format is available, use it
-        if requested_status == "completed" and requested_url:
-            file_url = requested_url
-            print(f"✅ Using {export_format} format export")
+        # First try preferred format (simple if available, else advanced)
+        if preferred.get("status") == "completed" and preferred.get("file_url"):
+            file_url = preferred.get("file_url")
+            preferred_format = "simple" if preferred == simple else "advanced"
+            print(f"✅ Using preferred format export: {preferred_format}")
+        # If preferred not available, try requested format
+        elif export_format == "simple" and simple.get("status") == "completed" and simple.get("file_url"):
+            file_url = simple.get("file_url")
+            print(f"✅ Using requested simple format export")
+        elif export_format == "advanced" and advanced.get("status") == "completed" and advanced.get("file_url"):
+            file_url = advanced.get("file_url")
+            print(f"✅ Using requested advanced format export")
+        # If requested format not available, try any available format
+        elif simple.get("status") == "completed" and simple.get("file_url"):
+            file_url = simple.get("file_url")
+            print(f"⚠️ Requested {export_format} format not available, using simple format instead")
+        elif advanced.get("status") == "completed" and advanced.get("file_url"):
+            file_url = advanced.get("file_url")
+            print(f"⚠️ Requested {export_format} format not available, using advanced format instead")
         else:
-            # Fallback to any available format
-            for fmt in ["advanced", "simple"]:
-                export_info = exports.get(fmt, {})
-                if export_info.get("status") == "completed" and export_info.get("file_url"):
-                    file_url = export_info.get("file_url")
-                    print(f"⚠️ {export_format} format not available, using {fmt} format instead")
-                    break
-            else:
-                # Try to trigger export for requested format
-                response = await self._request(
-                    "POST",
-                    f"/api/orders/{order_id}/export",
-                    data={"export_format": export_format}
-                )
-                order_export = response.get("order", {})
-                exports_after = order_export.get("exports", {})
-                export_info_after = exports_after.get(export_format, {})
-                file_url = export_info_after.get("file_url")
-                
-                if not file_url:
-                    # Check all formats one more time
-                    for fmt in ["advanced", "simple"]:
-                        export_info = exports_after.get(fmt, {})
-                        if export_info.get("status") == "completed" and export_info.get("file_url"):
-                            file_url = export_info.get("file_url")
-                            print(f"⚠️ Using {fmt} format after export trigger")
-                            break
-                    
-                    if not file_url:
-                        raise Exception(f"Export file URL not available. Requested: {export_format}, Available: {[(k, v.get('status')) for k, v in exports_after.items()]}")
+            # Try to trigger export for requested format
+            response = await self._request(
+                "POST",
+                f"/api/orders/{order_id}/export",
+                data={"export_format": export_format}
+            )
+            order_export = response.get("order", {})
+            
+            # Re-extract exports info after triggering export
+            exports_info_after = await self._extract_exports_info(order_export)
+            preferred_after = exports_info_after.get("preferred", {})
+            simple_after = exports_info_after.get("simple", {})
+            advanced_after = exports_info_after.get("advanced", {})
+            
+            # Try preferred first (simple prioritized)
+            if preferred_after.get("status") == "completed" and preferred_after.get("file_url"):
+                file_url = preferred_after.get("file_url")
+                preferred_format = "simple" if preferred_after == simple_after else "advanced"
+                print(f"⚠️ Using {preferred_format} format after export trigger")
+            # Then try requested format
+            elif export_format == "simple" and simple_after.get("status") == "completed" and simple_after.get("file_url"):
+                file_url = simple_after.get("file_url")
+                print(f"⚠️ Using simple format after export trigger")
+            elif export_format == "advanced" and advanced_after.get("status") == "completed" and advanced_after.get("file_url"):
+                file_url = advanced_after.get("file_url")
+                print(f"⚠️ Using advanced format after export trigger")
+            # Finally try any available
+            elif simple_after.get("status") == "completed" and simple_after.get("file_url"):
+                file_url = simple_after.get("file_url")
+                print(f"⚠️ Using simple format after export trigger (fallback)")
+            elif advanced_after.get("status") == "completed" and advanced_after.get("file_url"):
+                file_url = advanced_after.get("file_url")
+                print(f"⚠️ Using advanced format after export trigger (fallback)")
+            
+            if not file_url:
+                raise Exception(f"Export file URL not available. Requested: {export_format}, Available: {[(k, v.get('status')) for k, v in {'simple': simple_after, 'advanced': advanced_after}.items()]}")
         
         # Download file from S3 URL
         file_response = await self.client.get(file_url)

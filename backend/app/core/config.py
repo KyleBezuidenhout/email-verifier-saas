@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     VAYNE_API_POLLING_INTERVAL: int = 5000  # 5 seconds in milliseconds (deprecated, kept for compatibility)
     VAYNE_API_POLLING_MAX_INTERVAL: int = 30000  # 30 seconds max in milliseconds (deprecated)
     WEBHOOK_BASE_URL: str = "https://www.billionverifier.io"  # Base URL for webhook endpoints
+    
+    # Vayne Worker Configuration
+    VAYNE_WORKER_POLL_INTERVAL: int = 10  # Seconds between status polls (matches test file poll_interval=10)
+    VAYNE_WORKER_MAX_RETRIES: int = 3  # Max retries for failed operations
+    VAYNE_WORKER_BACKOFF_FACTOR: float = 2.0  # Exponential backoff multiplier
+    VAYNE_WORKER_MAX_WAIT_MINUTES: int = 30  # Maximum wait time for order completion (matches test file max_wait_minutes=30)
 
     # App
     APP_NAME: str = "Email Verifier SaaS"
