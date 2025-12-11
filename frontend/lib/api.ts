@@ -553,6 +553,12 @@ class ApiClient {
     return response.blob();
   }
 
+  async deleteVayneOrder(orderId: string): Promise<{ status: string; message: string }> {
+    return this.request(`/api/v1/vayne/orders/${orderId}`, {
+      method: "DELETE",
+    });
+  }
+
   async getVayneOrderHistory(limit = 10, offset = 0, status?: string): Promise<{
     orders: VayneOrder[];
     total: number;

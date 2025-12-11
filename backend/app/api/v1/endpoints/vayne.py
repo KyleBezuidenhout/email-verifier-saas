@@ -402,6 +402,39 @@ async def export_order(
         )
 
 
+@router.delete("/orders/{order_id}")
+async def delete_order(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete an order from the user's order history. Note: Credits are not refunded."""
+    try:
+        order_uuid = UUID(order_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid order ID format"
+        )
+    
+    order = db.query(VayneOrder).filter(
+        VayneOrder.id == order_uuid,
+        VayneOrder.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Delete the order (credits are not refunded - this is just removing from history)
+    db.delete(order)
+    db.commit()
+    
+    return {"status": "ok", "message": "Order deleted successfully"}
+
+
 @router.get("/orders", response_model=VayneOrderListResponse)
 async def get_order_history(
     limit: int = Query(10, ge=1, le=100),

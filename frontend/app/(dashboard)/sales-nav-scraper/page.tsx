@@ -45,6 +45,11 @@ export default function SalesNavScraperPage() {
   const [error, setError] = useState("");
   const [showErrorModal, setShowErrorModal] = useState(false);
   
+  // Delete confirmation state
+  const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingOrder, setDeletingOrder] = useState(false);
+  
   // Loading state
   const [initialLoading, setInitialLoading] = useState(true);
   
@@ -254,6 +259,39 @@ export default function SalesNavScraperPage() {
     }
   };
 
+  const handleDeleteClick = (orderId: string) => {
+    setOrderToDelete(orderId);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!orderToDelete) return;
+    
+    setDeletingOrder(true);
+    try {
+      await apiClient.deleteVayneOrder(orderToDelete);
+      await loadOrderHistory();
+      
+      // If deleted order was the current order, clear it
+      if (currentOrder && currentOrder.id === orderToDelete) {
+        setCurrentOrder(null);
+      }
+      
+      setShowDeleteModal(false);
+      setOrderToDelete(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete order");
+      setShowErrorModal(true);
+    } finally {
+      setDeletingOrder(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setOrderToDelete(null);
+  };
+
   useEffect(() => {
     loadOrderHistory();
   }, [loadOrderHistory]);
@@ -292,11 +330,54 @@ export default function SalesNavScraperPage() {
         </p>
       </div>
 
+      {/* Notice about charges */}
+      <div className="mb-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <svg className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <p className="text-sm text-yellow-400">
+            <strong>Important:</strong> Once scraping has started, you will still be charged for all leads scraped even if you cancel or delete the order from your order history.
+          </p>
+        </div>
+      </div>
+
       <ErrorModal
         isOpen={showErrorModal}
         message={error}
         onClose={() => setShowErrorModal(false)}
       />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-apple-surface border border-apple-border rounded-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-apple-text mb-4">Delete Order</h3>
+            <p className="text-sm text-apple-text-muted mb-6">
+              Are you sure you want to delete this order from your order history? 
+              <strong className="text-apple-text block mt-2">
+                You will still be charged for all leads scraped, even if you delete the order.
+              </strong>
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancelDelete}
+                disabled={deletingOrder}
+                className="flex-1 px-4 py-2 bg-apple-bg border border-apple-border text-apple-text rounded-lg hover:bg-apple-card transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deletingOrder}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {deletingOrder ? "Deleting..." : "Delete Order"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* LinkedIn Cookie Input Card */}
       <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
@@ -689,7 +770,7 @@ export default function SalesNavScraperPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-apple-text-muted capitalize">{order.export_format}</td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 items-center">
                           {order.status === "completed" && (
                             <>
                               <button
@@ -711,6 +792,15 @@ export default function SalesNavScraperPage() {
                               Retry
                             </button>
                           )}
+                          <button
+                            onClick={() => handleDeleteClick(order.id)}
+                            className="text-xs px-2 py-1 bg-red-500/20 text-red-400 border border-red-500/30 rounded hover:bg-red-500/30 transition-colors"
+                            title="Delete order"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
                         </div>
                       </td>
                     </tr>
