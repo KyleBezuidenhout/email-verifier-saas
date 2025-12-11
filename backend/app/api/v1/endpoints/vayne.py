@@ -8,7 +8,7 @@ Backend proxy for Vayne API calls to:
 - Store order history
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -85,6 +85,10 @@ async def update_auth(
         vayne_client = get_vayne_client()
         result = await vayne_client.update_authentication(auth_data.li_at_cookie)
         
+        # Client returns: { "linkedin_cookie": "...", "message": "..." }
+        # Use the cookie from response or fallback to provided cookie
+        stored_cookie = result.get("linkedin_cookie", auth_data.li_at_cookie)
+        
         # Store cookie in latest order (or create a placeholder order)
         # In production, encrypt this cookie
         latest_order = db.query(VayneOrder).filter(
@@ -92,20 +96,20 @@ async def update_auth(
         ).order_by(desc(VayneOrder.created_at)).first()
         
         if latest_order:
-            latest_order.linkedin_cookie = auth_data.li_at_cookie
+            latest_order.linkedin_cookie = stored_cookie
         else:
             # Create a placeholder order to store the cookie
             placeholder = VayneOrder(
                 user_id=current_user.id,
                 sales_nav_url="",
-                linkedin_cookie=auth_data.li_at_cookie,
+                linkedin_cookie=stored_cookie,
                 status="pending"
             )
             db.add(placeholder)
         
         db.commit()
         
-        return VayneAuthUpdateResponse(message="LinkedIn authentication updated successfully")
+        return VayneAuthUpdateResponse(message=result.get("message", "LinkedIn authentication updated successfully"))
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -148,6 +152,7 @@ async def check_url(
         vayne_client = get_vayne_client()
         check_result = await vayne_client.check_url(url_data.sales_nav_url)
         
+        # Client now returns: { "is_valid": bool, "estimated_results": int, "type": str, "error": str }
         return VayneUrlCheckResponse(
             is_valid=check_result.get("is_valid", False),
             estimated_results=check_result.get("estimated_results"),
@@ -209,15 +214,30 @@ async def create_order(
             webhook_url=webhook_url
         )
         
+        # Vayne client now returns the order object directly (already extracted from nested response)
+        # Extract order ID (already converted to string by client)
+        vayne_order_id = str(vayne_order.get("id", ""))
+        
+        # Map scraping_status to our status
+        scraping_status = vayne_order.get("scraping_status", "initialization")
+        status_mapping = {
+            "initialization": "pending",
+            "scraping": "processing",
+            "finished": "completed",
+            "failed": "failed"
+        }
+        order_status = status_mapping.get(scraping_status, "pending")
+        
         # Store order in database
         order = VayneOrder(
             user_id=current_user.id,
-            vayne_order_id=vayne_order.get("id") or str(vayne_order.get("order_id", "")),
+            vayne_order_id=vayne_order_id,
             sales_nav_url=order_data.sales_nav_url,
             export_format=order_data.export_format,
             only_qualified=order_data.only_qualified,
             linkedin_cookie=latest_order.linkedin_cookie,
-            status="pending"
+            status=order_status,
+            leads_found=vayne_order.get("total", estimated_leads)  # Use total from order or fallback to estimated
         )
         db.add(order)
         db.commit()
@@ -387,57 +407,86 @@ async def get_order_history(
 
 @router.post("/webhook")
 async def vayne_webhook(
-    payload: VayneWebhookPayload,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Webhook endpoint for Vayne API to send order status updates.
     This endpoint is public (no auth required) but validates payload structure.
+    Vayne may send nested order structure: { "order": { ... } } or flat structure.
     """
     try:
+        # Parse request body (may be nested or flat)
+        payload = await request.json()
+        
+        # Handle nested structure: { "order": { "id": 123, ... } }
+        if "order" in payload:
+            order_data = payload["order"]
+        else:
+            order_data = payload
+        
+        # Extract order ID (may be numeric)
+        order_id = str(order_data.get("id", ""))
+        
+        if not order_id:
+            print(f"⚠️ Webhook received without order ID: {payload}")
+            return {"status": "ok", "message": "No order ID provided (ignored)"}
+        
         # Find order by Vayne's order_id
         order = db.query(VayneOrder).filter(
-            VayneOrder.vayne_order_id == payload.order_id
+            VayneOrder.vayne_order_id == order_id
         ).first()
         
         if not order:
             # Order not found - might be from a different system or deleted
-            print(f"⚠️ Webhook received for unknown order_id: {payload.order_id}")
+            print(f"⚠️ Webhook received for unknown order_id: {order_id}")
             return {"status": "ok", "message": "Order not found (ignored)"}
         
-        # Update order with webhook data
-        order.status = payload.status
-        if payload.progress_percentage is not None:
-            order.progress_percentage = payload.progress_percentage
-        if payload.leads_found is not None:
-            order.leads_found = payload.leads_found
-        if payload.leads_qualified is not None:
-            order.leads_qualified = payload.leads_qualified
-        if payload.estimated_completion:
-            try:
-                # Parse estimated_completion if it's a datetime string
-                order.estimated_completion = payload.estimated_completion
-            except Exception:
-                pass
+        # Map scraping_status to our status values
+        scraping_status = order_data.get("scraping_status", order.status)
+        status_mapping = {
+            "initialization": "pending",
+            "scraping": "processing",
+            "finished": "completed",
+            "failed": "failed"
+        }
+        new_status = status_mapping.get(scraping_status, order.status)
+        order.status = new_status
+        
+        # Map progress percentage: (scraped / total) * 100
+        scraped = order_data.get("scraped", 0)
+        total = order_data.get("total", 0)
+        if total > 0:
+            order.progress_percentage = int((scraped / total) * 100)
+        elif order_data.get("progress_percentage") is not None:
+            order.progress_percentage = order_data.get("progress_percentage")
+        
+        # Map leads_found from matching or total
+        if "matching" in order_data:
+            order.leads_found = order_data.get("matching", 0)
+            order.leads_qualified = order_data.get("matching", 0) if order.only_qualified else order_data.get("matching", 0)
+        elif "total" in order_data:
+            order.leads_found = order_data.get("total", 0)
         
         # Set completed_at if order is completed
-        if payload.status == "completed":
+        if new_status == "completed":
             order.completed_at = datetime.utcnow()
-        elif payload.status == "failed":
-            # Store error message if available
-            if payload.error_message:
-                # Note: VayneOrder model might need an error_message field
-                # For now, we'll just log it
-                print(f"Order {payload.order_id} failed: {payload.error_message}")
+        elif new_status == "failed":
+            # Store error message if available (log for now, could add error_message field later)
+            error_msg = order_data.get("error") or order_data.get("error_message")
+            if error_msg:
+                print(f"Order {order_id} failed: {error_msg}")
         
         db.commit()
         db.refresh(order)
         
-        print(f"✅ Webhook processed for order {payload.order_id}: status={payload.status}")
+        print(f"✅ Webhook processed for order {order_id}: status={new_status}")
         return {"status": "ok", "message": "Webhook processed successfully"}
         
     except Exception as e:
         print(f"❌ Error processing webhook: {e}")
+        import traceback
+        traceback.print_exc()
         db.rollback()
         # Still return 200 to prevent Vayne from retrying
         return {"status": "error", "message": str(e)}

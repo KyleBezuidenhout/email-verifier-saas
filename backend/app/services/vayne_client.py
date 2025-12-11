@@ -82,21 +82,35 @@ class VayneClient:
 
     async def check_authentication(self, li_at_cookie: str) -> Dict[str, Any]:
         """Check if LinkedIn authentication is valid."""
-        # Vayne API endpoint to check auth status
-        # This is a placeholder - adjust based on actual Vayne API
-        return await self._request(
+        # Vayne API returns: { "linkedin_authentication": "active", "has_cookie": true }
+        response = await self._request(
             "GET",
-            "/api/linkedin_authentication",
-            params={"li_at": li_at_cookie}
+            "/api/linkedin_authentication"
         )
+        
+        # Map to our expected format
+        linkedin_auth = response.get("linkedin_authentication", "")
+        has_cookie = response.get("has_cookie", False)
+        
+        return {
+            "is_connected": linkedin_auth == "active" and has_cookie,
+            "linkedin_email": None  # Not provided by Vayne API
+        }
 
     async def update_authentication(self, li_at_cookie: str) -> Dict[str, Any]:
         """Update LinkedIn session cookie."""
-        return await self._request(
+        # Vayne API returns: { "linkedin_cookie": "AQEDARabcdef123456789..." }
+        response = await self._request(
             "PATCH",
             "/api/linkedin_authentication",
             data={"li_at_cookie": li_at_cookie}
         )
+        
+        # Return the cookie that was set
+        return {
+            "linkedin_cookie": response.get("linkedin_cookie", li_at_cookie),
+            "message": "LinkedIn authentication updated successfully"
+        }
 
     async def get_credits(self) -> Dict[str, Any]:
         """Get available credits and usage limits."""
@@ -104,11 +118,21 @@ class VayneClient:
 
     async def check_url(self, sales_nav_url: str) -> Dict[str, Any]:
         """Check if a Sales Navigator URL is valid and get estimated results."""
-        return await self._request(
+        # Vayne API returns: { "total": 1234, "type": "leads" }
+        response = await self._request(
             "POST",
             "/api/url_checks",
             data={"url": sales_nav_url}
         )
+        
+        total = response.get("total", 0)
+        
+        return {
+            "is_valid": total > 0,
+            "estimated_results": total,
+            "type": response.get("type", "leads"),
+            "error": None if total > 0 else "No leads found for this URL"
+        }
 
     async def create_order(
         self,
@@ -119,33 +143,91 @@ class VayneClient:
         webhook_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a new scraping order."""
+        # Vayne API expects: url, name, export_format, secondary_webhook, etc.
         order_data = {
-            "sales_nav_url": sales_nav_url,
+            "url": sales_nav_url,
             "export_format": export_format,
             "only_qualified": only_qualified,
-            "li_at_cookie": li_at_cookie,
         }
         
         # Add webhook URL if provided
         if webhook_url:
             order_data["secondary_webhook"] = webhook_url
         
-        return await self._request(
+        # Vayne API returns: { "order": { "id": 123, ... } }
+        response = await self._request(
             "POST",
             "/api/orders",
             data=order_data
         )
+        
+        # Extract order from nested response
+        order = response.get("order", {})
+        
+        # Convert numeric ID to string for consistency
+        if "id" in order:
+            order["id"] = str(order["id"])
+        
+        return order
 
     async def get_order(self, order_id: str) -> Dict[str, Any]:
         """Get order status and details."""
-        return await self._request("GET", f"/api/orders/{order_id}")
+        # Vayne API returns: { "order": { "id": 123, "scraping_status": "finished", ... } }
+        response = await self._request("GET", f"/api/orders/{order_id}")
+        
+        # Extract order from nested response
+        order = response.get("order", {})
+        
+        # Map scraping_status to our status values
+        scraping_status = order.get("scraping_status", "initialization")
+        status_mapping = {
+            "initialization": "pending",
+            "scraping": "processing",
+            "finished": "completed",
+            "failed": "failed"
+        }
+        order["status"] = status_mapping.get(scraping_status, "pending")
+        
+        # Map progress percentage: (scraped / total) * 100
+        scraped = order.get("scraped", 0)
+        total = order.get("total", 0)
+        if total > 0:
+            order["progress_percentage"] = int((scraped / total) * 100)
+        else:
+            order["progress_percentage"] = 0
+        
+        # Map matching to leads_found
+        order["leads_found"] = order.get("matching", order.get("total", 0))
+        order["leads_qualified"] = order.get("matching", 0) if order.get("only_qualified") else order.get("matching", 0)
+        
+        # Convert numeric ID to string
+        if "id" in order:
+            order["id"] = str(order["id"])
+        
+        return order
 
-    async def export_order(self, order_id: str) -> bytes:
+    async def export_order(self, order_id: str, export_format: str = "simple") -> bytes:
         """Export order results as CSV."""
-        url = f"{self.base_url}/api/orders/{order_id}/export"
-        response = await self.client.get(url)
-        response.raise_for_status()
-        return response.content
+        # Vayne API returns: { "order": { "exports": { "simple": { "file_url": "..." } } } }
+        response = await self._request(
+            "POST",
+            f"/api/orders/{order_id}/export",
+            data={"export_format": export_format}
+        )
+        
+        # Extract order from nested response
+        order = response.get("order", {})
+        exports = order.get("exports", {})
+        export_info = exports.get(export_format, {})
+        file_url = export_info.get("file_url")
+        
+        if not file_url:
+            raise Exception(f"Export file URL not available for format: {export_format}")
+        
+        # Download file from S3 URL
+        file_response = await self.client.get(file_url)
+        file_response.raise_for_status()
+        return file_response.content
 
     async def close(self):
         """Close the HTTP client."""
