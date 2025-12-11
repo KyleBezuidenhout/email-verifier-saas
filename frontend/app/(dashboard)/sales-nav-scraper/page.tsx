@@ -296,6 +296,18 @@ export default function SalesNavScraperPage() {
     loadOrderHistory();
   }, [loadOrderHistory]);
 
+  // Prevent body scroll when delete modal is open
+  useEffect(() => {
+    if (showDeleteModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showDeleteModal]);
+
   const handleClearForm = () => {
     setSalesNavUrl("");
     setUrlValidation(null);
@@ -350,8 +362,14 @@ export default function SalesNavScraperPage() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-apple-surface border border-apple-border rounded-xl p-6 max-w-md w-full mx-4">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={handleCancelDelete}
+        >
+          <div 
+            className="bg-apple-surface border border-apple-border rounded-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-semibold text-apple-text mb-4">Delete Order</h3>
             <p className="text-sm text-apple-text-muted mb-6">
               Are you sure you want to delete this order from your order history? 
@@ -361,16 +379,22 @@ export default function SalesNavScraperPage() {
             </p>
             <div className="flex gap-3">
               <button
-                onClick={handleCancelDelete}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCancelDelete();
+                }}
                 disabled={deletingOrder}
-                className="flex-1 px-4 py-2 bg-apple-bg border border-apple-border text-apple-text rounded-lg hover:bg-apple-card transition-colors text-sm font-medium disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-apple-bg border border-apple-border text-apple-text rounded-lg hover:bg-apple-card transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
-                onClick={handleConfirmDelete}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleConfirmDelete();
+                }}
                 disabled={deletingOrder}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deletingOrder ? "Deleting..." : "Delete Order"}
               </button>
@@ -793,7 +817,10 @@ export default function SalesNavScraperPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => handleDeleteClick(order.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick(order.id);
+                            }}
                             className="text-xs px-2 py-1 bg-red-500/20 text-red-400 border border-red-500/30 rounded hover:bg-red-500/30 transition-colors"
                             title="Delete order"
                           >
