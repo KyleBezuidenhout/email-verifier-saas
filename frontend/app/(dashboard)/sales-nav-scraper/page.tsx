@@ -478,8 +478,7 @@ export default function SalesNavScraperPage() {
                   e.stopPropagation();
                   handleCancelDelete();
                 }}
-                disabled={deletingOrder}
-                className="flex-1 px-4 py-2 bg-apple-bg border border-apple-border text-apple-text rounded-lg hover:bg-apple-card transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2 bg-apple-bg border border-apple-border text-apple-text rounded-lg hover:bg-apple-card transition-colors text-sm font-medium"
               >
                 Cancel
               </button>
