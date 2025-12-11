@@ -178,8 +178,11 @@ class VayneClient:
         # Extract order from nested response
         order = response.get("order", {})
         
-        # Map scraping_status to our status values
+        # Keep scraping_status in response for frontend polling
         scraping_status = order.get("scraping_status", "initialization")
+        order["scraping_status"] = scraping_status  # Keep original from Vayne
+        
+        # Map scraping_status to our status values (for backward compatibility)
         status_mapping = {
             "initialization": "pending",
             "scraping": "processing",

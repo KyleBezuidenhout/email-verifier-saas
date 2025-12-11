@@ -106,6 +106,7 @@ export interface VayneUrlCheck {
 export interface VayneOrder {
   id: string;
   status: 'queued' | 'pending' | 'processing' | 'completed' | 'failed';
+  scraping_status?: 'initialization' | 'scraping' | 'finished' | 'failed';  // Direct from Vayne API
   sales_nav_url: string;
   export_format: 'simple' | 'advanced';
   only_qualified: boolean;
@@ -115,6 +116,8 @@ export interface VayneOrder {
   estimated_completion?: string;
   created_at: string;
   completed_at?: string;
+  csv_file_path?: string;  // R2 path to exported CSV
+  vayne_order_id?: string;  // Vayne's order ID
 }
 
 export interface VayneOrderCreate {

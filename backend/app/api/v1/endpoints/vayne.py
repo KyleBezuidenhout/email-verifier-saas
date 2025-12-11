@@ -18,6 +18,7 @@ from datetime import datetime
 import io
 import csv
 import redis
+import boto3
 
 from app.db.session import get_db
 from app.models.user import User
@@ -41,6 +42,15 @@ from app.core.config import settings
 
 # Initialize Redis connection for queue
 redis_client = redis.from_url(settings.REDIS_URL)
+
+# Initialize S3 client for Cloudflare R2
+s3_client = boto3.client(
+    's3',
+    endpoint_url=settings.CLOUDFLARE_R2_ENDPOINT_URL,
+    aws_access_key_id=settings.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    region_name='auto'
+)
 
 router = APIRouter()
 
@@ -84,7 +94,7 @@ async def update_auth(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update LinkedIn session cookie for current user."""
+    """Update LinkedIn session cookie for current user and queue placeholder order."""
     try:
         vayne_client = get_vayne_client()
         result = await vayne_client.update_authentication(auth_data.li_at_cookie)
@@ -93,23 +103,38 @@ async def update_auth(
         # Use the cookie from response or fallback to provided cookie
         stored_cookie = result.get("linkedin_cookie", auth_data.li_at_cookie)
         
-        # Store cookie in latest order (or create a placeholder order)
-        # In production, encrypt this cookie
-        latest_order = db.query(VayneOrder).filter(
-            VayneOrder.user_id == current_user.id
+        # Check if there's already a queued order for this user (not yet started)
+        queued_order = db.query(VayneOrder).filter(
+            VayneOrder.user_id == current_user.id,
+            VayneOrder.status == "queued",
+            VayneOrder.sales_nav_url == ""  # Placeholder order
         ).order_by(desc(VayneOrder.created_at)).first()
         
-        if latest_order:
-            latest_order.linkedin_cookie = stored_cookie
+        if queued_order:
+            # Update existing queued order with new cookie
+            queued_order.linkedin_cookie = stored_cookie
+            order = queued_order
         else:
-            # Create a placeholder order to store the cookie
-            placeholder = VayneOrder(
+            # Create a placeholder order with "queued" status
+            # This will be updated when user clicks "Start Scraping"
+            order = VayneOrder(
                 user_id=current_user.id,
-                sales_nav_url="",
+                sales_nav_url="",  # Empty, will be filled when scraping starts
                 linkedin_cookie=stored_cookie,
-                status="pending"
+                status="queued"  # Already queued, ready for worker
             )
-            db.add(placeholder)
+            db.add(order)
+            db.commit()
+            db.refresh(order)
+            
+            # Immediately queue this order to Redis
+            try:
+                queue_name = "vayne-order-queue"
+                redis_client.lpush(queue_name, str(order.id))
+                print(f"✅ Queued placeholder Vayne order {order.id} to Redis queue '{queue_name}' (cookie added)")
+            except Exception as e:
+                print(f"⚠️ Failed to queue order to Redis: {e}")
+                # Don't fail the request, worker will pick it up later
         
         db.commit()
         
@@ -175,7 +200,7 @@ async def create_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new scraping order - queues it for worker processing."""
+    """Update queued order with URL details - order was already queued when cookie was added."""
     # Require cookie for each order
     if not order_data.li_at_cookie or not order_data.li_at_cookie.strip():
         raise HTTPException(
@@ -203,39 +228,58 @@ async def create_order(
                 detail=f"Insufficient credits. You have {current_user.credits} credits but this order requires approximately {estimated_leads} credits."
             )
         
-        # Create order record with "queued" status
-        # Worker will update cookie, create Vayne order, and update status
-        order = VayneOrder(
-            user_id=current_user.id,
-            sales_nav_url=order_data.sales_nav_url,
-            export_format=order_data.export_format,
-            only_qualified=order_data.only_qualified,
-            linkedin_cookie=order_data.li_at_cookie,  # Store cookie for worker
-            status="queued",  # Worker will process and update status
-            leads_found=estimated_leads,
-        )
-        db.add(order)
-        db.commit()
-        db.refresh(order)
+        # Find the queued order created when cookie was added
+        queued_order = db.query(VayneOrder).filter(
+            VayneOrder.user_id == current_user.id,
+            VayneOrder.status == "queued",
+            VayneOrder.sales_nav_url == ""  # Placeholder order
+        ).order_by(desc(VayneOrder.created_at)).first()
+        
+        if not queued_order:
+            # No queued order found - create new one and queue it
+            # This handles edge case where cookie wasn't added first
+            order = VayneOrder(
+                user_id=current_user.id,
+                sales_nav_url=order_data.sales_nav_url,
+                export_format=order_data.export_format,
+                only_qualified=order_data.only_qualified,
+                linkedin_cookie=order_data.li_at_cookie,
+                status="queued",
+                leads_found=estimated_leads,
+            )
+            db.add(order)
+            db.commit()
+            db.refresh(order)
+            
+            # Queue order for worker processing
+            try:
+                queue_name = "vayne-order-queue"
+                redis_client.lpush(queue_name, str(order.id))
+                print(f"✅ Queued Vayne order {order.id} to Redis queue '{queue_name}'")
+            except Exception as e:
+                print(f"⚠️ Failed to queue order to Redis: {e}")
+        else:
+            # Update existing queued order with URL details
+            queued_order.sales_nav_url = order_data.sales_nav_url
+            queued_order.export_format = order_data.export_format
+            queued_order.only_qualified = order_data.only_qualified
+            queued_order.linkedin_cookie = order_data.li_at_cookie  # Update cookie
+            queued_order.leads_found = estimated_leads
+            # Status remains "queued" - already in queue
+            db.commit()
+            db.refresh(queued_order)
+            order = queued_order
+            print(f"✅ Updated queued Vayne order {order.id} with URL details (already in queue)")
         
         # Deduct credits immediately (1 credit per lead)
         if not is_admin:
             current_user.credits -= estimated_leads
             db.commit()
         
-        # Queue order for worker processing
-        try:
-            queue_name = "vayne-order-queue"
-            redis_client.lpush(queue_name, str(order.id))
-            print(f"✅ Queued Vayne order {order.id} to Redis queue '{queue_name}'")
-        except Exception as e:
-            print(f"Failed to queue order: {e}")
-            # Order is still created, but worker won't process it automatically
-            # Could add retry logic or manual processing here
-        
+        # Order is already queued (from cookie step), so don't queue again
         return VayneOrderCreateResponse(
             order_id=str(order.id),
-            message="Order queued for processing"
+            message="Order created and queued successfully"
         )
         
     except HTTPException:
@@ -333,7 +377,7 @@ async def get_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get order status and details."""
+    """Get order status and details - always calls Vayne API directly for real-time status."""
     try:
         order_uuid = UUID(order_id)
     except ValueError:
@@ -353,21 +397,59 @@ async def get_order(
             detail="Order not found"
         )
     
-    # Sync with Vayne API if needed
-    await _sync_order_with_vayne(order, db)
+    # Always call Vayne API directly if we have a vayne_order_id
+    scraping_status = None
+    vayne_progress = order.progress_percentage
+    vayne_leads_found = order.leads_found
+    
+    if order.vayne_order_id:
+        try:
+            vayne_client = get_vayne_client()
+            vayne_order = await vayne_client.get_order(order.vayne_order_id)
+            
+            # Get scraping_status directly from Vayne API
+            scraping_status = vayne_order.get("scraping_status", "initialization")
+            
+            # Map Vayne statuses to our status values
+            status_mapping = {
+                "initialization": "initializing",
+                "scraping": "scraping",
+                "finished": "finished",
+                "failed": "failed"
+            }
+            mapped_status = status_mapping.get(scraping_status, "pending")
+            
+            # Update progress and leads from Vayne API
+            vayne_progress = vayne_order.get("progress_percentage", order.progress_percentage)
+            vayne_leads_found = vayne_order.get("leads_found", order.leads_found)
+            
+            # Update database if status changed (but keep scraping_status for frontend)
+            if mapped_status != order.status and order.status not in ["completed", "failed"]:
+                order.status = mapped_status
+                order.progress_percentage = vayne_progress
+                order.leads_found = vayne_leads_found
+                if mapped_status == "finished" and not order.completed_at:
+                    order.completed_at = datetime.utcnow()
+                db.commit()
+        except Exception as e:
+            # If Vayne API call fails, use database values
+            print(f"⚠️ Failed to get order from Vayne API: {e}")
+            scraping_status = None
     
     return VayneOrderResponse(
         id=str(order.id),
         status=order.status,
+        scraping_status=scraping_status,  # Direct from Vayne API
         sales_nav_url=order.sales_nav_url,
         export_format=order.export_format,
         only_qualified=order.only_qualified,
-        leads_found=order.leads_found,
+        leads_found=vayne_leads_found or order.leads_found,
         leads_qualified=order.leads_qualified,
-        progress_percentage=order.progress_percentage,
+        progress_percentage=vayne_progress or order.progress_percentage,
         estimated_completion=order.estimated_completion,
         created_at=order.created_at.isoformat(),
         completed_at=order.completed_at.isoformat() if order.completed_at else None,
+        csv_file_path=order.csv_file_path,
     )
 
 
@@ -377,7 +459,7 @@ async def export_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Export order results as CSV. Admin-only for security."""
+    """Export order results as CSV and store in R2. Called automatically when scraping finishes."""
     try:
         order_uuid = UUID(order_id)
     except ValueError:
@@ -397,23 +479,111 @@ async def export_order(
             detail="Order not found"
         )
     
-    if order.status != "completed":
+    if not order.vayne_order_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Order is not completed yet"
+            detail="Order has not been submitted to Vayne yet"
         )
     
-    # Only admin can download CSV (for security and credit control)
-    is_admin = current_user.email == ADMIN_EMAIL or getattr(current_user, 'is_admin', False)
-    if not is_admin:
+    # Check if scraping is finished by calling Vayne API
+    try:
+        vayne_client = get_vayne_client()
+        vayne_order = await vayne_client.get_order(order.vayne_order_id)
+        scraping_status = vayne_order.get("scraping_status", "initialization")
+        
+        if scraping_status != "finished":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Order scraping is not finished yet. Current status: {scraping_status}"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="CSV download is only available to administrators. Use 'Enrich Leads' button to process leads."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to check order status: {str(e)}"
+        )
+    
+    # If CSV already stored, return success
+    if order.csv_file_path:
+        return {"status": "success", "message": "CSV already exported", "csv_file_path": order.csv_file_path}
+    
+    # Export CSV from Vayne
+    try:
+        csv_data = await vayne_client.export_order(order.vayne_order_id, order.export_format)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to export CSV from Vayne: {str(e)}"
+        )
+    
+    # Store CSV in R2
+    csv_file_path = f"vayne-orders/{order.id}/export.csv"
+    try:
+        s3_client.put_object(
+            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+            Key=csv_file_path,
+            Body=csv_data,
+            ContentType="text/csv"
+        )
+        
+        # Update order with CSV file path
+        order.csv_file_path = csv_file_path
+        order.status = "completed"  # Mark as completed now that CSV is stored
+        if not order.completed_at:
+            order.completed_at = datetime.utcnow()
+        db.commit()
+        
+        print(f"✅ Stored CSV for order {order.id} in R2: {csv_file_path}")
+        
+        return {"status": "success", "message": "CSV exported and stored successfully", "csv_file_path": csv_file_path}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to store CSV in R2: {str(e)}"
+        )
+
+
+@router.get("/orders/{order_id}/csv")
+async def download_csv(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Download CSV file from R2 for an order."""
+    try:
+        order_uuid = UUID(order_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid order ID format"
+        )
+    
+    order = db.query(VayneOrder).filter(
+        VayneOrder.id == order_uuid,
+        VayneOrder.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    if not order.csv_file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CSV file not available for this order"
         )
     
     try:
-        vayne_client = get_vayne_client()
-        csv_data = await vayne_client.export_order(order.vayne_order_id or str(order.id))
+        # Download CSV from R2
+        response = s3_client.get_object(
+            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+            Key=order.csv_file_path
+        )
+        csv_data = response['Body'].read()
         
         return StreamingResponse(
             io.BytesIO(csv_data),
@@ -425,7 +595,7 @@ async def export_order(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to export order: {str(e)}"
+            detail=f"Failed to download CSV: {str(e)}"
         )
 
 

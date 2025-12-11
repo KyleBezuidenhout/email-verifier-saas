@@ -533,11 +533,19 @@ class ApiClient {
     return this.request(`/api/v1/vayne/orders/${orderId}`);
   }
 
-  async exportVayneOrder(orderId: string): Promise<Blob> {
-    const url = `${this.baseUrl}/api/v1/vayne/orders/${orderId}/export`;
+  async exportVayneOrder(orderId: string): Promise<{ status: string; message: string; csv_file_path?: string }> {
+    // This endpoint stores CSV in R2, doesn't return the file
+    return this.request<{ status: string; message: string; csv_file_path?: string }>(`/api/v1/vayne/orders/${orderId}/export`, {
+      method: "POST",
+    });
+  }
+
+  async downloadVayneOrderCSV(orderId: string): Promise<Blob> {
+    // This endpoint downloads CSV from R2
+    const url = `${this.baseUrl}/api/v1/vayne/orders/${orderId}/csv`;
     const token = this.getToken();
     const response = await fetch(url, {
-      method: "POST",
+      method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -547,7 +555,7 @@ class ApiClient {
       const error = await response.json().catch(() => ({
         detail: response.statusText,
       }));
-      throw new Error(error.detail || "Export failed");
+      throw new Error(error.detail || "Failed to download CSV");
     }
 
     return response.blob();

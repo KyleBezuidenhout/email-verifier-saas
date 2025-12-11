@@ -21,6 +21,7 @@ class VayneOrder(Base):
     progress_percentage = Column(Integer, default=0)
     estimated_completion = Column(String(255), nullable=True)
     linkedin_cookie = Column(Text, nullable=True)  # Store li_at cookie temporarily (encrypted in production)
+    csv_file_path = Column(String(500), nullable=True)  # R2 path to exported CSV file
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 

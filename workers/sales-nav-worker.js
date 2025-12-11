@@ -200,13 +200,12 @@ async function processOrder(orderId) {
     
     await updateVayneCookie(order.linkedin_cookie);
     
-    // Step 2: Create Vayne order
-    const webhookUrl = `${WEBHOOK_BASE_URL}/api/webhooks/vayne/orders`;
+    // Step 2: Create Vayne order (no webhook - using polling instead)
     const vayneOrder = await createVayneOrder({
       sales_nav_url: order.sales_nav_url,
       export_format: order.export_format,
       only_qualified: order.only_qualified,
-      webhook_url: webhookUrl,
+      // No webhook_url - frontend will poll Vayne API directly
     });
     
     // Step 3: Map Vayne status to our status
@@ -226,15 +225,11 @@ async function processOrder(orderId) {
       leads_found: vayneOrder.total || estimatedLeads,
     });
     
-    // Step 5: Deduct credits (if not admin and not already deducted)
-    // Note: Credits are deducted when order is created in backend, but we check here too
-    if (mappedStatus === 'pending' || mappedStatus === 'processing') {
-      // Order is now with Vayne - webhooks will update status
-      console.log(`✅ Order ${orderId} submitted to Vayne (ID: ${vayneOrder.id})`);
-      console.log(`   Status: ${mappedStatus}`);
-      console.log(`   Estimated leads: ${vayneOrder.total || estimatedLeads}`);
-      console.log(`   Webhooks will handle status updates`);
-    }
+    // Step 5: Order is now with Vayne - frontend will poll for status updates
+    console.log(`✅ Order ${orderId} submitted to Vayne (ID: ${vayneOrder.id})`);
+    console.log(`   Status: ${mappedStatus}`);
+    console.log(`   Estimated leads: ${vayneOrder.total || estimatedLeads}`);
+    console.log(`   Frontend will poll Vayne API for progress updates`);
     
     console.log(`\n========================================`);
     console.log(`Order ${orderId} processed successfully`);

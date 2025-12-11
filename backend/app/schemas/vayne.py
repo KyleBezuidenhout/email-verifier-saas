@@ -53,6 +53,7 @@ class VayneOrderCreateResponse(BaseModel):
 class VayneOrderResponse(BaseModel):
     id: str
     status: str  # pending, processing, completed, failed
+    scraping_status: Optional[str] = None  # Direct from Vayne: initialization, scraping, finished, failed
     sales_nav_url: str
     export_format: str
     only_qualified: bool
@@ -62,6 +63,7 @@ class VayneOrderResponse(BaseModel):
     estimated_completion: Optional[str] = None
     created_at: str
     completed_at: Optional[str] = None
+    csv_file_path: Optional[str] = None  # R2 path to exported CSV
 
     class Config:
         from_attributes = True

@@ -7,7 +7,7 @@ import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useRouter } from "next/navigation";
 
-const REFRESH_INTERVAL = 10000; // 10 seconds - refresh from our database (which syncs with Vayne API)
+const REFRESH_INTERVAL = 5000; // 5 seconds - poll Vayne API directly for real-time progress
 
 export default function SalesNavScraperPage() {
   const router = useRouter();
@@ -100,12 +100,28 @@ export default function SalesNavScraperPage() {
 
   const refreshOrderStatus = useCallback(async (orderId: string) => {
     try {
-      // Refresh from our database (webhooks keep it updated)
+      // Poll Vayne API directly for real-time status
       const order = await apiClient.getVayneOrder(orderId);
       setCurrentOrder(order);
       
+      // Parse scraping_status from Vayne API
+      const scrapingStatus = order.scraping_status;
+      
+      // If scraping is finished, call export endpoint to store CSV
+      if (scrapingStatus === "finished" && !order.csv_file_path) {
+        try {
+          await apiClient.exportVayneOrder(orderId);
+          // Refresh order to get updated csv_file_path
+          const updatedOrder = await apiClient.getVayneOrder(orderId);
+          setCurrentOrder(updatedOrder);
+        } catch (exportErr) {
+          console.error("Failed to export CSV:", exportErr);
+          // Continue polling - export might not be ready yet
+        }
+      }
+      
       // If order completed or failed, refresh credits and history
-      if (order.status === "completed" || order.status === "failed") {
+      if (order.status === "completed" || order.status === "failed" || scrapingStatus === "finished") {
         await loadCredits();
         await loadOrderHistory();
       }
@@ -156,9 +172,21 @@ export default function SalesNavScraperPage() {
     loadInitialData();
   }, [loadCredits, loadOrderHistory]);
 
-  // Refresh current order status from database (webhooks keep it updated)
+  // Poll Vayne API every 5 seconds until scraping is finished
   useEffect(() => {
-    if (currentOrder && (currentOrder.status === "pending" || currentOrder.status === "processing")) {
+    if (currentOrder && currentOrder.vayne_order_id) {
+      const scrapingStatus = currentOrder.scraping_status;
+      
+      // Stop polling when scraping is finished or failed
+      if (scrapingStatus === "finished" || scrapingStatus === "failed" || currentOrder.status === "failed") {
+        if (refreshTimer) {
+          clearInterval(refreshTimer);
+          setRefreshTimer(null);
+        }
+        return;
+      }
+      
+      // Poll every 5 seconds
       const timer = setInterval(() => {
         refreshOrderStatus(currentOrder.id);
       }, REFRESH_INTERVAL);
@@ -248,7 +276,7 @@ export default function SalesNavScraperPage() {
 
   const handleDownloadCSV = async (orderId: string) => {
     try {
-      const blob = await apiClient.exportVayneOrder(orderId);
+      const blob = await apiClient.downloadVayneOrderCSV(orderId);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -265,8 +293,8 @@ export default function SalesNavScraperPage() {
 
   const handleEnrichLeads = async (orderId: string) => {
     try {
-      // Download CSV from Vayne
-      const blob = await apiClient.exportVayneOrder(orderId);
+      // Download CSV from R2
+      const blob = await apiClient.downloadVayneOrderCSV(orderId);
       const text = await blob.text();
       const filename = `sales-nav-${orderId}.csv`;
       
@@ -752,19 +780,28 @@ export default function SalesNavScraperPage() {
               <span className="text-sm text-apple-text-muted">Status</span>
               <span
                 className={`px-2 py-1 text-xs rounded-full ${
-                  currentOrder.status === "completed"
+                  currentOrder.scraping_status === "finished"
                     ? "bg-green-500/20 text-green-400"
-                    : currentOrder.status === "failed"
+                    : currentOrder.scraping_status === "failed" || currentOrder.status === "failed"
                     ? "bg-red-500/20 text-red-400"
                     : currentOrder.status === "queued"
                     ? "bg-blue-500/20 text-blue-400"
                     : "bg-yellow-500/20 text-yellow-400"
                 }`}
               >
-                {currentOrder.status}
+                {currentOrder.scraping_status === "initialization" 
+                  ? "Initializing"
+                  : currentOrder.scraping_status === "scraping"
+                  ? "Scraping"
+                  : currentOrder.scraping_status === "finished"
+                  ? "Finished"
+                  : currentOrder.scraping_status === "failed"
+                  ? "Failed"
+                  : currentOrder.status}
               </span>
             </div>
-            {currentOrder && (currentOrder.status === "processing" || currentOrder.status === "pending" || currentOrder.status === "queued") && (
+            {currentOrder && currentOrder.vayne_order_id && currentOrder.scraping_status && 
+             currentOrder.scraping_status !== "finished" && currentOrder.scraping_status !== "failed" && (
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-apple-text-muted">Progress</span>
@@ -801,7 +838,7 @@ export default function SalesNavScraperPage() {
                 </span>
               </div>
             )}
-            {currentOrder.status === "completed" && (
+            {currentOrder.scraping_status === "finished" && currentOrder.csv_file_path && (
               <div className="flex gap-3 pt-4 border-t border-apple-border">
                 <button
                   onClick={() => handleDownloadCSV(currentOrder.id)}
@@ -811,7 +848,7 @@ export default function SalesNavScraperPage() {
                 </button>
                 <button
                   onClick={() => handleEnrichLeads(currentOrder.id)}
-                  className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
+                  className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
                 >
                   Enrich Leads
                 </button>
@@ -888,7 +925,7 @@ export default function SalesNavScraperPage() {
                       <td className="px-4 py-3 text-sm text-apple-text-muted capitalize">{order.export_format}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2 items-center">
-                          {order.status === "completed" && (
+                          {order.scraping_status === "finished" && order.csv_file_path && (
                             <>
                               <button
                                 onClick={(e) => {
