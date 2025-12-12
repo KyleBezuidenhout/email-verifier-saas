@@ -20,6 +20,7 @@ import csv
 import boto3
 import redis
 import logging
+import asyncio
 
 from app.db.session import get_db
 from app.core.config import settings
@@ -124,7 +125,11 @@ async def get_credits(
     """Get available credits and usage limits."""
     try:
         vayne_client = get_vayne_client()
-        credits_data = await vayne_client.get_credits()
+        # Add timeout to prevent hanging (10 seconds)
+        credits_data = await asyncio.wait_for(
+            vayne_client.get_credits(),
+            timeout=10.0
+        )
         
         # Map Vayne API response to our schema
         # Vayne API returns: credit_available, daily_limit_leads, daily_limit_accounts, enrichment_credits
@@ -135,7 +140,14 @@ async def get_credits(
             subscription_plan=credits_data.get("subscription_plan"),
             subscription_expires_at=credits_data.get("subscription_expires_at"),
         )
+    except asyncio.TimeoutError:
+        logger.error("Timeout fetching credits from Vayne API")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Timeout fetching credits. Please try again."
+        )
     except Exception as e:
+        logger.error(f"Failed to fetch credits: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch credits: {str(e)}"
@@ -807,7 +819,7 @@ async def get_order_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get order history for current user."""
+    """Get order history for current user - loads from database only (no external API calls)."""
     query = db.query(VayneOrder).filter(VayneOrder.user_id == current_user.id)
     
     if status_filter and status_filter != "all":
@@ -816,44 +828,24 @@ async def get_order_history(
     total = query.count()
     orders = query.order_by(desc(VayneOrder.created_at)).offset(offset).limit(limit).all()
     
-    # Note: Status updates are handled by the background worker and webhook
-    # No need to sync here - worker polls Vayne API and updates database
-    
-    # Build response with exports info for orders that likely have exports
+    # Build response from database only - no external API calls
+    # Exports info is fetched on-demand when user clicks download
+    # Status updates are handled by background worker and webhook
+    # Active orders are polled via the status endpoint for real-time updates
     order_responses = []
-    vayne_client = get_vayne_client()
     
     for order in orders:
-        exports_info = None
+        # Derive scraping_status from status for display
+        # Only active orders need real-time scraping_status (handled by polling via status endpoint)
         scraping_status = None
-        
-        # Fetch exports for completed orders or orders with vayne_order_id
-        if order.vayne_order_id and order.status in ["completed", "processing"]:
-            try:
-                vayne_order = await vayne_client.get_order(order.vayne_order_id)
-                scraping_status = vayne_order.get("scraping_status")
-                
-                # Extract exports if available
-                vayne_exports = vayne_order.get("exports", {})
-                if vayne_exports:
-                    simple_export = vayne_exports.get("simple", {})
-                    advanced_export = vayne_exports.get("advanced", {})
-                    
-                    # Only create exports_info if at least one export exists
-                    if simple_export or advanced_export:
-                        exports_info = VayneExportsInfo(
-                            simple=VayneExportInfo(
-                                status=simple_export.get("status", ""),
-                                file_url=simple_export.get("file_url")
-                            ) if simple_export and simple_export.get("status") else None,
-                            advanced=VayneExportInfo(
-                                status=advanced_export.get("status", ""),
-                                file_url=advanced_export.get("file_url")
-                            ) if advanced_export and advanced_export.get("status") else None
-                        )
-            except Exception as e:
-                # If fetching exports fails, continue without exports info
-                logger.debug(f"Failed to fetch exports for order {order.id}: {e}")
+        if order.status == "pending":
+            scraping_status = "initialization"
+        elif order.status == "processing":
+            scraping_status = "scraping"
+        elif order.status == "completed":
+            scraping_status = "finished"
+        elif order.status == "failed":
+            scraping_status = "failed"
         
         order_responses.append(
             VayneOrderResponse(
@@ -871,7 +863,7 @@ async def get_order_history(
                 created_at=order.created_at.isoformat(),
                 completed_at=order.completed_at.isoformat() if order.completed_at else None,
                 csv_file_path=order.csv_file_path,
-                exports=exports_info,
+                exports=None,  # Exports fetched on-demand when downloading
             )
         )
     
