@@ -55,7 +55,7 @@ from app.schemas.vayne import (
     VayneExportsInfo,
 )
 from app.services.vayne_client import get_vayne_client
-from app.services.vayne_enrichment import create_enrichment_job_from_order, create_placeholder_enrichment_job
+from app.services.vayne_enrichment import create_enrichment_job_from_order, create_placeholder_enrichment_job, mark_enrichment_job_scrape_failed
 from app.core.config import settings
 
 # Initialize S3 client for Cloudflare R2
@@ -78,6 +78,8 @@ router = APIRouter()
 # Ensures webhooks are processed one at a time to avoid race conditions
 WEBHOOK_LOCK_KEY = "vayne:webhook:lock"
 WEBHOOK_LOCK_TIMEOUT = 300  # 5 minutes max processing time per webhook
+WEBHOOK_RETRY_KEY = "vayne:webhook:retries"  # Track retry attempts
+MAX_WEBHOOK_RETRIES = 3  # Max retries before marking as failed
 
 
 async def acquire_webhook_lock(order_id: str, timeout: int = WEBHOOK_LOCK_TIMEOUT) -> bool:
@@ -136,6 +138,55 @@ async def process_webhook_sequentially(order_id: str, process_func):
                 return await process_func()
             finally:
                 release_webhook_lock(order_id)
+
+
+async def track_webhook_retry(vayne_order_id: str) -> int:
+    """
+    Track webhook retry attempts for an order.
+    Returns the current retry count.
+    """
+    retry_key = f"{WEBHOOK_RETRY_KEY}:{vayne_order_id}"
+    try:
+        retry_count = redis_client.incr(retry_key)
+        # Set expiration (24 hours) - retries should happen within this window
+        if retry_count == 1:
+            redis_client.expire(retry_key, 24 * 60 * 60)
+        return retry_count
+    except Exception as e:
+        logger.error(f"Failed to track webhook retry for order {vayne_order_id}: {e}")
+        return 0
+
+
+async def clear_webhook_retries(vayne_order_id: str):
+    """Clear retry count when webhook succeeds."""
+    retry_key = f"{WEBHOOK_RETRY_KEY}:{vayne_order_id}"
+    try:
+        redis_client.delete(retry_key)
+    except Exception as e:
+        logger.warning(f"Failed to clear webhook retries for order {vayne_order_id}: {e}")
+
+
+async def handle_webhook_max_retries_reached(order: VayneOrder, vayne_order_id: str, db: Session, error_reason: str):
+    """
+    Handle webhook failure after max retries reached.
+    Marks enrichment job as failed and order as failed.
+    """
+    try:
+        logger.error(f"❌ Webhook failed after {MAX_WEBHOOK_RETRIES} retries for order {order.id}: {error_reason}")
+        
+        # Mark order as failed
+        order.status = "failed"
+        db.commit()
+        db.refresh(order)
+        
+        # Mark placeholder enrichment job as failed
+        await mark_enrichment_job_scrape_failed(str(order.id), db, error_reason)
+        
+        logger.info(f"✅ Marked order {order.id} and enrichment job as failed after {MAX_WEBHOOK_RETRIES} webhook retries")
+    except Exception as e:
+        logger.error(f"❌ Failed to handle max retries for order {order.id}: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 @router.get("/auth", response_model=VayneAuthStatusResponse)
@@ -692,7 +743,21 @@ async def vayne_webhook(
             except Exception as e:
                 logger.error(f"❌ Failed to download CSV from file_url for order {order.id}: {e}")
                 db.rollback()
-                return {"status": "error", "message": f"Failed to download CSV: {str(e)}"}
+                
+                # Track retry attempt
+                retry_count = await track_webhook_retry(vayne_order_id)
+                
+                # If max retries reached, mark enrichment job and order as failed
+                if retry_count >= MAX_WEBHOOK_RETRIES:
+                    await handle_webhook_max_retries_reached(order, vayne_order_id, db, "CSV download failed")
+                    # Return 200 to stop retries
+                    return {"status": "error", "message": f"Failed after {MAX_WEBHOOK_RETRIES} retries: {str(e)}"}
+                
+                # Return 500 to trigger Vayne retry (if under max retries)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to download CSV: {str(e)}"
+                )
             
             # Store CSV in R2 (client-specific path: vayne-orders/{order.id}/export.csv)
             csv_file_path = f"vayne-orders/{order.id}/export.csv"
@@ -707,7 +772,21 @@ async def vayne_webhook(
             except Exception as e:
                 logger.error(f"❌ Failed to store CSV in R2 for order {order.id}: {e}")
                 db.rollback()
-                return {"status": "error", "message": f"Failed to store CSV: {str(e)}"}
+                
+                # Track retry attempt
+                retry_count = await track_webhook_retry(vayne_order_id)
+                
+                # If max retries reached, mark enrichment job and order as failed
+                if retry_count >= MAX_WEBHOOK_RETRIES:
+                    await handle_webhook_max_retries_reached(order, vayne_order_id, db, "CSV storage failed")
+                    # Return 200 to stop retries
+                    return {"status": "error", "message": f"Failed after {MAX_WEBHOOK_RETRIES} retries: {str(e)}"}
+                
+                # Return 500 to trigger Vayne retry (if under max retries)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to store CSV: {str(e)}"
+                )
             
             # Update order status to completed
             order.status = "completed"
@@ -722,6 +801,9 @@ async def vayne_webhook(
             db.refresh(order)
             
             logger.info(f"✅ Order {order.id} marked as completed")
+            
+            # Clear retry count on success
+            await clear_webhook_retries(vayne_order_id)
             
             # Immediately create enrichment job (client-specific via order.user_id)
             try:
@@ -757,6 +839,9 @@ async def vayne_webhook(
         result = await process_webhook_sequentially(vayne_order_id, process_webhook)
         return result
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (these are intentional 500s for retries)
+        raise
     except Exception as e:
         logger.error(f"❌ Error processing webhook: {e}")
         import traceback
@@ -765,8 +850,22 @@ async def vayne_webhook(
             db.rollback()
         except:
             pass
-        # Still return 200 to prevent Vayne from retrying
-        return {"status": "error", "message": str(e)}
+        
+        # Track retry attempt for general errors
+        if 'vayne_order_id' in locals():
+            retry_count = await track_webhook_retry(vayne_order_id)
+            
+            # If max retries reached, try to mark as failed
+            if retry_count >= MAX_WEBHOOK_RETRIES and 'order' in locals():
+                await handle_webhook_max_retries_reached(order, vayne_order_id, db, f"General error: {str(e)}")
+                # Return 200 to stop retries
+                return {"status": "error", "message": f"Failed after {MAX_WEBHOOK_RETRIES} retries: {str(e)}"}
+        
+        # Return 500 to trigger Vayne retry (if under max retries)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 
 # ============================================

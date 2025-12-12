@@ -10,6 +10,8 @@ import httpx
 from typing import Optional
 from sqlalchemy.orm import Session
 import boto3
+from datetime import datetime
+from uuid import UUID
 
 from app.core.config import settings
 from app.models.user import User
@@ -337,6 +339,48 @@ async def create_enrichment_job_from_order(order: VayneOrder, db: Session) -> Op
         
     except Exception as e:
         logger.error(f"Failed to create enrichment job from order {order.id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+async def mark_enrichment_job_scrape_failed(vayne_order_id: str, db: Session, error_reason: str = "Webhook failed after max retries"):
+    """
+    Mark placeholder enrichment job as failed when webhook fails after max retries.
+    Finds the job by vayne_order_id reference stored in input_file_path.
+    vayne_order_id is the order.id UUID string.
+    """
+    try:
+        # Find order by ID (vayne_order_id is actually the order.id UUID string)
+        try:
+            order_uuid = UUID(vayne_order_id)
+        except ValueError:
+            logger.warning(f"Invalid order ID format: {vayne_order_id}")
+            return None
+        
+        order = db.query(VayneOrder).filter(VayneOrder.id == order_uuid).first()
+        if not order:
+            logger.warning(f"Order {vayne_order_id} not found when marking enrichment job as failed")
+            return None
+        
+        # Find placeholder job
+        placeholder_job = db.query(Job).filter(
+            Job.user_id == order.user_id,
+            Job.status == "waiting_for_csv",
+            Job.input_file_path.like(f"vayne-order:{order.id}")
+        ).first()
+        
+        if placeholder_job:
+            placeholder_job.status = "failed"
+            placeholder_job.completed_at = datetime.utcnow()
+            db.commit()
+            logger.info(f"✅ Marked enrichment job {placeholder_job.id} as failed (scrape failed: {error_reason})")
+            return placeholder_job
+        else:
+            logger.warning(f"No placeholder enrichment job found for order {order.id} to mark as failed")
+            return None
+    except Exception as e:
+        logger.error(f"Failed to mark enrichment job as failed for order {vayne_order_id}: {e}")
         import traceback
         traceback.print_exc()
         return None
