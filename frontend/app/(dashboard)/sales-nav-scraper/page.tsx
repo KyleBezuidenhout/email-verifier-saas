@@ -373,11 +373,6 @@ export default function SalesNavScraperPage() {
     setLinkedinCookie(""); // Clear cookie
   };
 
-  const usagePercentage = credits && credits.daily_limit > 0 
-    ? (credits.leads_scraped_today / credits.daily_limit) * 100 
-    : 0;
-  const progressColor = usagePercentage < 50 ? "bg-green-500" : usagePercentage < 80 ? "bg-yellow-500" : "bg-red-500";
-
   // Show loading state while initial data is being fetched
   if (initialLoading) {
     return (
@@ -553,49 +548,6 @@ export default function SalesNavScraperPage() {
         </div>
       )}
 
-      {/* Credits & Limits Display */}
-      {credits && (
-        <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-apple-text">Credits & Limits</h3>
-            {credits?.subscription_plan && (
-              <span className="text-xs text-apple-text-muted">
-                Plan: {credits.subscription_plan}
-                {credits.subscription_expires_at && (
-                  <span className="ml-2">Expires: {new Date(credits.subscription_expires_at).toLocaleDateString()}</span>
-                )}
-              </span>
-            )}
-          </div>
-          <div className="space-y-3">
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-apple-text-muted">Available Credits</span>
-                <span className="font-medium text-apple-text">{credits?.available_credits?.toLocaleString() || 0}</span>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-apple-text-muted">Leads Scraped Today</span>
-                <span className="font-medium text-apple-text">
-                  {credits?.leads_scraped_today?.toLocaleString() || 0} / {credits?.daily_limit?.toLocaleString() || 0}
-                </span>
-              </div>
-              <div className="w-full bg-apple-bg rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all ${progressColor}`}
-                  style={{ width: `${Math.min(usagePercentage, 100)}%` }}
-                ></div>
-              </div>
-            </div>
-            {credits?.subscription_plan && (
-              <button className="w-full mt-3 px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors text-sm font-medium">
-                Upgrade Plan
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Sales Navigator URL Input */}
       <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">

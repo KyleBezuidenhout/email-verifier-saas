@@ -697,63 +697,55 @@ export default function AdminConsolePage() {
             </div>
           )}
 
-          {/* Vayne API Stats (Admin Only - Hidden from regular clients) */}
-          {vayneStats && (
+          {/* Credits & Limits Display */}
+          {vayneStats && !vayneStats.error && (
             <div className="bg-apple-surface border border-apple-border rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-apple-text mb-4">Vayne API Account</h3>
-              {vayneStats.error ? (
-                <div className="text-red-400 text-sm">
-                  Error loading Vayne stats: {vayneStats.error}
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-sm text-apple-text-muted">Account Balance</p>
-                      <p className="text-2xl font-bold text-apple-accent">{vayneStats.available_credits.toLocaleString()}</p>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-apple-border">
-                      <div>
-                        <p className="text-sm text-apple-text-muted">API Calls Today</p>
-                        <p className="text-lg font-semibold text-apple-text">{vayneStats.calls_today.toLocaleString()}</p>
-                      </div>
-                      {vayneStats.daily_limit > 0 && (
-                        <div className="text-right">
-                          <p className="text-sm text-apple-text-muted">Daily Limit</p>
-                          <p className="text-lg font-semibold text-apple-text">{vayneStats.daily_limit.toLocaleString()}</p>
-                        </div>
-                      )}
-                    </div>
-                    {(vayneStats.daily_limit_accounts !== undefined || vayneStats.enrichment_credits !== undefined) && (
-                      <div className="pt-2 border-t border-apple-border space-y-2">
-                        {vayneStats.daily_limit_accounts !== undefined && vayneStats.daily_limit_accounts > 0 && (
-                          <div>
-                            <p className="text-sm text-apple-text-muted">Daily Limit (Accounts)</p>
-                            <p className="text-lg font-semibold text-apple-text">{vayneStats.daily_limit_accounts.toLocaleString()}</p>
-                          </div>
-                        )}
-                        {vayneStats.enrichment_credits !== undefined && vayneStats.enrichment_credits > 0 && (
-                          <div>
-                            <p className="text-sm text-apple-text-muted">Enrichment Credits</p>
-                            <p className="text-lg font-semibold text-apple-text">{vayneStats.enrichment_credits.toLocaleString()}</p>
-                          </div>
-                        )}
-                      </div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-apple-text">Credits & Limits</h3>
+                {vayneStats?.subscription_plan && (
+                  <span className="text-xs text-apple-text-muted">
+                    Plan: {vayneStats.subscription_plan}
+                    {vayneStats.subscription_expires_at && (
+                      <span className="ml-2">Expires: {new Date(vayneStats.subscription_expires_at).toLocaleDateString()}</span>
                     )}
-                    {vayneStats.subscription_plan && (
-                      <div className="pt-2 border-t border-apple-border">
-                        <p className="text-sm text-apple-text-muted">Subscription Plan</p>
-                        <p className="text-sm font-medium text-apple-text">{vayneStats.subscription_plan}</p>
-                        {vayneStats.subscription_expires_at && (
-                          <p className="text-xs text-apple-text-muted mt-1">
-                            Expires: {new Date(vayneStats.subscription_expires_at).toLocaleDateString()}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-apple-text-muted">Available Credits</span>
+                    <span className="font-medium text-apple-text">{vayneStats?.available_credits?.toLocaleString() || 0}</span>
                   </div>
-                </>
-              )}
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-apple-text-muted">Leads Scraped Today</span>
+                    <span className="font-medium text-apple-text">
+                      {vayneStats?.leads_scraped_today?.toLocaleString() || 0} / {vayneStats?.daily_limit?.toLocaleString() || 0}
+                    </span>
+                  </div>
+                  <div className="w-full bg-apple-bg rounded-full h-2">
+                    {(() => {
+                      const usagePercentage = vayneStats && vayneStats.daily_limit > 0 
+                        ? (vayneStats.leads_scraped_today / vayneStats.daily_limit) * 100 
+                        : 0;
+                      const progressColor = usagePercentage < 50 ? "bg-green-500" : usagePercentage < 80 ? "bg-yellow-500" : "bg-red-500";
+                      return (
+                        <div
+                          className={`h-2 rounded-full transition-all ${progressColor}`}
+                          style={{ width: `${Math.min(usagePercentage, 100)}%` }}
+                        ></div>
+                      );
+                    })()}
+                  </div>
+                </div>
+                {vayneStats?.subscription_plan && (
+                  <button className="w-full mt-3 px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors text-sm font-medium">
+                    Upgrade Plan
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
