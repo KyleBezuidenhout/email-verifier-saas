@@ -33,6 +33,8 @@ export function getStatusColor(status: string): string {
       return "bg-apple-text-muted/20 text-apple-text-muted border border-apple-text-muted/30";
     case "failed":
       return "bg-apple-error/20 text-apple-error border border-apple-error/30";
+    case "waiting_for_csv":
+      return "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30";
     default:
       return "bg-apple-text-muted/20 text-apple-text-muted border border-apple-text-muted/30";
   }

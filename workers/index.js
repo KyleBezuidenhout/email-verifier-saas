@@ -1230,6 +1230,12 @@ async function processJobFromQueue(jobId) {
       return { status: 'cancelled', message: 'Job was cancelled' };
     }
     
+    // Check if job is waiting for CSV data
+    if (jobData.status === 'waiting_for_csv') {
+      console.log(`Job ${jobId} is waiting for CSV data, skipping...`);
+      return { status: 'waiting_for_csv', message: 'Job waiting for CSV data' };
+    }
+    
     // Update job status to processing
     await updateJobStatus(jobId, 'processing');
     

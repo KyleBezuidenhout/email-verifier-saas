@@ -87,9 +87,9 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-apple-text">
                   <div className="flex items-center gap-2">
                     <span>{job.id.slice(0, 8)}...</span>
-                    {job.source === "Sales Nav" && (
+                    {(job.source === "Sales Nav" || job.source === "Scraped") && (
                       <span className="px-2 py-0.5 text-xs font-medium bg-blue-500/20 text-blue-400 rounded-full">
-                        Sales Nav
+                        {job.source === "Scraped" ? "Scraped" : "Sales Nav"}
                       </span>
                     )}
                   </div>
@@ -107,10 +107,11 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                       job.status === "processing" ? "badge-warning" :
                       job.status === "failed" ? "badge-error" :
                       job.status === "cancelled" ? "badge-info" :
+                      job.status === "waiting_for_csv" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" :
                       "badge-info"
                     }`}
                   >
-                    {job.status}
+                    {job.status === "waiting_for_csv" ? "Waiting for CSV" : job.status}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">

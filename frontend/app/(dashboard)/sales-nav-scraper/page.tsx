@@ -293,6 +293,10 @@ export default function SalesNavScraperPage() {
       // Order status will be refreshed automatically via polling (with delay)
       await loadCredits(); // Refresh credits after order creation
       
+      // Redirect to enrichment page to watch the job
+      // The enrichment job is created automatically with status "waiting_for_csv"
+      router.push("/find-valid-emails");
+      
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       if (errorMessage.includes("insufficient") || errorMessage.includes("credits")) {

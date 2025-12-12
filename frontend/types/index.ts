@@ -14,7 +14,7 @@ export interface User {
 export interface Job {
   id: string;
   user_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'waiting_for_csv';
   job_type?: 'enrichment' | 'verification';
   source?: string; // e.g., "Sales Nav"
   original_filename?: string;
