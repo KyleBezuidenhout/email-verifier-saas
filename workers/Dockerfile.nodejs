@@ -1,0 +1,14 @@
+FROM node:18-slim
+
+WORKDIR /app
+
+# Copy package files and install dependencies
+COPY workers/package*.json ./
+RUN npm ci --only=production
+
+# Copy worker script
+COPY workers/index.js .
+
+# Run the Node.js worker
+CMD ["node", "index.js"]
+
