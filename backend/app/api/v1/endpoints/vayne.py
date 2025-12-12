@@ -21,6 +21,7 @@ import boto3
 import redis
 import logging
 import asyncio
+import httpx
 
 from app.db.session import get_db
 from app.core.config import settings
@@ -710,7 +711,10 @@ async def export_order_download(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Download CSV file from R2 for an order (matches specification GET endpoint)."""
+    """Download CSV file from R2 for an order (matches specification GET endpoint).
+    Falls back to fetching from Vayne if CSV not yet stored in R2.
+    Ensures client-specific (user_id) and job-specific (order_id) access control.
+    """
     try:
         order_uuid = UUID(order_id)
     except ValueError:
@@ -719,6 +723,7 @@ async def export_order_download(
             detail="Invalid order ID format"
         )
     
+    # Client-specific and job-specific: Filter by both order_id and user_id
     order = db.query(VayneOrder).filter(
         VayneOrder.id == order_uuid,
         VayneOrder.user_id == current_user.id
@@ -730,32 +735,82 @@ async def export_order_download(
             detail="Order not found"
         )
     
-    if not order.csv_file_path:
+    csv_data = None
+    
+    # If CSV is already stored in R2, download it
+    if order.csv_file_path:
+        try:
+            response = s3_client.get_object(
+                Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+                Key=order.csv_file_path
+            )
+            csv_data = response['Body'].read()
+        except Exception as e:
+            logger.warning(f"Failed to download CSV from R2 for order {order.id} (user {current_user.id}): {e}")
+            # Fall through to try fetching from Vayne
+    
+    # If CSV not in R2, try to fetch from Vayne and store it
+    # This ensures job-specific access via order.vayne_order_id
+    if not csv_data and order.vayne_order_id:
+        try:
+            vayne_client = get_vayne_client()
+            
+            # Check if export is ready in Vayne (job-specific via vayne_order_id)
+            file_url = await vayne_client.check_export_ready(order.vayne_order_id, order.export_format or "advanced")
+            
+            if file_url:
+                # Download CSV from Vayne
+                async with httpx.AsyncClient() as client:
+                    file_response = await client.get(file_url)
+                    file_response.raise_for_status()
+                    csv_data = file_response.content
+                
+                # Store CSV in R2 for future use (client and job specific path)
+                try:
+                    csv_file_path = f"vayne-orders/{order.id}/export.csv"
+                    s3_client.put_object(
+                        Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+                        Key=csv_file_path,
+                        Body=csv_data,
+                        ContentType="text/csv"
+                    )
+                    order.csv_file_path = csv_file_path
+                    if order.status != "completed":
+                        order.status = "completed"
+                    if not order.completed_at:
+                        order.completed_at = datetime.utcnow()
+                    db.commit()
+                    logger.info(f"✅ Fetched and stored CSV for order {order.id} (user {current_user.id}) from Vayne")
+                except Exception as storage_error:
+                    logger.warning(f"⚠️ Failed to store CSV in R2 for order {order.id} (user {current_user.id}): {storage_error}")
+                    # Still return the CSV data even if storage fails
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="CSV file not available for this order. The order may still be processing."
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to fetch CSV from Vayne for order {order.id} (user {current_user.id}): {e}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="CSV file not available for this order. The order may still be processing."
+            )
+    
+    if not csv_data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CSV file not available for this order. The order may still be processing."
         )
     
-    try:
-        # Download CSV from R2
-        response = s3_client.get_object(
-            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-            Key=order.csv_file_path
-        )
-        csv_data = response['Body'].read()
-        
-        return StreamingResponse(
-            io.BytesIO(csv_data),
-            media_type="text/csv",
-            headers={
-                "Content-Disposition": f"attachment; filename=leads_export_{order_id}.csv"
-            }
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to export order. The order may still be processing."
-        )
+    return StreamingResponse(
+        io.BytesIO(csv_data),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=leads_export_{order_id}.csv"
+        }
+    )
 
 
 @router.get("/orders/{order_id}/csv")
