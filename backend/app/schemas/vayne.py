@@ -49,6 +49,7 @@ class VayneOrderCreateResponse(BaseModel):
     order_id: str
     status: str = "pending"
     message: str
+    name: str  # Order name from Vayne API (required)
 
 
 class VayneExportInfo(BaseModel):
@@ -77,6 +78,7 @@ class VayneOrderResponse(BaseModel):
     completed_at: Optional[str] = None
     csv_file_path: Optional[str] = None  # R2 path to exported CSV
     targeting: Optional[str] = None  # Job name/targeting description
+    name: Optional[str] = None  # Order name from Vayne API
     exports: Optional[VayneExportsInfo] = None  # Direct export URLs from Vayne API
 
     class Config:

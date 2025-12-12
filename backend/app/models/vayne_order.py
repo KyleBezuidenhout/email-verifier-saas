@@ -23,6 +23,7 @@ class VayneOrder(Base):
     linkedin_cookie = Column(Text, nullable=True)  # Store li_at cookie temporarily (encrypted in production)
     csv_file_path = Column(String(500), nullable=True)  # R2 path to exported CSV file
     targeting = Column(String(255), nullable=True)  # Job name/targeting description
+    name = Column(String(255), nullable=True)  # Order name from Vayne API (required for processing)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 

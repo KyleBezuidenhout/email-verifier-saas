@@ -359,6 +359,38 @@ async def create_order(
             linkedin_cookie=order_data.linkedin_cookie
         )
         
+        # Extract name from Vayne's response - required for database matching
+        order_name = vayne_order.get("name")
+        if not order_name:
+            # Name is required - mark order as failed
+            logger.error(f"❌ Vayne order creation returned no name. Vayne response: {vayne_order}")
+            
+            # Create order record with failed status
+            order = VayneOrder(
+                user_id=current_user.id,
+                sales_nav_url=order_data.sales_nav_url,
+                export_format="advanced",
+                only_qualified=False,
+                linkedin_cookie=order_data.linkedin_cookie,
+                status="failed",  # Mark as failed immediately
+                vayne_order_id=str(vayne_order.get("id", "")) if vayne_order.get("id") else None,  # Optional - allow None
+                leads_found=estimated_leads,
+                targeting=order_data.targeting,
+                name=None,  # No name available
+            )
+            db.add(order)
+            db.commit()
+            db.refresh(order)
+            
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Vayne order creation failed: order name is required but was not returned. The scraping job has been marked as failed."
+            )
+        
+        # Extract vayne_order_id (optional - allow None/empty)
+        vayne_order_id = vayne_order.get("id")
+        vayne_order_id_str = str(vayne_order_id) if vayne_order_id else None
+        
         # Store order in database
         order = VayneOrder(
             user_id=current_user.id,
@@ -367,9 +399,10 @@ async def create_order(
             only_qualified=False,  # Hardcoded per specification
             linkedin_cookie=order_data.linkedin_cookie,
             status="processing",  # Set to processing immediately - webhook will update to completed
-            vayne_order_id=str(vayne_order.get("id", "")),
+            vayne_order_id=vayne_order_id_str,  # Optional - can be None
             leads_found=estimated_leads,
             targeting=order_data.targeting,
+            name=order_name,  # Store name for database matching
         )
         db.add(order)
         
@@ -395,7 +428,8 @@ async def create_order(
             success=True,
             order_id=str(order.id),
             status="pending",
-            message="Scraping order created successfully"
+            message="Scraping order created successfully",
+            name=order_name  # Required field from Vayne's response
         )
         
     except HTTPException:
@@ -460,6 +494,8 @@ async def get_order(
         created_at=order.created_at.isoformat(),
         completed_at=order.completed_at.isoformat() if order.completed_at else None,
         csv_file_path=order.csv_file_path,
+        targeting=order.targeting,
+        name=order.name,  # Include name field
         exports=None,  # Exports handled by webhook
     )
 
@@ -633,6 +669,8 @@ async def get_order_history(
                 created_at=order.created_at.isoformat(),
                 completed_at=order.completed_at.isoformat() if order.completed_at else None,
                 csv_file_path=order.csv_file_path,
+                targeting=order.targeting,
+                name=order.name,  # Include name field
                 exports=None,  # Exports fetched on-demand when downloading
             )
         )
@@ -747,6 +785,14 @@ async def vayne_webhook(
         if not order:
             logger.warning(f"⚠️ Webhook received for unknown order_id: {vayne_order_id}")
             return {"status": "ok", "message": "Order not found (ignored)"}
+        
+        # Check if order has a name - required for database matching
+        # If name is None, mark as failed and skip webhook processing
+        if not order.name:
+            logger.error(f"❌ Webhook received for order {order.id} (Vayne ID: {vayne_order_id}) but order.name is None. Marking as failed and skipping webhook processing.")
+            order.status = "failed"
+            db.commit()
+            return {"status": "ok", "message": "Order has no name - marked as failed and webhook processing skipped"}
         
         # Process webhook sequentially using Redis lock
         async def process_webhook():
