@@ -1,5 +1,8 @@
 FROM node:18-slim
 
+# Explicitly set PATH to ensure node is accessible
+ENV PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
+
 WORKDIR /app
 
 # Copy package files and install dependencies
@@ -9,6 +12,6 @@ RUN npm ci --only=production
 # Copy worker script
 COPY workers/index.js .
 
-# Run the Node.js worker
-CMD ["node", "index.js"]
+# Run the Node.js worker using direct node command
+CMD ["/usr/local/bin/node", "index.js"]
 
