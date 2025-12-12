@@ -36,12 +36,6 @@ export default function SalesNavScraperPage() {
   const [refreshTimer, setRefreshTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
-  // Order history state
-  const [orderHistory, setOrderHistory] = useState<VayneOrder[]>([]);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [historyFilter, setHistoryFilter] = useState<string>("all");
-  const [historyTotal, setHistoryTotal] = useState(0);
-  const [loadingHistory, setLoadingHistory] = useState(false);
   
   // Deleted orders (client-side only, stored in localStorage)
   const [deletedOrderIds, setDeletedOrderIds] = useState<string[]>(() => {
@@ -82,23 +76,6 @@ export default function SalesNavScraperPage() {
     }
   }, []);
 
-  const loadOrderHistory = useCallback(async () => {
-    setLoadingHistory(true);
-    try {
-      const response = await apiClient.getVayneOrderHistory(10, (historyPage - 1) * 10, historyFilter === "all" ? undefined : historyFilter);
-      // Filter out deleted orders (client-side only)
-      const deletedSet = new Set(deletedOrderIds);
-      const filteredOrders = response.orders.filter(order => !deletedSet.has(order.id));
-      setOrderHistory(filteredOrders);
-      // Adjust total count based on filtered orders
-      const deletedOnPage = response.orders.filter(o => deletedSet.has(o.id)).length;
-      setHistoryTotal(Math.max(0, response.total - deletedOnPage));
-    } catch (err) {
-      console.error("Failed to load order history:", err);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, [historyPage, historyFilter, deletedOrderIds]);
 
   const refreshOrderStatus = useCallback(async (orderId: string, retryCount: number = 0) => {
     try {
@@ -133,7 +110,6 @@ export default function SalesNavScraperPage() {
       // If order completed or failed, refresh credits and history
       if (statusData.status === "completed" || statusData.status === "failed" || scrapingStatus === "finished") {
         await loadCredits();
-        await loadOrderHistory();
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -157,7 +133,7 @@ export default function SalesNavScraperPage() {
       // For other errors, log but continue polling (might be temporary network issues)
       console.error("❌ Failed to refresh order status:", err);
     }
-  }, [loadCredits, loadOrderHistory]);
+  }, [loadCredits]);
 
   const validateUrl = useCallback(async (url: string) => {
     if (!url.trim()) {
@@ -185,10 +161,7 @@ export default function SalesNavScraperPage() {
     const loadInitialData = async () => {
       try {
         setInitialLoading(true);
-        await Promise.all([
-          loadCredits(),
-          loadOrderHistory()
-        ]);
+        loadCredits();
       } catch (err) {
         console.error("Error loading initial data:", err);
         setError("Failed to load page data. Please refresh the page.");
@@ -198,7 +171,7 @@ export default function SalesNavScraperPage() {
       }
     };
     loadInitialData();
-  }, [loadCredits, loadOrderHistory]);
+  }, [loadCredits]);
 
   // Poll Vayne API every 5 seconds until scraping is finished
   // Add initial delay before first poll to avoid race conditions with order creation
@@ -275,31 +248,8 @@ export default function SalesNavScraperPage() {
     };
   }, [salesNavUrl, validateUrl]);
 
-  // Reload order history when filter or page changes
-  useEffect(() => {
-    loadOrderHistory();
-  }, [historyFilter, historyPage, loadOrderHistory]);
 
-  // Restore currentOrder from history if page is refreshed
-  // This ensures polling continues even after page reload
-  useEffect(() => {
-    if (orderHistory.length > 0 && !currentOrder) {
-      // Find the most recent active order (processing, pending, or not finished)
-      const activeOrder = orderHistory.find(
-        order => 
-          order.status === "processing" || 
-          order.status === "pending" ||
-          (order.scraping_status && 
-           order.scraping_status !== "finished" && 
-           order.scraping_status !== "failed" &&
-           !order.csv_file_path) // Not completed yet
-      );
-      if (activeOrder) {
-        console.log("🔄 Restored active order from history:", activeOrder.id);
-        setCurrentOrder(activeOrder);
-      }
-    }
-  }, [orderHistory, currentOrder]);
+
 
 
   const handleStartScraping = async () => {
@@ -342,7 +292,7 @@ export default function SalesNavScraperPage() {
       setLinkedinCookie(""); // Clear cookie after use (require fresh one for next scrape)
       // Order status will be refreshed automatically via polling (with delay)
       await loadCredits(); // Refresh credits after order creation
-      await loadOrderHistory(); // Refresh history
+      
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       if (errorMessage.includes("insufficient") || errorMessage.includes("credits")) {
@@ -358,125 +308,7 @@ export default function SalesNavScraperPage() {
     }
   };
 
-  const handleEnrichLeads = async (orderId: string) => {
-    try {
-      // First, trigger the export to ensure it's available (especially for older orders)
-      let exportResponse: { status: string; message: string; csv_file_path?: string } | null = null;
-      try {
-        exportResponse = await apiClient.exportVayneOrder(orderId);
-        
-        // If export was triggered but not yet ready, wait a moment
-        if (exportResponse.status === "export_triggered") {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        } else if (exportResponse.status === "success" && exportResponse.csv_file_path) {
-          // CSV is already stored, we can proceed immediately
-          // But still need to download it via GET endpoint
-        }
-      } catch (exportErr) {
-        // If export trigger fails, still try to download (might already be available)
-        console.warn("Failed to trigger export, attempting download anyway:", exportErr);
-      }
-      
-      // Download CSV from R2 or Vayne
-      let blob: Blob;
-      try {
-        blob = await apiClient.downloadVayneOrderCSV(orderId);
-      } catch (downloadErr) {
-        // If download fails, provide a helpful error message
-        const errorMessage = downloadErr instanceof Error ? downloadErr.message : String(downloadErr);
-        if (errorMessage.includes("404") || errorMessage.includes("not available")) {
-          throw new Error("CSV file not available for this order. The order may still be processing or the export may no longer be available from Vayne.");
-        }
-        throw new Error(`Export triggered but download failed: ${errorMessage}. Please try again in a few seconds.`);
-      }
-      
-      const text = await blob.text();
-      const filename = `sales-nav-${orderId}.csv`;
-      
-      // Create File object from CSV data
-      const csvFile = new File([text], filename, { type: "text/csv" });
-      
-      // Parse CSV header to auto-detect column mappings
-      // Handle quoted CSV fields properly
-      const parseCSVLine = (line: string): string[] => {
-        const result: string[] = [];
-        let current = '';
-        let inQuotes = false;
-        
-        for (let i = 0; i < line.length; i++) {
-          const char = line[i];
-          if (char === '"') {
-            inQuotes = !inQuotes;
-          } else if (char === ',' && !inQuotes) {
-            result.push(current.trim());
-            current = '';
-          } else {
-            current += char;
-          }
-        }
-        result.push(current.trim());
-        return result;
-      };
-      
-      const lines = text.split('\n').filter(line => line.trim());
-      if (lines.length === 0) {
-        throw new Error("CSV file is empty");
-      }
-      
-      const headers = parseCSVLine(lines[0]);
-      
-      // Auto-detect column mappings using same logic as FilePreview
-      const normalizeHeader = (h: string) => h.toLowerCase().replace(/[\s_-]/g, "");
-      const normalizedHeaders = headers.map(normalizeHeader);
-      
-      const COLUMN_VARIATIONS: Record<string, string[]> = {
-        first_name: ["firstname", "first", "fname", "givenname", "first_name"],
-        last_name: ["lastname", "last", "lname", "surname", "familyname", "last_name"],
-        website: ["website", "domain", "companywebsite", "companydomain", "url", "companyurl", "company_website", "corporatewebsite", "corporate_website", "corporate-website", "primarydomain", "organization_primary_domain", "organizationprimarydomain"],
-        company_size: ["companysize", "company_size", "size", "employees", "employeecount", "headcount", "organizationsize", "organization_size", "orgsize", "org_size", "teamsize", "team_size", "staffcount", "staff_count", "numberofemployees", "num_employees", "employeesnumber", "linkedincompanyemployeecount", "linkedin_company_employee_count", "linkedin-company-employee-count", "linkedincompanyemployee", "linkedin_company_employee", "linkedin-company-employee"],
-      };
-      
-      const autoDetectColumn = (targetColumn: string): string | undefined => {
-        const variations = COLUMN_VARIATIONS[targetColumn] || [];
-        for (let i = 0; i < normalizedHeaders.length; i++) {
-          if (variations.includes(normalizedHeaders[i])) {
-            return headers[i]; // Return original header name
-          }
-        }
-        return undefined;
-      };
-      
-      const columnMapping = {
-        first_name: autoDetectColumn("first_name"),
-        last_name: autoDetectColumn("last_name"),
-        website: autoDetectColumn("website"),
-        company_size: autoDetectColumn("company_size"),
-      };
-      
-      // Upload file directly with auto-mapping and source tag
-      const response = await apiClient.uploadFile(csvFile, {
-        column_first_name: columnMapping.first_name,
-        column_last_name: columnMapping.last_name,
-        column_website: columnMapping.website,
-        column_company_size: columnMapping.company_size,
-        source: "Sales Nav", // Tag the job
-      });
-      
-      // Redirect to enrich job history page
-      router.push(`/find-valid-emails?jobId=${response.job_id}`);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      // Provide user-friendly error messages
-      if (errorMessage.includes("not available") || errorMessage.includes("404")) {
-        setError("CSV file not available for this order. The order may still be processing or the export may no longer be available from Vayne.");
-      } else if (errorMessage.includes("Failed to prepare export")) {
-        setError("Failed to prepare export. The order may be too old or the export may no longer be available.");
-      } else {
-        setError(errorMessage || "Failed to start enrichment");
-      }
-      setShowErrorModal(true);
-    }
-  };
+
 
   const handleDeleteClick = (orderId: string) => {
     setOrderToDelete(orderId);
@@ -501,8 +333,7 @@ export default function SalesNavScraperPage() {
       }
     }
     
-    // Remove from current order history view
-    setOrderHistory(orderHistory.filter(order => order.id !== orderToDelete));
+
     
     // If deleted order was the current order, clear it
     if (currentOrder && currentOrder.id === orderToDelete) {
@@ -518,9 +349,7 @@ export default function SalesNavScraperPage() {
     setOrderToDelete(null);
   };
 
-  useEffect(() => {
-    loadOrderHistory();
-  }, [loadOrderHistory]);
+
 
   // Prevent body scroll when delete modal is open
   useEffect(() => {
@@ -960,146 +789,10 @@ export default function SalesNavScraperPage() {
                 </span>
               </div>
             )}
-            {(currentOrder.status === "completed" || currentOrder.scraping_status === "finished") && (
-              <div className="pt-4 border-t border-apple-border">
-                <button
-                  onClick={() => handleEnrichLeads(currentOrder.id)}
-                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
-                >
-                  Enrich Leads
-                </button>
-              </div>
-            )}
+
           </div>
         </div>
       )}
-
-      {/* Job History */}
-      <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-apple-text">Order History</h3>
-          <select
-            value={historyFilter}
-            onChange={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const newFilter = e.target.value;
-              setHistoryFilter(newFilter);
-              setHistoryPage(1);
-            }}
-            className="px-3 py-1 bg-apple-bg border border-apple-border rounded-lg text-sm text-apple-text focus:outline-none focus:ring-2 focus:ring-apple-accent"
-          >
-            <option value="all">All</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
-            <option value="processing">Processing</option>
-          </select>
-        </div>
-        {loadingHistory ? (
-          <div className="flex justify-center py-8">
-            <LoadingSpinner />
-          </div>
-        ) : orderHistory.length === 0 ? (
-          <p className="text-center text-apple-text-muted py-8">No orders found</p>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-apple-border">
-                <thead className="bg-apple-bg">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Targeting</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Leads</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Format</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-apple-border">
-                  {orderHistory.map((order) => (
-                    <tr key={order.id}>
-                      <td className="px-4 py-3 text-sm text-apple-text">{order.targeting || "N/A"}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`px-2 py-1 text-xs rounded-full ${
-                            order.status === "completed"
-                              ? "bg-green-500/20 text-green-400"
-                              : order.status === "failed"
-                              ? "bg-red-500/20 text-red-400"
-                              : "bg-yellow-500/20 text-yellow-400"
-                          }`}
-                        >
-                          {order.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-apple-text-muted">
-                        {new Date(order.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-apple-text">
-                        {order.leads_found?.toLocaleString() || "N/A"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-apple-text-muted capitalize">{order.export_format}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-2 items-center">
-                          {(order.status === "completed" || order.scraping_status === "finished") && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEnrichLeads(order.id);
-                              }}
-                              className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                            >
-                              Enrich
-                            </button>
-                          )}
-                          {order.status === "failed" && (
-                            <button className="text-xs px-2 py-1 bg-apple-surface border border-apple-border rounded hover:bg-apple-card">
-                              Retry
-                            </button>
-                          )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteClick(order.id);
-                            }}
-                            className="text-xs px-2 py-1 bg-red-500/20 text-red-400 border border-red-500/30 rounded hover:bg-red-500/30 transition-colors"
-                            title="Delete order"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {historyTotal > 10 && (
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-apple-border">
-                <button
-                  onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
-                  disabled={historyPage === 1}
-                  className="px-4 py-2 bg-apple-surface border border-apple-border rounded-lg hover:bg-apple-card disabled:opacity-50"
-                >
-                  Previous
-                </button>
-                <span className="text-sm text-apple-text-muted">
-                  Page {historyPage} of {Math.ceil(historyTotal / 10)}
-                </span>
-                <button
-                  onClick={() => setHistoryPage((p) => p + 1)}
-                  disabled={historyPage >= Math.ceil(historyTotal / 10)}
-                  className="px-4 py-2 bg-apple-surface border border-apple-border rounded-lg hover:bg-apple-card disabled:opacity-50"
-                >
-                  Next
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
 
       {/* FAQ Section */}
       <div className="bg-apple-surface border border-apple-border rounded-xl p-6">
