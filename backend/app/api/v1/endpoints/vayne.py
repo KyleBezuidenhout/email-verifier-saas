@@ -685,18 +685,36 @@ async def vayne_webhook(
         # Parse request body
         payload = await request.json()
         logger.info(f"📥 Webhook payload structure: {list(payload.keys())}")
+        logger.info(f"📥 Webhook payload (full): {payload}")
         
         # Extract body (Vayne sends nested structure)
         body_data = payload.get("body", payload)  # Fallback to flat structure for compatibility
         
-        # Extract event type and order ID
+        # Extract order_id - check both nested body and flat payload structure
+        # Handle None values properly (convert to empty string before string conversion)
+        order_id_raw = None
+        if "body" in payload and isinstance(payload.get("body"), dict):
+            # Nested structure: check body first
+            order_id_raw = payload.get("body", {}).get("order_id")
+        # If not found in body, check root level
+        if order_id_raw is None:
+            order_id_raw = payload.get("order_id")
+        
+        # Convert to string, handling None properly
+        if order_id_raw is None:
+            vayne_order_id = ""
+        else:
+            vayne_order_id = str(order_id_raw)
+        
+        logger.info(f"📥 Extracted order_id: {order_id_raw} (type: {type(order_id_raw).__name__}) -> '{vayne_order_id}'")
+        
+        # Extract other fields from body_data
         event = body_data.get("event", "")
-        vayne_order_id = str(body_data.get("order_id", ""))
         file_url = body_data.get("file_url")
         export_format = body_data.get("export_format", "simple")
         
-        if not vayne_order_id:
-            logger.warning(f"⚠️ Webhook received without order ID: {payload}")
+        if not vayne_order_id or vayne_order_id == "None":
+            logger.warning(f"⚠️ Webhook received without valid order ID. Raw payload: {payload}")
             return {"status": "ok", "message": "No order ID provided (ignored)"}
         
         if event != "order.completed":
