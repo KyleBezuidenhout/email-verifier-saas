@@ -1,5 +1,6 @@
 from typing import List, Dict, Optional
 import unicodedata
+import re
 
 # Prevalence scores by company size (based on frequency data)
 # Higher score = higher likelihood = verified first
@@ -107,6 +108,29 @@ PREVALENCE_MAP = {
 }
 
 
+def clean_first_name(first_name: str) -> str:
+    """
+    Clean first name by removing trailing initials (e.g., "n.", "m.").
+    
+    Examples:
+        "Chelsey n." -> "Chelsey"
+        "John m." -> "John"
+        "Sarah j." -> "Sarah"
+        "Mary-Anne" -> "Mary-Anne" (unchanged)
+    """
+    if not first_name:
+        return first_name
+    
+    # Strip whitespace
+    cleaned = first_name.strip()
+    
+    # Remove trailing pattern: space + single letter + optional period
+    # Pattern matches: " n.", " n", " m.", " m", etc.
+    cleaned = re.sub(r'\s+[a-zA-Z]\.?\s*$', '', cleaned)
+    
+    return cleaned.strip()
+
+
 def normalize_name(name: str) -> str:
     """Remove accents and convert to lowercase ASCII."""
     name = unicodedata.normalize('NFKD', name)
@@ -143,7 +167,6 @@ def get_company_size_key(company_size: Optional[str]) -> str:
     # Try numeric parsing
     try:
         # Extract first number from string
-        import re
         numbers = re.findall(r'\d+', size_str)
         if numbers:
             size_num = int(numbers[0])

@@ -14,7 +14,7 @@ from app.models.job import Job
 from app.models.lead import Lead
 from app.api.dependencies import get_current_user, ADMIN_EMAIL
 from app.schemas.job import JobResponse, JobUploadResponse, JobProgressResponse
-from app.services.permutation import generate_email_permutations, normalize_domain
+from app.services.permutation import generate_email_permutations, normalize_domain, clean_first_name
 from app.core.config import settings
 from app.core.security import decode_token
 import boto3
@@ -118,7 +118,7 @@ async def upload_file(
     remapped_rows = []
     for row in rows:
         remapped_row = {
-            'first_name': row.get(first_name_col, '').strip(),
+            'first_name': clean_first_name(row.get(first_name_col, '').strip()),
             'last_name': row.get(last_name_col, '').strip(),
             'website': row.get(website_col, '').strip(),
         }
@@ -306,7 +306,7 @@ async def upload_verify_file(
         
         remapped_row = {
             'email': email,
-            'first_name': row.get(first_name_col, '').strip() if first_name_col in actual_columns else '',
+            'first_name': clean_first_name(row.get(first_name_col, '').strip()) if first_name_col in actual_columns else '',
             'last_name': row.get(last_name_col, '').strip() if last_name_col in actual_columns else '',
         }
         # Extract domain from email if available

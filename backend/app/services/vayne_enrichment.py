@@ -18,7 +18,7 @@ from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
 from app.models.vayne_order import VayneOrder
-from app.services.permutation import generate_email_permutations, normalize_domain
+from app.services.permutation import generate_email_permutations, normalize_domain, clean_first_name
 from app.api.dependencies import ADMIN_EMAIL
 from app.services.vayne_client import get_vayne_client
 import redis
@@ -213,7 +213,7 @@ async def create_enrichment_job_from_order(order: VayneOrder, db: Session) -> Op
         remapped_rows = []
         for row in rows:
             remapped_row = {
-                'first_name': row.get(first_name_col, '').strip(),
+                'first_name': clean_first_name(row.get(first_name_col, '').strip()),
                 'last_name': row.get(last_name_col, '').strip(),
                 'website': row.get(website_col, '').strip(),
             }
