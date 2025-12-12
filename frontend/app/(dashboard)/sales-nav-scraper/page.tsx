@@ -360,8 +360,36 @@ export default function SalesNavScraperPage() {
 
   const handleEnrichLeads = async (orderId: string) => {
     try {
-      // Download CSV from R2
-      const blob = await apiClient.downloadVayneOrderCSV(orderId);
+      // First, trigger the export to ensure it's available (especially for older orders)
+      let exportResponse: { status: string; message: string; csv_file_path?: string } | null = null;
+      try {
+        exportResponse = await apiClient.exportVayneOrder(orderId);
+        
+        // If export was triggered but not yet ready, wait a moment
+        if (exportResponse.status === "export_triggered") {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } else if (exportResponse.status === "success" && exportResponse.csv_file_path) {
+          // CSV is already stored, we can proceed immediately
+          // But still need to download it via GET endpoint
+        }
+      } catch (exportErr) {
+        // If export trigger fails, still try to download (might already be available)
+        console.warn("Failed to trigger export, attempting download anyway:", exportErr);
+      }
+      
+      // Download CSV from R2 or Vayne
+      let blob: Blob;
+      try {
+        blob = await apiClient.downloadVayneOrderCSV(orderId);
+      } catch (downloadErr) {
+        // If download fails, provide a helpful error message
+        const errorMessage = downloadErr instanceof Error ? downloadErr.message : String(downloadErr);
+        if (errorMessage.includes("404") || errorMessage.includes("not available")) {
+          throw new Error("CSV file not available for this order. The order may still be processing or the export may no longer be available from Vayne.");
+        }
+        throw new Error(`Export triggered but download failed: ${errorMessage}. Please try again in a few seconds.`);
+      }
+      
       const text = await blob.text();
       const filename = `sales-nav-${orderId}.csv`;
       
@@ -437,7 +465,15 @@ export default function SalesNavScraperPage() {
       // Redirect to enrich job history page
       router.push(`/find-valid-emails?jobId=${response.job_id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start enrichment");
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      // Provide user-friendly error messages
+      if (errorMessage.includes("not available") || errorMessage.includes("404")) {
+        setError("CSV file not available for this order. The order may still be processing or the export may no longer be available from Vayne.");
+      } else if (errorMessage.includes("Failed to prepare export")) {
+        setError("Failed to prepare export. The order may be too old or the export may no longer be available.");
+      } else {
+        setError(errorMessage || "Failed to start enrichment");
+      }
       setShowErrorModal(true);
     }
   };
