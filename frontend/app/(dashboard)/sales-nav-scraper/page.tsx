@@ -358,47 +358,6 @@ export default function SalesNavScraperPage() {
     }
   };
 
-  const handleDownloadCSV = async (orderId: string) => {
-    try {
-      // First, get the order to check if export URLs are available
-      const order = await apiClient.getVayneOrder(orderId);
-      
-      // Check if we have direct export URLs from Vayne
-      const exportUrl = order.exports?.advanced?.file_url || order.exports?.simple?.file_url;
-      
-      if (exportUrl) {
-        // Download directly from Vayne's S3 URL
-        const response = await fetch(exportUrl);
-        if (!response.ok) {
-          throw new Error(`Failed to download CSV: ${response.statusText}`);
-        }
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `sales-nav-leads-${orderId}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
-        // Fall back to our API endpoint
-        const blob = await apiClient.downloadVayneOrderCSV(orderId);
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `sales-nav-leads-${orderId}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to download CSV");
-      setShowErrorModal(true);
-    }
-  };
-
   const handleEnrichLeads = async (orderId: string) => {
     try {
       // Download CSV from R2
@@ -966,16 +925,10 @@ export default function SalesNavScraperPage() {
               </div>
             )}
             {currentOrder.scraping_status === "finished" && (currentOrder.csv_file_path || currentOrder.exports?.advanced?.file_url || currentOrder.exports?.simple?.file_url) && (
-              <div className="flex gap-3 pt-4 border-t border-apple-border">
-                <button
-                  onClick={() => handleDownloadCSV(currentOrder.id)}
-                  className="flex-1 px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors text-sm font-medium"
-                >
-                  Download CSV
-                </button>
+              <div className="pt-4 border-t border-apple-border">
                 <button
                   onClick={() => handleEnrichLeads(currentOrder.id)}
-                  className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
                 >
                   Enrich Leads
                 </button>
@@ -1053,26 +1006,15 @@ export default function SalesNavScraperPage() {
                       <td className="px-4 py-3">
                         <div className="flex gap-2 items-center">
                           {order.scraping_status === "finished" && (order.csv_file_path || order.exports?.advanced?.file_url || order.exports?.simple?.file_url) && (
-                            <>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDownloadCSV(order.id);
-                                }}
-                                className="text-xs px-2 py-1 bg-apple-accent text-white rounded hover:bg-apple-accent/90"
-                              >
-                                Download
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleEnrichLeads(order.id);
-                                }}
-                                className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                              >
-                                Enrich
-                              </button>
-                            </>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEnrichLeads(order.id);
+                              }}
+                              className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                            >
+                              Enrich
+                            </button>
                           )}
                           {order.status === "failed" && (
                             <button className="text-xs px-2 py-1 bg-apple-surface border border-apple-border rounded hover:bg-apple-card">
