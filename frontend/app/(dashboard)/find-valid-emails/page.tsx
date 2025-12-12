@@ -59,7 +59,8 @@ export default function FindValidEmailsPage() {
 
   const loadJobs = async () => {
     try {
-      const jobList = await apiClient.getJobs();
+      // Only get enrichment jobs (exclude verification jobs)
+      const jobList = await apiClient.getJobs('enrichment');
       setJobs(jobList.sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ));
