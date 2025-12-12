@@ -569,7 +569,7 @@ async def export_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Export order results as CSV and store in R2. Called automatically when scraping finishes."""
+    """Export order results as CSV and store in R2. Only called when scraping is finished or completed."""
     try:
         order_uuid = UUID(order_id)
     except ValueError:
@@ -595,24 +595,50 @@ async def export_order(
             detail="Order has not been submitted to Vayne yet"
         )
     
-    # Check if scraping is finished by calling Vayne API
-    try:
-        vayne_client = get_vayne_client()
-        vayne_order = await vayne_client.get_order(order.vayne_order_id)
-        scraping_status = vayne_order.get("scraping_status", "initialization")
-        
-        if scraping_status != "finished":
+    # First check database status - if already completed, we can proceed
+    # If status is "processing" or "pending", we need to verify with Vayne API
+    db_status = order.status
+    scraping_status = None
+    vayne_client = get_vayne_client()
+    
+    # Only call Vayne API if status is not "completed" in database
+    if db_status != "completed":
+        try:
+            # Verify with Vayne API that scraping is finished
+            vayne_order = await vayne_client.get_order(order.vayne_order_id)
+            scraping_status = vayne_order.get("scraping_status", "initialization")
+            
+            # Only proceed if Vayne confirms status is "finished"
+            if scraping_status != "finished":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Order scraping is not finished yet. Current status: {scraping_status}. Please wait for the scraping job to complete before exporting."
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            # If Vayne API call fails and status is not completed in DB, reject the request
+            # This prevents calling export endpoint before job is ready
+            error_msg = str(e)
+            if "Max retries exceeded" in error_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Unable to verify order status with Vayne API. The scraping job may still be in progress. Please wait for the job to finish (this can take up to 30 minutes for large jobs) and try again later. Current database status: {db_status}"
+                )
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Order scraping is not finished yet. Current status: {scraping_status}"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to check order status: {str(e)}. Please ensure the scraping job has finished before exporting."
             )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to check order status: {str(e)}"
-        )
+    else:
+        # Status is "completed" in DB, so we can proceed
+        # Optionally verify with Vayne API, but don't fail if it's unavailable
+        try:
+            vayne_order = await vayne_client.get_order(order.vayne_order_id)
+            scraping_status = vayne_order.get("scraping_status", "finished")
+        except Exception as e:
+            # If Vayne API fails but DB says completed, log warning but proceed
+            logger.warning(f"Failed to verify order {order.id} with Vayne API, but DB status is completed. Proceeding with export. Error: {e}")
+            scraping_status = "finished"  # Assume finished if DB says completed
     
     # Helper function to extract exports info from Vayne response
     def get_exports_info(exports_data):
