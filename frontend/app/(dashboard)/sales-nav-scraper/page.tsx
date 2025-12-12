@@ -26,6 +26,7 @@ export default function SalesNavScraperPage() {
   const [urlDebounceTimer, setUrlDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   
   // Form state
+  const [jobName, setJobName] = useState("");
   const [exportFormat, setExportFormat] = useState<"simple" | "advanced">("simple");
   const [onlyQualified, setOnlyQualified] = useState(false);
   
@@ -315,11 +316,19 @@ export default function SalesNavScraperPage() {
       return;
     }
     
+    // Require job name
+    if (!jobName.trim()) {
+      setError("Please enter a name for your scraping job");
+      setShowErrorModal(true);
+      return;
+    }
+    
     setCreatingOrder(true);
     try {
       const orderData: VayneOrderCreate = {
         sales_nav_url: salesNavUrl,
         linkedin_cookie: linkedinCookie,  // Send cookie with order request
+        targeting: jobName.trim(),
       };
       
       const response = await apiClient.createVayneOrder(orderData);
@@ -531,6 +540,7 @@ export default function SalesNavScraperPage() {
   }, [showDeleteModal]);
 
   const handleClearForm = () => {
+    setJobName("");
     setSalesNavUrl("");
     setUrlValidation(null);
     setExportFormat("simple");
@@ -622,6 +632,24 @@ export default function SalesNavScraperPage() {
           </div>
         </div>
       )}
+
+      {/* Job Name Input */}
+      <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
+        <label className="block text-sm font-medium text-apple-text mb-2">
+          Job Name <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          value={jobName}
+          onChange={(e) => setJobName(e.target.value)}
+          placeholder="Enter a name for this scraping job (e.g., 'Q4 Sales Outreach')"
+          required
+          className="w-full px-4 py-3 bg-apple-bg border border-apple-border rounded-lg text-apple-text focus:outline-none focus:ring-2 focus:ring-apple-accent"
+        />
+        <p className="mt-2 text-xs text-apple-text-muted">
+          Give your scraping job a descriptive name to easily identify it in your order history
+        </p>
+      </div>
 
       {/* LinkedIn Cookie Input Card */}
       <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
@@ -990,7 +1018,7 @@ export default function SalesNavScraperPage() {
               <table className="min-w-full divide-y divide-apple-border">
                 <thead className="bg-apple-bg">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Order ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Targeting</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Date</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Leads</th>
@@ -1001,7 +1029,7 @@ export default function SalesNavScraperPage() {
                 <tbody className="divide-y divide-apple-border">
                   {orderHistory.map((order) => (
                     <tr key={order.id}>
-                      <td className="px-4 py-3 text-sm font-mono text-apple-text">{order.id.slice(0, 8)}...</td>
+                      <td className="px-4 py-3 text-sm text-apple-text">{order.targeting || "N/A"}</td>
                       <td className="px-4 py-3">
                         <span
                           className={`px-2 py-1 text-xs rounded-full ${

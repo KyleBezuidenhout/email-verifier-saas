@@ -118,6 +118,7 @@ export interface VayneOrder {
   completed_at?: string;
   csv_file_path?: string;  // R2 path to exported CSV
   vayne_order_id?: string;  // Vayne's order ID
+  targeting?: string;  // Job name/targeting description
   exports?: {
     simple?: {
       status: string;
@@ -133,5 +134,6 @@ export interface VayneOrder {
 export interface VayneOrderCreate {
   sales_nav_url: string;
   linkedin_cookie: string;  // Required for each order
+  targeting?: string;  // Job name/targeting description
 }
 

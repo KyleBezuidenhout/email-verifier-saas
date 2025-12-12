@@ -41,6 +41,7 @@ class VayneUrlCheckResponse(BaseModel):
 class VayneOrderCreateRequest(BaseModel):
     sales_nav_url: str
     linkedin_cookie: str  # Required for each order
+    targeting: Optional[str] = None  # Job name/targeting description
 
 
 class VayneOrderCreateResponse(BaseModel):
@@ -75,6 +76,7 @@ class VayneOrderResponse(BaseModel):
     created_at: str
     completed_at: Optional[str] = None
     csv_file_path: Optional[str] = None  # R2 path to exported CSV
+    targeting: Optional[str] = None  # Job name/targeting description
     exports: Optional[VayneExportsInfo] = None  # Direct export URLs from Vayne API
 
     class Config:

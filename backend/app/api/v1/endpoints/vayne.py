@@ -246,6 +246,7 @@ async def create_order(
             status="pending",
             vayne_order_id=str(vayne_order.get("id", "")),
             leads_found=estimated_leads,
+            targeting=order_data.targeting,
         )
         db.add(order)
         
