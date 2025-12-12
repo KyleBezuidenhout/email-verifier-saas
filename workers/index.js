@@ -1050,8 +1050,9 @@ console.log(`Error failover: Auto-switch to healthy key after ${ERROR_THRESHOLD}
 // Simple Redis list poller
 async function pollSimpleQueue() {
   const queueName = 'simple-email-verification-queue';
+  let lastQueuePollLog = 0; // Track last time we logged "waiting for jobs"
   
-  console.log(`\n[${new Date().toISOString()}] Starting simple queue poller for: ${queueName}`);
+  console.log(`\n[${new Date().toISOString()}] 🚀 Starting simple queue poller for: ${queueName}`);
   
   while (true) {
     try {
@@ -1060,7 +1061,7 @@ async function pollSimpleQueue() {
       
       if (result && result.element) {
         const jobIdStr = result.element;
-        console.log(`\n[${new Date().toISOString()}] ✅ Got job from queue: ${jobIdStr}`);
+        console.log(`\n[${new Date().toISOString()}] 📥 DEQUEUED job ${jobIdStr} from queue '${queueName}'`);
         
         try {
           await processJobFromQueue(jobIdStr);
@@ -1069,6 +1070,13 @@ async function pollSimpleQueue() {
           console.error(`\n[${new Date().toISOString()}] ❌ Error processing job ${jobIdStr}:`, error.message);
           console.error('Stack:', error.stack);
           // Job will remain in failed state, continue processing other jobs
+        }
+      } else {
+        // No job available, log periodically (every 30 seconds) to show worker is alive
+        const now = Date.now();
+        if (!lastQueuePollLog || now - lastQueuePollLog > 30000) {
+          console.log(`[${new Date().toISOString()}] ⏳ Waiting for jobs in queue '${queueName}'...`);
+          lastQueuePollLog = now;
         }
       }
     } catch (error) {
@@ -1232,7 +1240,8 @@ async function processJobFromQueue(jobId) {
     
     // Check if job is waiting for CSV data
     if (jobData.status === 'waiting_for_csv') {
-      console.log(`Job ${jobId} is waiting for CSV data, skipping...`);
+      console.log(`⏳ Job ${jobId} is waiting for CSV data (status: waiting_for_csv), skipping processing...`);
+      console.log(`   This job will be processed once the webhook updates it with CSV data`);
       return { status: 'waiting_for_csv', message: 'Job waiting for CSV data' };
     }
     
@@ -1399,9 +1408,16 @@ async function processJobFromQueue(jobId) {
     // ============================================
     // ENRICHMENT JOBS: Permutation logic with early exit
     // ============================================
-    console.log(`Enrichment job detected - using permutation logic with early exit`);
+    console.log(`\n========================================`);
+    console.log(`🔄 ENRICHMENT JOB ${jobId} - Starting processing`);
+    console.log(`Job status: ${jobData.status}`);
+    console.log(`Job type: ${jobData.job_type}`);
+    console.log(`Total leads (unique people): ${jobData.total_leads}`);
+    console.log(`Input file path: ${jobData.input_file_path || 'N/A'}`);
+    console.log(`========================================\n`);
     
     // Get all leads for this job
+    console.log(`📋 Fetching leads for job ${jobId}...`);
     const leadsResult = await pgPool.query(
       'SELECT * FROM leads WHERE job_id = $1 ORDER BY prevalence_score DESC',
       [jobId]
@@ -1413,13 +1429,22 @@ async function processJobFromQueue(jobId) {
     // Get unique people count from job (not permutations)
     const uniquePeopleCount = jobData.total_leads;
     
-    console.log(`Found ${totalPermutations} email permutations to verify for ${uniquePeopleCount} unique people`);
+    console.log(`✅ Found ${totalPermutations} email permutations to verify for ${uniquePeopleCount} unique people`);
     
     if (totalPermutations === 0) {
+      console.log(`⚠️ No leads found for job ${jobId} - marking as completed`);
       await updateJobStatus(jobId, 'completed', {
         completed_at: new Date(),
       });
       return { status: 'completed', message: 'No leads to process' };
+    }
+    
+    if (!jobData.input_file_path) {
+      console.error(`❌ CRITICAL: Job ${jobId} has no input_file_path - cannot process enrichment job`);
+      await updateJobStatus(jobId, 'failed', {
+        completed_at: new Date(),
+      });
+      return { status: 'failed', message: 'Job has no input file path' };
     }
     
     // ============================================
@@ -1574,8 +1599,22 @@ async function processJobFromQueue(jobId) {
     console.log(`========================================\n`);
     
   } catch (error) {
-    console.error(`Error processing job ${jobId}:`, error);
-    await updateJobStatus(jobId, 'failed');
+    console.error(`\n❌ ERROR processing enrichment job ${jobId}:`, error);
+    console.error(`Error message: ${error.message}`);
+    if (error.stack) {
+      console.error(`Error stack:`, error.stack);
+    }
+    
+    // Try to update job status to failed
+    try {
+      await updateJobStatus(jobId, 'failed', {
+        completed_at: new Date(),
+      });
+      console.log(`✅ Marked enrichment job ${jobId} as failed`);
+    } catch (updateError) {
+      console.error(`❌ Failed to update job ${jobId} status to failed:`, updateError);
+    }
+    
     throw error;
   }
 }

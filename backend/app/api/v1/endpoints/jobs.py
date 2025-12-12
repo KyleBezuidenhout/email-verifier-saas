@@ -233,10 +233,11 @@ async def upload_file(
         job_id_str = str(job.id)
         queue_name = "simple-email-verification-queue"
         redis_client.lpush(queue_name, job_id_str)
-        print(f"✅ Queued job {job.id} to Redis queue '{queue_name}'")
+        queue_length = redis_client.llen(queue_name)
+        print(f"📤 QUEUED job {job.id} to Redis queue '{queue_name}' (queue length: {queue_length})")
     except Exception as e:
         # If Redis fails, job will remain in pending state
-        print(f"Failed to queue job: {e}")
+        print(f"❌ Failed to queue job {job.id}: {e}")
         import traceback
         traceback.print_exc()
         pass
@@ -396,9 +397,10 @@ async def upload_verify_file(
         job_id_str = str(job.id)
         queue_name = "simple-email-verification-queue"
         redis_client.lpush(queue_name, job_id_str)
-        print(f"✅ Queued verification job {job.id} to Redis queue '{queue_name}'")
+        queue_length = redis_client.llen(queue_name)
+        print(f"📤 QUEUED verification job {job.id} to Redis queue '{queue_name}' (queue length: {queue_length})")
     except Exception as e:
-        print(f"Failed to queue job: {e}")
+        print(f"❌ Failed to queue verification job {job.id}: {e}")
         import traceback
         traceback.print_exc()
         pass
@@ -422,8 +424,22 @@ async def get_jobs(
         if job_type:
             query = query.filter(Job.job_type == job_type)
         
+        # NO status filtering - return all jobs including 'waiting_for_csv'
         jobs = query.order_by(desc(Job.created_at)).all()
+        
+        # Log status breakdown for debugging
+        status_counts = {}
+        for job in jobs:
+            status_counts[job.status] = status_counts.get(job.status, 0) + 1
+        
         print(f"Found {len(jobs)} jobs for user {current_user.id} (filter: {job_type or 'all'})")
+        print(f"Status breakdown: {status_counts}")
+        
+        # Verify waiting_for_csv jobs are included
+        waiting_jobs = [j for j in jobs if j.status == "waiting_for_csv"]
+        if waiting_jobs:
+            print(f"Including {len(waiting_jobs)} job(s) with 'waiting_for_csv' status")
+        
         return [JobResponse.model_validate(job) for job in jobs]
     except Exception as e:
         print(f"Error fetching jobs: {e}")

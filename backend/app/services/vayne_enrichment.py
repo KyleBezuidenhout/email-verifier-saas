@@ -46,10 +46,12 @@ async def create_placeholder_enrichment_job(order: VayneOrder, db: Session) -> O
     This allows job queuing to start immediately.
     """
     try:
+        logger.info(f"🔄 Creating placeholder enrichment job for order {order.id} (user {order.user_id})")
+        
         # Get user
         user = db.query(User).filter(User.id == order.user_id).first()
         if not user:
-            logger.error(f"User not found for order {order.id}")
+            logger.error(f"❌ User not found for order {order.id}")
             return None
         
         # Create placeholder enrichment job (no leads yet - will be added by webhook)
@@ -68,6 +70,7 @@ async def create_placeholder_enrichment_job(order: VayneOrder, db: Session) -> O
         db.add(job)
         db.commit()
         db.refresh(job)
+        logger.info(f"✅ Created placeholder job {job.id} with status 'waiting_for_csv'")
         
         # Store reference to vayne_order in job's extra_data (via input_file_path as metadata)
         # We'll use input_file_path to store the vayne_order_id temporarily
@@ -75,22 +78,28 @@ async def create_placeholder_enrichment_job(order: VayneOrder, db: Session) -> O
         job.input_file_path = f"vayne-order:{order.id}"
         db.commit()
         db.refresh(job)
+        logger.info(f"✅ Set input_file_path to 'vayne-order:{order.id}' for job {job.id}")
         
         # Queue job immediately (worker will check if CSV is available)
         try:
             job_id_str = str(job.id)
             queue_name = "simple-email-verification-queue"
             redis_client.lpush(queue_name, job_id_str)
-            logger.info(f"✅ Created and queued placeholder enrichment job {job.id} for order {order.id}")
+            queue_length = redis_client.llen(queue_name)
+            logger.info(f"📤 QUEUED placeholder enrichment job {job.id} to Redis queue '{queue_name}' for order {order.id} (queue length: {queue_length})")
         except Exception as e:
-            logger.warning(f"Failed to queue placeholder enrichment job {job.id}: {e}")
+            logger.warning(f"⚠️ Failed to queue placeholder enrichment job {job.id}: {e}")
+            import traceback
+            traceback.print_exc()
         
+        logger.info(f"✅ Placeholder enrichment job {job.id} fully created and ready for webhook (order {order.id})")
         return job
         
     except Exception as e:
-        logger.error(f"Failed to create placeholder enrichment job for order {order.id}: {e}")
+        logger.error(f"❌ Failed to create placeholder enrichment job for order {order.id}: {e}")
         import traceback
         traceback.print_exc()
+        db.rollback()
         return None
 
 
@@ -103,8 +112,11 @@ async def create_enrichment_job_from_order(order: VayneOrder, db: Session) -> Op
     This function is called by the webhook when order completes.
     """
     try:
+        logger.info(f"🔄 create_enrichment_job_from_order called for order {order.id} (user {order.user_id})")
+        
         # First, try to find existing placeholder job for this order
         # Look for jobs with input_file_path matching "vayne-order:{order.id}"
+        logger.info(f"🔍 Searching for placeholder job with input_file_path='vayne-order:{order.id}' for user {order.user_id}")
         placeholder_job = db.query(Job).filter(
             Job.user_id == order.user_id,
             Job.status == "waiting_for_csv",
@@ -114,14 +126,14 @@ async def create_enrichment_job_from_order(order: VayneOrder, db: Session) -> Op
         # Get user (needed for both paths)
         user = db.query(User).filter(User.id == order.user_id).first()
         if not user:
-            logger.error(f"User not found for order {order.id}")
+            logger.error(f"❌ User not found for order {order.id}")
             return None
         
         if placeholder_job:
-            logger.info(f"Found existing placeholder job {placeholder_job.id} for order {order.id} - updating with CSV data")
+            logger.info(f"✅ Found existing placeholder job {placeholder_job.id} (status: {placeholder_job.status}) for order {order.id} - updating with CSV data")
             job = placeholder_job
         else:
-            logger.info(f"No placeholder job found for order {order.id} - creating new job")
+            logger.warning(f"⚠️ No placeholder job found for order {order.id} - creating new job (this should not happen in normal flow)")
             # Create new job
             job = Job(
                 user_id=user.id,
@@ -264,13 +276,17 @@ async def create_enrichment_job_from_order(order: VayneOrder, db: Session) -> Op
             return None
         
         # Update job with CSV data (or create if new)
+        logger.info(f"📝 Updating job {job.id} with CSV data: {len(remapped_rows)} valid rows")
+        old_status = job.status
         job.original_filename = f"sales-nav-{order.id}.csv"
         job.total_leads = len(remapped_rows)
         job.status = "pending"  # Change from "waiting_for_csv" to "pending" so worker can process
+        logger.info(f"🔄 Changing job {job.id} status from '{old_status}' to 'pending'")
         
         # Store input file in R2
         input_file_path = f"jobs/{job.id}/input/sales-nav-{order.id}.csv"
         try:
+            logger.info(f"💾 Storing input CSV file to R2: {input_file_path}")
             s3_client.put_object(
                 Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
                 Key=input_file_path,
@@ -278,13 +294,17 @@ async def create_enrichment_job_from_order(order: VayneOrder, db: Session) -> Op
                 ContentType="text/csv"
             )
             job.input_file_path = input_file_path
+            logger.info(f"✅ Stored input file to R2: {input_file_path}")
         except Exception as e:
-            logger.error(f"Failed to store input file for job {job.id}: {e}")
+            logger.error(f"❌ Failed to store input file for job {job.id}: {e}")
+            import traceback
+            traceback.print_exc()
             db.delete(job)
             db.commit()
             return None
         
         # Create leads and generate permutations
+        logger.info(f"🔄 Creating leads and generating email permutations for {len(remapped_rows)} rows")
         leads_to_create = []
         for row in remapped_rows:
             first_name = row['first_name']
@@ -316,24 +336,49 @@ async def create_enrichment_job_from_order(order: VayneOrder, db: Session) -> Op
                 )
                 leads_to_create.append(lead)
         
+        logger.info(f"📊 Generated {len(leads_to_create)} leads (permutations) from {len(remapped_rows)} rows")
+        
         # Bulk insert leads
+        logger.info(f"💾 Bulk inserting {len(leads_to_create)} leads into database")
         db.bulk_save_objects(leads_to_create)
         
         # Deduct credits (skip for admin)
         if not is_admin:
+            logger.info(f"💰 Deducting {leads_count} credits from user {user.id} (had {user.credits}, will have {user.credits - leads_count})")
             user.credits -= leads_count
         
+        # Commit all changes (job status, leads, credits)
         db.commit()
         db.refresh(job)
+        
+        # Verify the status was actually updated
+        if job.status != "pending":
+            logger.error(f"❌ CRITICAL: Job {job.id} status is '{job.status}' but expected 'pending' after update!")
+            # Try to fix it
+            job.status = "pending"
+            db.commit()
+            db.refresh(job)
+            logger.warning(f"⚠️ Manually set job {job.id} status to 'pending'")
+        
+        logger.info(f"✅ Committed job {job.id} update: status='{job.status}', total_leads={job.total_leads}, input_file_path='{job.input_file_path}'")
+        
+        # Verify job is ready for processing
+        if job.status == "pending" and job.total_leads > 0 and job.input_file_path:
+            logger.info(f"✅ Job {job.id} is ready for processing: status={job.status}, total_leads={job.total_leads}, has_input_file=True")
+        else:
+            logger.warning(f"⚠️ Job {job.id} may not be ready: status={job.status}, total_leads={job.total_leads}, input_file_path={bool(job.input_file_path)}")
         
         # Queue job for processing
         try:
             job_id_str = str(job.id)
             queue_name = "simple-email-verification-queue"
             redis_client.lpush(queue_name, job_id_str)
-            logger.info(f"✅ Created and queued enrichment job {job.id} from scraping order {order.id}")
+            queue_length = redis_client.llen(queue_name)
+            logger.info(f"📤 QUEUED enrichment job {job.id} to Redis queue '{queue_name}' (status: {job.status}, total_leads: {job.total_leads}, queue length: {queue_length})")
         except Exception as e:
-            logger.warning(f"Failed to queue enrichment job {job.id}: {e}")
+            logger.error(f"❌ Failed to queue enrichment job {job.id}: {e}")
+            import traceback
+            traceback.print_exc()
         
         return job
         

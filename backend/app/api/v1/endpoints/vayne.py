@@ -721,8 +721,11 @@ async def vayne_webhook(
         # Process webhook sequentially using Redis lock
         async def process_webhook():
             """Inner function to process the webhook (called with lock)."""
+            logger.info(f"🔒 Acquired webhook lock for order {order.id} (Vayne ID: {vayne_order_id})")
+            
             # Refresh order from DB to get latest state
             db.refresh(order)
+            logger.info(f"📋 Order {order.id} current status: {order.status}, csv_file_path: {order.csv_file_path}")
             
             # Check if already processed
             if order.status == "completed" and order.csv_file_path:
@@ -789,6 +792,7 @@ async def vayne_webhook(
                 )
             
             # Update order status to completed
+            logger.info(f"📝 Updating order {order.id} status to 'completed'")
             order.status = "completed"
             order.csv_file_path = csv_file_path
             order.completed_at = datetime.utcnow()
@@ -800,31 +804,34 @@ async def vayne_webhook(
             db.commit()
             db.refresh(order)
             
-            logger.info(f"✅ Order {order.id} marked as completed")
+            logger.info(f"✅ Order {order.id} marked as completed with CSV path: {csv_file_path}")
             
             # Clear retry count on success
             await clear_webhook_retries(vayne_order_id)
             
             # Immediately create enrichment job (client-specific via order.user_id)
+            logger.info(f"🔄 Starting enrichment job creation for order {order.id} (user {order.user_id})")
             try:
                 enrichment_job = await create_enrichment_job_from_order(order, db)
                 if enrichment_job:
-                    logger.info(f"✅ Automatically created enrichment job {enrichment_job.id} from scraping order {order.id} for user {order.user_id}")
+                    logger.info(f"✅ Successfully created/updated enrichment job {enrichment_job.id} (status: {enrichment_job.status}) from scraping order {order.id} for user {order.user_id}")
+                    logger.info(f"📊 Enrichment job {enrichment_job.id} has {enrichment_job.total_leads} total leads")
                     return {
                         "status": "ok",
                         "message": "Webhook processed successfully",
                         "order_id": str(order.id),
-                        "enrichment_job_id": str(enrichment_job.id)
+                        "enrichment_job_id": str(enrichment_job.id),
+                        "job_status": enrichment_job.status
                     }
                 else:
-                    logger.warning(f"⚠️ Failed to create enrichment job for order {order.id}")
+                    logger.warning(f"⚠️ create_enrichment_job_from_order returned None for order {order.id}")
                     return {
                         "status": "ok",
                         "message": "Order completed but enrichment job creation failed",
                         "order_id": str(order.id)
                     }
             except Exception as e:
-                logger.error(f"❌ Error creating enrichment job for order {order.id}: {e}")
+                logger.error(f"❌ Exception creating enrichment job for order {order.id}: {e}")
                 import traceback
                 traceback.print_exc()
                 # Still return success since order is completed
