@@ -34,6 +34,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from app.core.config import settings
 from app.services.vayne_client import get_vayne_client
+from app.services.vayne_enrichment import create_enrichment_job_from_order
+from app.models.vayne_order import VayneOrder
 
 # Redis connection
 redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
@@ -354,6 +356,37 @@ async def process_order(order_id: str):
             )
             
             log(f"Order {order_id} processing completed successfully", "success")
+            
+            # Step 8: Automatically create enrichment job from completed order
+            # This ensures enrichment happens even if client disconnects
+            try:
+                # Query order using SQLAlchemy ORM
+                # Create a new session for ORM queries (enrichment service needs ORM session)
+                orm_db = SessionLocal()
+                try:
+                    order = orm_db.query(VayneOrder).filter(VayneOrder.id == order_uuid).first()
+                    
+                    if order:
+                        # Refresh order to get latest state including csv_file_path
+                        orm_db.refresh(order)
+                        
+                        # Create enrichment job
+                        enrichment_job = await create_enrichment_job_from_order(order, orm_db)
+                        if enrichment_job:
+                            log(f"✅ Automatically created enrichment job {enrichment_job.id} from scraping order {order_id}", "success")
+                        else:
+                            log(f"⚠️ Failed to create enrichment job for order {order_id} (may be due to insufficient credits or invalid CSV)", "wait")
+                    else:
+                        log(f"⚠️ Could not find order {order_id} in database to create enrichment job", "wait")
+                finally:
+                    orm_db.close()
+            except Exception as e:
+                # Don't fail the entire order processing if enrichment job creation fails
+                log(f"⚠️ Failed to create enrichment job for order {order_id}: {e}", "error")
+                import traceback
+                traceback.print_exc()
+                # Continue - order is still marked as completed
+            
         except Exception as e:
             log(f"Failed to store CSV for order {order_id}: {e}", "error")
             update_order_status(db, order_uuid, status="failed")
