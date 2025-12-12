@@ -49,11 +49,13 @@ from app.schemas.vayne import (
     VayneOrderResponse,
     VayneOrderListResponse,
     VayneWebhookPayload,
+    VayneWebhookBody,
+    VayneWebhookRequest,
     VayneExportInfo,
     VayneExportsInfo,
 )
 from app.services.vayne_client import get_vayne_client
-from app.services.vayne_enrichment import create_enrichment_job_from_order
+from app.services.vayne_enrichment import create_enrichment_job_from_order, create_placeholder_enrichment_job
 from app.core.config import settings
 
 # Initialize S3 client for Cloudflare R2
@@ -65,10 +67,75 @@ s3_client = boto3.client(
     region_name='auto'
 )
 
-# Initialize Redis client for order queue
+# Initialize Redis client for order queue and webhook locking
 redis_client = redis.from_url(settings.REDIS_URL)
 
 router = APIRouter()
+
+# ============================================
+# REDIS-BASED SEQUENTIAL PROCESSING LOCK
+# ============================================
+# Ensures webhooks are processed one at a time to avoid race conditions
+WEBHOOK_LOCK_KEY = "vayne:webhook:lock"
+WEBHOOK_LOCK_TIMEOUT = 300  # 5 minutes max processing time per webhook
+
+
+async def acquire_webhook_lock(order_id: str, timeout: int = WEBHOOK_LOCK_TIMEOUT) -> bool:
+    """
+    Acquire a Redis lock for processing a webhook.
+    Returns True if lock acquired, False if another process is handling it.
+    """
+    lock_key = f"{WEBHOOK_LOCK_KEY}:{order_id}"
+    try:
+        # Try to set lock with expiration (NX = only if not exists)
+        acquired = redis_client.set(
+            lock_key,
+            datetime.utcnow().isoformat(),
+            ex=timeout,
+            nx=True
+        )
+        return bool(acquired)
+    except Exception as e:
+        logger.error(f"Failed to acquire webhook lock for order {order_id}: {e}")
+        return False
+
+
+def release_webhook_lock(order_id: str):
+    """Release the Redis lock for a webhook."""
+    lock_key = f"{WEBHOOK_LOCK_KEY}:{order_id}"
+    try:
+        redis_client.delete(lock_key)
+    except Exception as e:
+        logger.warning(f"Failed to release webhook lock for order {order_id}: {e}")
+
+
+async def process_webhook_sequentially(order_id: str, process_func):
+    """
+    Process a webhook with sequential locking.
+    If lock cannot be acquired, waits briefly and retries once.
+    """
+    # Try to acquire lock
+    if await acquire_webhook_lock(order_id):
+        try:
+            # Process the webhook
+            return await process_func()
+        finally:
+            # Always release lock
+            release_webhook_lock(order_id)
+    else:
+        # Lock already held - another process is handling this order
+        logger.info(f"Webhook for order {order_id} is already being processed by another handler")
+        # Wait a moment and check if processing completed
+        await asyncio.sleep(1)
+        # If still locked after wait, return success (assume other handler succeeded)
+        if not await acquire_webhook_lock(order_id, timeout=1):
+            return {"status": "ok", "message": "Webhook already being processed"}
+        else:
+            # Lock released, process it now
+            try:
+                return await process_func()
+            finally:
+                release_webhook_lock(order_id)
 
 
 @router.get("/auth", response_model=VayneAuthStatusResponse)
@@ -189,9 +256,9 @@ async def create_order(
     db: Session = Depends(get_db)
 ):
     """
-    Create a new scraping order and queue it for processing.
-    Implements Step 3 from test_end_to_end_scraping_workflow.py (step3_create_order()).
-    Worker will handle Steps 4-7 (polling, export, CSV storage).
+    Create a new scraping order.
+    Order status is set to "processing" immediately.
+    Webhook will handle completion and automatically trigger enrichment.
     """
     # Require cookie for each order
     if not order_data.linkedin_cookie or not order_data.linkedin_cookie.strip():
@@ -248,7 +315,7 @@ async def create_order(
             export_format="advanced",  # Hardcoded per specification
             only_qualified=False,  # Hardcoded per specification
             linkedin_cookie=order_data.linkedin_cookie,
-            status="pending",
+            status="processing",  # Set to processing immediately - webhook will update to completed
             vayne_order_id=str(vayne_order.get("id", "")),
             leads_found=estimated_leads,
             targeting=order_data.targeting,
@@ -262,13 +329,16 @@ async def create_order(
         db.commit()
         db.refresh(order)
         
-        # Queue order to Redis for worker processing (Steps 4-7)
+        # Immediately create and queue placeholder enrichment job
+        # This allows job queuing to start as soon as client clicks "start scraping"
+        # Webhook will update the job with CSV data when scraping completes
         try:
-            redis_client.lpush("vayne-order-processing", str(order.id))
-            print(f"✅ Queued order {order.id} to Redis queue 'vayne-order-processing'")
+            placeholder_job = await create_placeholder_enrichment_job(order, db)
+            if placeholder_job:
+                logger.info(f"✅ Created placeholder enrichment job {placeholder_job.id} for order {order.id}")
         except Exception as e:
-            # If Redis fails, log but don't fail the request (worker can pick up from DB)
-            print(f"⚠️ Failed to queue order to Redis: {e}")
+            logger.warning(f"⚠️ Failed to create placeholder enrichment job for order {order.id}: {e}")
+            # Don't fail the order creation if job creation fails
         
         return VayneOrderCreateResponse(
             success=True,
@@ -973,9 +1043,22 @@ async def vayne_webhook(
     db: Session = Depends(get_db)
 ):
     """
-    Webhook endpoint for Vayne API to send order status updates.
+    Scalable webhook endpoint for Vayne API to receive completed scraping results.
+    Processes webhooks sequentially (1 at a time) using Redis locks.
+    Immediately downloads CSV from file_url and triggers enrichment job.
+    
     This endpoint is public (no auth required) but validates payload structure.
-    Vayne may send nested order structure: { "order": { ... } } or flat structure.
+    
+    Expected payload format from Vayne:
+    {
+      "body": {
+        "event": "order.completed",
+        "order_id": 39119,
+        "export_format": "simple",
+        "file_url": "https://vayne-production-export.s3.eu-west-3.amazonaws.com/..."
+      },
+      ...
+    }
     
     Configure webhook URL in Vayne dashboard API Settings:
     - Primary: https://www.billionverifier.io/api/webhooks/vayne/orders
@@ -983,120 +1066,142 @@ async def vayne_webhook(
     """
     try:
         # Log incoming webhook for debugging
-        print(f"📥 Vayne webhook received at {datetime.utcnow().isoformat()}")
+        logger.info(f"📥 Vayne webhook received at {datetime.utcnow().isoformat()}")
         
-        # Parse request body (may be nested or flat)
+        # Parse request body
         payload = await request.json()
-        print(f"📥 Webhook payload: {payload}")
+        logger.info(f"📥 Webhook payload structure: {list(payload.keys())}")
         
-        # Handle nested structure: { "order": { "id": 123, ... } }
-        if "order" in payload:
-            order_data = payload["order"]
-        else:
-            order_data = payload
+        # Extract body (Vayne sends nested structure)
+        body_data = payload.get("body", payload)  # Fallback to flat structure for compatibility
         
-        # Extract order ID (may be numeric)
-        order_id = str(order_data.get("id", ""))
+        # Extract event type and order ID
+        event = body_data.get("event", "")
+        vayne_order_id = str(body_data.get("order_id", ""))
+        file_url = body_data.get("file_url")
+        export_format = body_data.get("export_format", "simple")
         
-        if not order_id:
-            print(f"⚠️ Webhook received without order ID: {payload}")
+        if not vayne_order_id:
+            logger.warning(f"⚠️ Webhook received without order ID: {payload}")
             return {"status": "ok", "message": "No order ID provided (ignored)"}
         
-        print(f"📥 Processing webhook for Vayne order ID: {order_id}")
+        if event != "order.completed":
+            logger.info(f"📥 Webhook received for event '{event}' (not order.completed) - ignoring")
+            return {"status": "ok", "message": f"Event '{event}' ignored (only processing order.completed)"}
         
-        # Find order by Vayne's order_id
+        if not file_url:
+            logger.warning(f"⚠️ Webhook received for order {vayne_order_id} without file_url")
+            return {"status": "ok", "message": "No file_url provided (ignored)"}
+        
+        logger.info(f"📥 Processing webhook for Vayne order ID: {vayne_order_id}, event: {event}")
+        
+        # Find order by Vayne's order_id (client-specific via user_id in order)
         order = db.query(VayneOrder).filter(
-            VayneOrder.vayne_order_id == order_id
+            VayneOrder.vayne_order_id == vayne_order_id
         ).first()
         
         if not order:
-            # Order not found - might be from a different system or deleted
-            print(f"⚠️ Webhook received for unknown order_id: {order_id}")
+            logger.warning(f"⚠️ Webhook received for unknown order_id: {vayne_order_id}")
             return {"status": "ok", "message": "Order not found (ignored)"}
         
-        # Map scraping_status to our status values
-        scraping_status = order_data.get("scraping_status", order.status)
-        status_mapping = {
-            "initialization": "pending",
-            "scraping": "processing",
-            "finished": "processing",  # Don't mark as completed yet - verify export first
-            "failed": "failed"
-        }
-        new_status = status_mapping.get(scraping_status, order.status)
-        
-        # If Vayne says "finished", verify export is available before marking as completed
-        if scraping_status == "finished" and order.vayne_order_id:
+        # Process webhook sequentially using Redis lock
+        async def process_webhook():
+            """Inner function to process the webhook (called with lock)."""
+            # Refresh order from DB to get latest state
+            db.refresh(order)
+            
+            # Check if already processed
+            if order.status == "completed" and order.csv_file_path:
+                logger.info(f"✅ Order {order.id} already completed and processed - skipping")
+                return {"status": "ok", "message": "Order already processed"}
+            
+            logger.info(f"🔄 Processing order {order.id} (Vayne ID: {vayne_order_id}) for user {order.user_id}")
+            
+            # Download CSV directly from file_url
+            csv_data = None
             try:
-                vayne_client = get_vayne_client()
-                # Quick check if export is ready (don't wait with full retry in webhook)
-                file_url = await vayne_client.check_export_ready(order.vayne_order_id, order.export_format)
-                if file_url:
-                    # Export is ready - mark as completed
-                    new_status = "completed"
-                    order.completed_at = datetime.utcnow()
-                    print(f"✅ Order {order_id} (Vayne ID: {order.vayne_order_id}) export verified via webhook - marking as completed")
-                else:
-                    # Export not ready yet - keep as processing, will be updated on next poll
-                    print(f"⏳ Order {order_id} (Vayne ID: {order.vayne_order_id}) export not ready yet via webhook. Keeping status as processing.")
-                    new_status = "processing"
-            except Exception as export_error:
-                # Export check failed - keep as processing
-                print(f"⏳ Order {order_id} (Vayne ID: {order.vayne_order_id}) export check failed via webhook: {export_error}. Keeping status as processing.")
-                new_status = "processing"
-        
-        order.status = new_status
-        
-        # Map progress percentage: (scraped / total) * 100
-        scraped = order_data.get("scraped", 0)
-        total = order_data.get("total", 0)
-        if total > 0:
-            order.progress_percentage = int((scraped / total) * 100)
-        elif order_data.get("progress_percentage") is not None:
-            order.progress_percentage = order_data.get("progress_percentage")
-        
-        # Map leads_found from matching or total
-        if "matching" in order_data:
-            order.leads_found = order_data.get("matching", 0)
-            order.leads_qualified = order_data.get("matching", 0) if order.only_qualified else order_data.get("matching", 0)
-        elif "total" in order_data:
-            order.leads_found = order_data.get("total", 0)
-        
-        # Set completed_at if order is completed
-        if new_status == "completed":
-            order.completed_at = datetime.utcnow()
-        # Automatically create enrichment job when order completes
-        if new_status == "completed" and not order.csv_file_path:
-            # Try to export CSV first if not already stored
-            try:
-                # Trigger export to ensure CSV is available
-                export_response = await vayne_client.trigger_export(order.vayne_order_id, order.export_format or "advanced")
-                # Wait a moment for export to be ready
-                await asyncio.sleep(2)
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    logger.info(f"⬇️ Downloading CSV from {file_url[:80]}...")
+                    file_response = await client.get(file_url)
+                    file_response.raise_for_status()
+                    csv_data = file_response.content
+                    logger.info(f"✅ Downloaded CSV ({len(csv_data)} bytes) for order {order.id}")
             except Exception as e:
-                logger.warning(f"Failed to trigger export for order {order.id}: {e}")
+                logger.error(f"❌ Failed to download CSV from file_url for order {order.id}: {e}")
+                db.rollback()
+                return {"status": "error", "message": f"Failed to download CSV: {str(e)}"}
+            
+            # Store CSV in R2 (client-specific path: vayne-orders/{order.id}/export.csv)
+            csv_file_path = f"vayne-orders/{order.id}/export.csv"
+            try:
+                s3_client.put_object(
+                    Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+                    Key=csv_file_path,
+                    Body=csv_data,
+                    ContentType="text/csv"
+                )
+                logger.info(f"✅ Stored CSV in R2: {csv_file_path}")
+            except Exception as e:
+                logger.error(f"❌ Failed to store CSV in R2 for order {order.id}: {e}")
+                db.rollback()
+                return {"status": "error", "message": f"Failed to store CSV: {str(e)}"}
+            
+            # Update order status to completed
+            order.status = "completed"
+            order.csv_file_path = csv_file_path
+            order.completed_at = datetime.utcnow()
+            order.export_format = export_format  # Update format if different
+            
+            # Update progress to 100%
+            order.progress_percentage = 100
+            
+            db.commit()
+            db.refresh(order)
+            
+            logger.info(f"✅ Order {order.id} marked as completed")
+            
+            # Immediately create enrichment job (client-specific via order.user_id)
+            try:
+                enrichment_job = await create_enrichment_job_from_order(order, db)
+                if enrichment_job:
+                    logger.info(f"✅ Automatically created enrichment job {enrichment_job.id} from scraping order {order.id} for user {order.user_id}")
+                    return {
+                        "status": "ok",
+                        "message": "Webhook processed successfully",
+                        "order_id": str(order.id),
+                        "enrichment_job_id": str(enrichment_job.id)
+                    }
+                else:
+                    logger.warning(f"⚠️ Failed to create enrichment job for order {order.id}")
+                    return {
+                        "status": "ok",
+                        "message": "Order completed but enrichment job creation failed",
+                        "order_id": str(order.id)
+                    }
+            except Exception as e:
+                logger.error(f"❌ Error creating enrichment job for order {order.id}: {e}")
+                import traceback
+                traceback.print_exc()
+                # Still return success since order is completed
+                return {
+                    "status": "ok",
+                    "message": "Order completed but enrichment job creation failed",
+                    "order_id": str(order.id),
+                    "error": str(e)
+                }
         
-        if new_status == "completed":
-            # Create enrichment job automatically
-            enrichment_job = await create_enrichment_job_from_order(order, db)
-            if enrichment_job:
-                logger.info(f"✅ Automatically created enrichment job {enrichment_job.id} from scraping order {order.id}")
-        elif new_status == "failed":
-            # Store error message if available (log for now, could add error_message field later)
-            error_msg = order_data.get("error") or order_data.get("error_message")
-            if error_msg:
-                print(f"Order {order_id} failed: {error_msg}")
-        
-        db.commit()
-        db.refresh(order)
-        
-        print(f"✅ Webhook processed for order {order_id}: status={new_status}")
-        return {"status": "ok", "message": "Webhook processed successfully"}
+        # Process with sequential locking
+        result = await process_webhook_sequentially(vayne_order_id, process_webhook)
+        return result
         
     except Exception as e:
-        print(f"❌ Error processing webhook: {e}")
+        logger.error(f"❌ Error processing webhook: {e}")
         import traceback
         traceback.print_exc()
-        db.rollback()
+        try:
+            db.rollback()
+        except:
+            pass
         # Still return 200 to prevent Vayne from retrying
         return {"status": "error", "message": str(e)}
 

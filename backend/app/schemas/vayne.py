@@ -98,3 +98,21 @@ class VayneWebhookPayload(BaseModel):
     estimated_completion: Optional[str] = None
     error_message: Optional[str] = None
 
+
+class VayneWebhookBody(BaseModel):
+    """Body structure from Vayne webhook payload."""
+    event: str  # e.g., "order.completed"
+    order_id: int  # Vayne's numeric order ID
+    export_format: Optional[str] = None  # "simple" or "advanced"
+    file_url: Optional[str] = None  # Direct S3 URL to CSV file
+
+
+class VayneWebhookRequest(BaseModel):
+    """Complete webhook request structure from Vayne."""
+    headers: Optional[dict] = None
+    params: Optional[dict] = None
+    query: Optional[dict] = None
+    body: VayneWebhookBody
+    webhookUrl: Optional[str] = None
+    executionMode: Optional[str] = None
+
