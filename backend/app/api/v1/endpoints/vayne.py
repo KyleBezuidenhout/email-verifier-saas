@@ -356,190 +356,13 @@ async def create_order(
         )
 
 
-async def _sync_order_with_vayne(order: VayneOrder, db: Session) -> bool:
-    """Sync a single order with Vayne API. Returns True if updated."""
-    # Sync if order has vayne_order_id and is not already completed/failed
-    if not order.vayne_order_id or order.status == "failed":
-        return False
-    
-    # Also sync if status is "processing" and might be ready to complete
-    if order.status == "completed":
-        # Already completed - no need to sync
-        return False
-    
-    try:
-        vayne_client = get_vayne_client()
-        vayne_order = await vayne_client.get_order(order.vayne_order_id)
-        
-        # vayne_client.get_order() already maps scraping_status to status
-        vayne_status = vayne_order.get("status", order.status)
-        
-        # Update order if status changed or if we have new data
-        needs_update = False
-        
-        # If Vayne says "finished", verify export is available before marking as completed
-        if vayne_status == "completed":
-            # Try to verify export is available (use quick check, not full retry)
-            try:
-                # Quick check if export is ready (don't wait with full retry)
-                file_url = await vayne_client.check_export_ready(order.vayne_order_id, order.export_format)
-                if file_url:
-                    # Export is ready - mark as completed
-                    new_status = "completed"
-                    if order.status != "completed":
-                        order.status = "completed"
-                        needs_update = True
-                    if not order.completed_at:
-                        order.completed_at = datetime.utcnow()
-                        needs_update = True
-                    print(f"✅ Order {order.id} export verified via sync - marking as completed")
-                else:
-                    # Export not ready yet - keep as processing
-                    print(f"⏳ Order {order.id} export not ready yet via sync. Keeping status as processing.")
-                    new_status = "processing"
-                    if order.status != "processing":
-                        order.status = "processing"
-                        needs_update = True
-            except Exception as export_error:
-                # Export check failed - keep as processing
-                print(f"⏳ Order {order.id} export check failed via sync: {export_error}. Keeping status as processing.")
-                new_status = "processing"
-                if order.status != "processing":
-                    order.status = "processing"
-                    needs_update = True
-        else:
-            # For other statuses, use Vayne's status directly
-            new_status = vayne_status
-            if new_status != order.status:
-                order.status = new_status
-                needs_update = True
-        
-        # Update progress (vayne_client already calculates this)
-        new_progress = vayne_order.get("progress_percentage", order.progress_percentage)
-        if new_progress != order.progress_percentage:
-            order.progress_percentage = new_progress
-            needs_update = True
-        
-        # Update leads_found (vayne_client already maps this)
-        new_leads_found = vayne_order.get("leads_found", order.leads_found)
-        if new_leads_found != order.leads_found:
-            order.leads_found = new_leads_found
-            needs_update = True
-        
-        # Update leads_qualified
-        new_leads_qualified = vayne_order.get("leads_qualified", order.leads_qualified)
-        if new_leads_qualified != order.leads_qualified:
-            order.leads_qualified = new_leads_qualified
-            needs_update = True
-        
-        if needs_update:
-            db.commit()
-            db.refresh(order)
-            print(f"✅ Synced order {order.id} with Vayne API: status={new_status}, progress={new_progress}%, leads={new_leads_found}")
-            return True
-        return False
-    except Exception as e:
-        # Don't fail the request if sync fails - just log it
-        print(f"⚠️ Failed to sync order {order.id} with Vayne API: {e}")
-        return False
-
-
-@router.get("/orders/{order_id}/status")
-async def get_order_status(
-    order_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get order status - matches specification format."""
-    try:
-        order_uuid = UUID(order_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid order ID format"
-        )
-    
-    order = db.query(VayneOrder).filter(
-        VayneOrder.id == order_uuid,
-        VayneOrder.user_id == current_user.id
-    ).first()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
-    
-    # Call Vayne API directly if we have a vayne_order_id
-    if order.vayne_order_id:
-        try:
-            vayne_client = get_vayne_client()
-            vayne_order = await vayne_client.get_order(order.vayne_order_id)
-            
-            # Get scraping_status directly from Vayne API
-            scraping_status = vayne_order.get("scraping_status", "initialization")
-            
-            # Map Vayne scraping_status to our status values
-            status_mapping = {
-                "initialization": "pending",
-                "scraping": "processing",
-                "finished": "completed",
-                "failed": "failed"
-            }
-            mapped_status = status_mapping.get(scraping_status, "pending")
-            
-            # Get scraped, total, matching from Vayne API
-            scraped = vayne_order.get("scraped", 0)
-            total = vayne_order.get("total", 0)
-            matching = vayne_order.get("matching", 0)
-            
-            # Calculate progress percentage
-            progress_percentage = int((scraped / total) * 100) if total > 0 else 0
-            
-            # Update database with latest status
-            if mapped_status != order.status and order.status not in ["completed", "failed"]:
-                order.status = mapped_status
-                order.progress_percentage = progress_percentage
-                order.leads_found = matching if matching > 0 else total
-                order.leads_qualified = matching if order.only_qualified else matching
-                if mapped_status == "completed" and not order.completed_at:
-                    order.completed_at = datetime.utcnow()
-                db.commit()
-            
-            return {
-                "success": True,
-                "order_id": str(order.id),
-                "status": mapped_status,
-                "scraped": scraped,
-                "total": total,
-                "matching": matching,
-                "scraping_status": scraping_status,
-                "progress_percentage": progress_percentage
-            }
-        except Exception as e:
-            # If Vayne API call fails, use database values
-            print(f"⚠️ Failed to get order from Vayne API: {e}")
-    
-    # Fallback to database values
-    return {
-        "success": True,
-        "order_id": str(order.id),
-        "status": order.status,
-        "scraped": order.progress_percentage or 0,
-        "total": order.leads_found or 0,
-        "matching": order.leads_qualified or 0,
-        "scraping_status": "initialization",
-        "progress_percentage": order.progress_percentage or 0
-    }
-
-
 @router.get("/orders/{order_id}", response_model=VayneOrderResponse)
 async def get_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get order status and details - always calls Vayne API directly for real-time status."""
+    """Get order status and details - returns database values only (no polling)."""
     try:
         order_uuid = UUID(order_id)
     except ValueError:
@@ -559,250 +382,35 @@ async def get_order(
             detail="Order not found"
         )
     
-    # Always call Vayne API directly if we have a vayne_order_id
+    # Return database values only - no API polling
+    # Status is updated by webhook when scraping completes
     scraping_status = None
-    vayne_progress = order.progress_percentage
-    vayne_leads_found = order.leads_found
-    exports_info = None
-    
-    if order.vayne_order_id:
-        try:
-            vayne_client = get_vayne_client()
-            vayne_order = await vayne_client.get_order(order.vayne_order_id)
-            
-            # Get scraping_status directly from Vayne API
-            scraping_status = vayne_order.get("scraping_status", "initialization")
-            
-            # Map Vayne statuses to our DB schema values: pending, processing, completed, failed
-            status_mapping = {
-                "initialization": "pending",
-                "scraping": "processing",
-                "finished": "completed",
-                "failed": "failed"
-            }
-            mapped_status = status_mapping.get(scraping_status, "pending")
-            
-            # Update progress and leads from Vayne API
-            vayne_progress = vayne_order.get("progress_percentage", order.progress_percentage)
-            vayne_leads_found = vayne_order.get("leads_found", order.leads_found)
-            
-            # Extract exports information from Vayne API response
-            vayne_exports = vayne_order.get("exports", {})
-            if vayne_exports:
-                simple_export = vayne_exports.get("simple", {})
-                advanced_export = vayne_exports.get("advanced", {})
-                
-                # Only create exports_info if at least one export exists
-                if simple_export or advanced_export:
-                    exports_info = VayneExportsInfo(
-                        simple=VayneExportInfo(
-                            status=simple_export.get("status", ""),
-                            file_url=simple_export.get("file_url")
-                        ) if simple_export and simple_export.get("status") else None,
-                        advanced=VayneExportInfo(
-                            status=advanced_export.get("status", ""),
-                            file_url=advanced_export.get("file_url")
-                        ) if advanced_export and advanced_export.get("status") else None
-                    )
-            
-            # Update database if status changed (but keep scraping_status for frontend)
-            if mapped_status != order.status and order.status not in ["completed", "failed"]:
-                order.status = mapped_status
-                order.progress_percentage = vayne_progress
-                order.leads_found = vayne_leads_found
-                if mapped_status == "completed" and not order.completed_at:
-                    order.completed_at = datetime.utcnow()
-                db.commit()
-        except Exception as e:
-            # If Vayne API call fails, use database values
-            print(f"⚠️ Failed to get order from Vayne API: {e}")
-            scraping_status = None
+    if order.status == "pending":
+        scraping_status = "initialization"
+    elif order.status == "processing":
+        scraping_status = "scraping"
+    elif order.status == "completed":
+        scraping_status = "finished"
+    elif order.status == "failed":
+        scraping_status = "failed"
     
     return VayneOrderResponse(
         id=str(order.id),
         status=order.status,
-        scraping_status=scraping_status,  # Direct from Vayne API
-        vayne_order_id=order.vayne_order_id,  # So frontend knows when worker has processed it
+        scraping_status=scraping_status,
+        vayne_order_id=order.vayne_order_id,
         sales_nav_url=order.sales_nav_url,
         export_format=order.export_format,
         only_qualified=order.only_qualified,
-        leads_found=vayne_leads_found or order.leads_found,
+        leads_found=order.leads_found,
         leads_qualified=order.leads_qualified,
-        progress_percentage=vayne_progress or order.progress_percentage,
+        progress_percentage=order.progress_percentage,
         estimated_completion=order.estimated_completion,
         created_at=order.created_at.isoformat(),
         completed_at=order.completed_at.isoformat() if order.completed_at else None,
         csv_file_path=order.csv_file_path,
-        exports=exports_info,
+        exports=None,  # Exports handled by webhook
     )
-
-
-@router.post("/orders/{order_id}/export")
-async def export_order(
-    order_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Export order results as CSV and store in R2. Only called when scraping is finished or completed."""
-    try:
-        order_uuid = UUID(order_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid order ID format"
-        )
-    
-    order = db.query(VayneOrder).filter(
-        VayneOrder.id == order_uuid,
-        VayneOrder.user_id == current_user.id
-    ).first()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
-    
-    if not order.vayne_order_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Order has not been submitted to Vayne yet"
-        )
-    
-    # First check database status - if already completed, we can proceed
-    # If status is "processing" or "pending", we need to verify with Vayne API
-    db_status = order.status
-    scraping_status = None
-    vayne_client = get_vayne_client()
-    
-    # Only call Vayne API if status is not "completed" in database
-    if db_status != "completed":
-        try:
-            # Verify with Vayne API that scraping is finished
-            vayne_order = await vayne_client.get_order(order.vayne_order_id)
-            scraping_status = vayne_order.get("scraping_status", "initialization")
-            
-            # Only proceed if Vayne confirms status is "finished"
-            if scraping_status != "finished":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Order scraping is not finished yet. Current status: {scraping_status}. Please wait for the scraping job to complete before exporting."
-                )
-        except HTTPException:
-            raise
-        except Exception as e:
-            # If Vayne API call fails and status is not completed in DB, reject the request
-            # This prevents calling export endpoint before job is ready
-            error_msg = str(e)
-            if "Max retries exceeded" in error_msg:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=f"Unable to verify order status with Vayne API. The scraping job may still be in progress. Please wait for the job to finish (this can take up to 30 minutes for large jobs) and try again later. Current database status: {db_status}"
-                )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to check order status: {str(e)}. Please ensure the scraping job has finished before exporting."
-            )
-    else:
-        # Status is "completed" in DB, so we can proceed
-        # Optionally verify with Vayne API, but don't fail if it's unavailable
-        try:
-            vayne_order = await vayne_client.get_order(order.vayne_order_id)
-            scraping_status = vayne_order.get("scraping_status", "finished")
-        except Exception as e:
-            # If Vayne API fails but DB says completed, log warning but proceed
-            logger.warning(f"Failed to verify order {order.id} with Vayne API, but DB status is completed. Proceeding with export. Error: {e}")
-            scraping_status = "finished"  # Assume finished if DB says completed
-    
-    # Helper function to extract exports info from Vayne response
-    def get_exports_info(exports_data):
-        if not exports_data:
-            return None
-        simple_export = exports_data.get("simple", {})
-        advanced_export = exports_data.get("advanced", {})
-        if simple_export or advanced_export:
-            return VayneExportsInfo(
-                simple=VayneExportInfo(
-                    status=simple_export.get("status", ""),
-                    file_url=simple_export.get("file_url")
-                ) if simple_export and simple_export.get("status") else None,
-                advanced=VayneExportInfo(
-                    status=advanced_export.get("status", ""),
-                    file_url=advanced_export.get("file_url")
-                ) if advanced_export and advanced_export.get("status") else None
-            )
-        return None
-    
-    # Trigger export generation in Vayne API
-    # This will generate the export and return the order with exports populated
-    exports_from_vayne = {}
-    try:
-        export_response = await vayne_client.trigger_export(order.vayne_order_id, order.export_format or "advanced")
-        vayne_order_with_exports = export_response.get("order", {})
-        exports_from_vayne = vayne_order_with_exports.get("exports", {})
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to trigger export in Vayne: {str(e)}. Export may not be ready yet, please try again in a few seconds."
-        )
-    
-    # If CSV already stored, return success with exports info
-    if order.csv_file_path:
-        exports_info = get_exports_info(exports_from_vayne)
-        return {
-            "status": "success", 
-            "message": "CSV already exported", 
-            "csv_file_path": order.csv_file_path,
-            "exports": exports_info.model_dump() if exports_info else None
-        }
-    
-    # Export CSV from Vayne with retry logic (optional - only if we want to store in R2)
-    # If exports are already available from trigger_export, we can return them immediately
-    exports_info = get_exports_info(exports_from_vayne)
-    
-    # Try to download and store CSV in R2 (optional - exports URLs are already available)
-    try:
-        # Use retry-based export to wait for export to be ready
-        csv_data = await vayne_client.export_order_with_retry(
-            order.vayne_order_id, 
-            order.export_format or "advanced",
-            max_retries=5,
-            initial_delay=2.0,
-            max_delay=30.0
-        )
-        
-        # Store CSV in R2
-        csv_file_path = f"vayne-orders/{order.id}/export.csv"
-        s3_client.put_object(
-            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-            Key=csv_file_path,
-            Body=csv_data,
-            ContentType="text/csv"
-        )
-        
-        # Update order with CSV file path
-        order.csv_file_path = csv_file_path
-        order.status = "completed"  # Mark as completed now that CSV is stored
-        if not order.completed_at:
-            order.completed_at = datetime.utcnow()
-        db.commit()
-        
-        print(f"✅ Stored CSV for order {order.id} in R2: {csv_file_path}")
-        
-        return {
-            "status": "success", 
-            "message": "CSV exported and stored successfully", 
-            "csv_file_path": csv_file_path,
-            "exports": exports_info.model_dump() if exports_info else None
-        }
-    except Exception as e:
-        # Even if download fails, return exports info if available from trigger_export
-        logger.warning(f"Failed to download CSV for order {order.id}: {e}, but exports may be available")
-        return {
-            "status": "export_triggered",
-            "message": f"Export triggered successfully. CSV download failed but export URLs are available in the response. Error: {str(e)}",
-            "exports": exports_info.model_dump() if exports_info else None
-        }
 
 
 @router.get("/orders/{order_id}/export")
@@ -811,8 +419,8 @@ async def export_order_download(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Download CSV file from R2 for an order (matches specification GET endpoint).
-    Falls back to fetching from Vayne if CSV not yet stored in R2.
+    """Download CSV file from R2 for an order.
+    CSV is stored by webhook when scraping completes.
     Ensures client-specific (user_id) and job-specific (order_id) access control.
     """
     try:
@@ -835,68 +443,26 @@ async def export_order_download(
             detail="Order not found"
         )
     
-    csv_data = None
+    # CSV should be stored in R2 by webhook when order completes
+    if not order.csv_file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CSV file not available for this order. The order may still be processing."
+        )
     
-    # If CSV is already stored in R2, download it
-    if order.csv_file_path:
-        try:
-            response = s3_client.get_object(
-                Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-                Key=order.csv_file_path
-            )
-            csv_data = response['Body'].read()
-        except Exception as e:
-            logger.warning(f"Failed to download CSV from R2 for order {order.id} (user {current_user.id}): {e}")
-            # Fall through to try fetching from Vayne
-    
-    # If CSV not in R2, try to fetch from Vayne and store it
-    # This ensures job-specific access via order.vayne_order_id
-    if not csv_data and order.vayne_order_id:
-        try:
-            vayne_client = get_vayne_client()
-            
-            # Check if export is ready in Vayne (job-specific via vayne_order_id)
-            file_url = await vayne_client.check_export_ready(order.vayne_order_id, order.export_format or "advanced")
-            
-            if file_url:
-                # Download CSV from Vayne
-                async with httpx.AsyncClient() as client:
-                    file_response = await client.get(file_url)
-                    file_response.raise_for_status()
-                    csv_data = file_response.content
-                
-                # Store CSV in R2 for future use (client and job specific path)
-                try:
-                    csv_file_path = f"vayne-orders/{order.id}/export.csv"
-                    s3_client.put_object(
-                        Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-                        Key=csv_file_path,
-                        Body=csv_data,
-                        ContentType="text/csv"
-                    )
-                    order.csv_file_path = csv_file_path
-                    if order.status != "completed":
-                        order.status = "completed"
-                    if not order.completed_at:
-                        order.completed_at = datetime.utcnow()
-                    db.commit()
-                    logger.info(f"✅ Fetched and stored CSV for order {order.id} (user {current_user.id}) from Vayne")
-                except Exception as storage_error:
-                    logger.warning(f"⚠️ Failed to store CSV in R2 for order {order.id} (user {current_user.id}): {storage_error}")
-                    # Still return the CSV data even if storage fails
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="CSV file not available for this order. The order may still be processing."
-                )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to fetch CSV from Vayne for order {order.id} (user {current_user.id}): {e}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="CSV file not available for this order. The order may still be processing."
-            )
+    # Download CSV from R2
+    try:
+        response = s3_client.get_object(
+            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+            Key=order.csv_file_path
+        )
+        csv_data = response['Body'].read()
+    except Exception as e:
+        logger.error(f"Failed to download CSV from R2 for order {order.id} (user {current_user.id}): {e}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CSV file not available for this order."
+        )
     
     if not csv_data:
         raise HTTPException(
@@ -985,14 +551,11 @@ async def get_order_history(
     orders = query.order_by(desc(VayneOrder.created_at)).offset(offset).limit(limit).all()
     
     # Build response from database only - no external API calls
-    # Exports info is fetched on-demand when user clicks download
-    # Status updates are handled by background worker and webhook
-    # Active orders are polled via the status endpoint for real-time updates
+    # Status updates are handled by webhook when scraping completes
     order_responses = []
     
     for order in orders:
         # Derive scraping_status from status for display
-        # Only active orders need real-time scraping_status (handled by polling via status endpoint)
         scraping_status = None
         if order.status == "pending":
             scraping_status = "initialization"
@@ -1261,7 +824,8 @@ async def admin_sync_order(
     db: Session = Depends(get_db)
 ):
     """
-    Manually sync an order with Vayne API and attempt export if finished.
+    Manually sync an order with Vayne API (for troubleshooting only).
+    Normal flow uses webhooks - this endpoint is for admin troubleshooting.
     Only admins can access this endpoint.
     """
     # Check if user is admin
