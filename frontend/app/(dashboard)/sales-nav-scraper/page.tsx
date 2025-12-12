@@ -924,7 +924,7 @@ export default function SalesNavScraperPage() {
                 </span>
               </div>
             )}
-            {currentOrder.scraping_status === "finished" && (currentOrder.csv_file_path || currentOrder.exports?.advanced?.file_url || currentOrder.exports?.simple?.file_url) && (
+            {(currentOrder.status === "completed" || currentOrder.scraping_status === "finished") && (
               <div className="pt-4 border-t border-apple-border">
                 <button
                   onClick={() => handleEnrichLeads(currentOrder.id)}
@@ -1005,7 +1005,7 @@ export default function SalesNavScraperPage() {
                       <td className="px-4 py-3 text-sm text-apple-text-muted capitalize">{order.export_format}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2 items-center">
-                          {order.scraping_status === "finished" && (order.csv_file_path || order.exports?.advanced?.file_url || order.exports?.simple?.file_url) && (
+                          {(order.status === "completed" || order.scraping_status === "finished") && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
