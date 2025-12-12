@@ -691,19 +691,31 @@ async def vayne_webhook(
         body_data = payload.get("body", payload)  # Fallback to flat structure for compatibility
         
         # Extract order_id - check both nested body and flat payload structure
-        # Handle None values properly (convert to empty string before string conversion)
+        # Handle integer order_id values (Vayne sends order_id as integer, e.g., 46221)
         order_id_raw = None
-        if "body" in payload and isinstance(payload.get("body"), dict):
-            # Nested structure: check body first
-            order_id_raw = payload.get("body", {}).get("order_id")
-        # If not found in body, check root level
-        if order_id_raw is None:
-            order_id_raw = payload.get("order_id")
         
-        # Convert to string, handling None properly
+        # First, try to get from nested body structure
+        if "body" in payload and isinstance(payload.get("body"), dict):
+            body_dict = payload.get("body", {})
+            # Check if order_id exists in body (could be int or str)
+            if "order_id" in body_dict:
+                order_id_raw = body_dict["order_id"]
+        
+        # If not found in body, check root level
+        if order_id_raw is None and "order_id" in payload:
+            order_id_raw = payload["order_id"]
+        
+        # Convert to string, handling None, int, and str types
         if order_id_raw is None:
             vayne_order_id = ""
+        elif isinstance(order_id_raw, (int, float)):
+            # Explicitly handle numeric types (integers from Vayne API)
+            vayne_order_id = str(int(order_id_raw))  # Convert to int first to handle floats, then to string
+        elif isinstance(order_id_raw, str):
+            # Already a string - strip whitespace
+            vayne_order_id = order_id_raw.strip()
         else:
+            # Fallback: convert any other type to string
             vayne_order_id = str(order_id_raw)
         
         logger.info(f"📥 Extracted order_id: {order_id_raw} (type: {type(order_id_raw).__name__}) -> '{vayne_order_id}'")
