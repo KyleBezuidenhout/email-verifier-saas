@@ -55,7 +55,7 @@ from app.schemas.vayne import (
     VayneExportsInfo,
 )
 from app.services.vayne_client import get_vayne_client
-from app.services.vayne_enrichment import create_enrichment_job_from_order, create_placeholder_enrichment_job, mark_enrichment_job_scrape_failed
+from app.services.vayne_enrichment import create_placeholder_enrichment_job, mark_enrichment_job_scrape_failed
 from app.core.config import settings
 
 # Initialize S3 client for Cloudflare R2
@@ -827,35 +827,85 @@ async def vayne_webhook(
             # Clear retry count on success
             await clear_webhook_retries(vayne_order_id)
             
-            # Immediately create enrichment job (client-specific via order.user_id)
-            logger.info(f"🔄 Starting enrichment job creation for order {order.id} (user {order.user_id})")
+            # Find or create enrichment job and queue for enrichment
+            logger.info(f"🔄 Setting up enrichment job for order {order.id} (user {order.user_id})")
             try:
-                enrichment_job = await create_enrichment_job_from_order(order, db)
-                if enrichment_job:
-                    logger.info(f"✅ Successfully created/updated enrichment job {enrichment_job.id} (status: {enrichment_job.status}) from scraping order {order.id} for user {order.user_id}")
-                    logger.info(f"📊 Enrichment job {enrichment_job.id} has {enrichment_job.total_leads} total leads")
-                    return {
-                        "status": "ok",
-                        "message": "Webhook processed successfully",
-                        "order_id": str(order.id),
-                        "enrichment_job_id": str(enrichment_job.id),
-                        "job_status": enrichment_job.status
-                    }
+                # Find existing placeholder job for this order
+                placeholder_job = db.query(Job).filter(
+                    Job.user_id == order.user_id,
+                    Job.status == "waiting_for_csv",
+                    Job.input_file_path.like(f"vayne-order:{order.id}")
+                ).first()
+                
+                if placeholder_job:
+                    logger.info(f"✅ Found existing placeholder job {placeholder_job.id} for order {order.id}")
+                    job = placeholder_job
                 else:
-                    logger.warning(f"⚠️ create_enrichment_job_from_order returned None for order {order.id}")
-                    return {
-                        "status": "ok",
-                        "message": "Order completed but enrichment job creation failed",
-                        "order_id": str(order.id)
-                    }
+                    logger.warning(f"⚠️ No placeholder job found for order {order.id} - creating new job")
+                    # Create new job
+                    from app.models.user import User
+                    user = db.query(User).filter(User.id == order.user_id).first()
+                    if not user:
+                        logger.error(f"❌ User not found for order {order.id}")
+                        return {
+                            "status": "ok",
+                            "message": "Order completed but user not found",
+                            "order_id": str(order.id)
+                        }
+                    
+                    job = Job(
+                        user_id=user.id,
+                        status="pending",
+                        job_type="enrichment",
+                        original_filename=f"sales-nav-{order.id}.csv",
+                        total_leads=0,
+                        processed_leads=0,
+                        valid_emails_found=0,
+                        catchall_emails_found=0,
+                        cost_in_credits=0,
+                        source="Scraped",
+                    )
+                    db.add(job)
+                    db.commit()
+                    db.refresh(job)
+                    logger.info(f"✅ Created new job {job.id} for order {order.id}")
+                
+                # Update job with R2 CSV path
+                job.input_file_path = csv_file_path
+                job.status = "pending"  # Ready for enrichment
+                db.commit()
+                db.refresh(job)
+                
+                logger.info(f"✅ Updated job {job.id} with CSV path: {csv_file_path}")
+                
+                # Queue job for enrichment
+                try:
+                    job_id_str = str(job.id)
+                    queue_name = "enrichment-job-creation"
+                    redis_client.lpush(queue_name, job_id_str)
+                    queue_length = redis_client.llen(queue_name)
+                    logger.info(f"📤 QUEUED job {job.id} to enrichment queue '{queue_name}' (queue length: {queue_length})")
+                except Exception as e:
+                    logger.error(f"❌ Failed to queue job {job.id} for enrichment: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                return {
+                    "status": "ok",
+                    "message": "Webhook processed successfully",
+                    "order_id": str(order.id),
+                    "enrichment_job_id": str(job.id),
+                    "job_status": job.status
+                }
+                
             except Exception as e:
-                logger.error(f"❌ Exception creating enrichment job for order {order.id}: {e}")
+                logger.error(f"❌ Exception setting up enrichment job for order {order.id}: {e}")
                 import traceback
                 traceback.print_exc()
                 # Still return success since order is completed
                 return {
                     "status": "ok",
-                    "message": "Order completed but enrichment job creation failed",
+                    "message": "Order completed but enrichment job setup failed",
                     "order_id": str(order.id),
                     "error": str(e)
                 }

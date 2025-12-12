@@ -155,12 +155,12 @@ async def upload_file(
             detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {leads_count} credits. Please top up your account."
         )
     
-    # Create job - total_leads = unique people (not permutations)
+    # Create job with minimal info - enrichment worker will set total_leads
     job = Job(
         user_id=current_user.id,
         status="pending",
         original_filename=file.filename,
-        total_leads=len(remapped_rows),  # Unique people count
+        total_leads=0,  # Will be set by enrichment worker
         processed_leads=0,
         valid_emails_found=0,
         catchall_emails_found=0,
@@ -180,6 +180,7 @@ async def upload_file(
             Body=contents
         )
         job.input_file_path = input_file_path
+        db.commit()
     except Exception as e:
         db.delete(job)
         db.commit()
@@ -188,53 +189,13 @@ async def upload_file(
             detail=f"Failed to upload file: {str(e)}"
         )
     
-    # Create leads and generate permutations
-    leads_to_create = []
-    for row in remapped_rows:
-        first_name = row['first_name']
-        last_name = row['last_name']
-        website = row['website']
-        domain = normalize_domain(website)
-        
-        # Use company_size from row if available, otherwise use form parameter
-        row_company_size = row.get('company_size') or company_size
-        
-        # Generate email permutations
-        permutations = generate_email_permutations(
-            first_name, last_name, domain, row_company_size
-        )
-        
-        # Create lead for each permutation
-        for perm in permutations:
-            lead = Lead(
-                job_id=job.id,
-                user_id=current_user.id,
-                first_name=first_name,
-                last_name=last_name,
-                domain=domain,
-                company_size=row_company_size,
-                email=perm['email'],
-                pattern_used=perm['pattern'],
-                prevalence_score=perm['prevalence_score'],
-                verification_status='pending',
-                is_final_result=False,
-                extra_data=row.get('extra_data', {}),
-            )
-            leads_to_create.append(lead)
-    
-    # Bulk insert leads
-    db.bulk_save_objects(leads_to_create)
-    db.commit()
-    
-    # Queue job for processing - use simple Redis list (worker will poll this)
+    # Queue job for enrichment - enrichment worker will parse CSV, generate permutations, and create leads
     try:
-        # Simple approach: push job ID to a Redis list
-        # Use a different queue name to avoid conflicts with BullMQ
         job_id_str = str(job.id)
-        queue_name = "simple-email-verification-queue"
+        queue_name = "enrichment-job-creation"
         redis_client.lpush(queue_name, job_id_str)
         queue_length = redis_client.llen(queue_name)
-        print(f"📤 QUEUED job {job.id} to Redis queue '{queue_name}' (queue length: {queue_length})")
+        print(f"📤 QUEUED job {job.id} to enrichment queue '{queue_name}' (queue length: {queue_length})")
     except Exception as e:
         # If Redis fails, job will remain in pending state
         print(f"❌ Failed to queue job {job.id}: {e}")
