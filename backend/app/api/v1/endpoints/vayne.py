@@ -622,7 +622,7 @@ async def get_order_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get order history for current user - loads from database only (no external API calls)."""
+    """Get order history for current user. Fetches file_url from Vayne API if missing for completed orders."""
     query = db.query(VayneOrder).filter(VayneOrder.user_id == current_user.id)
     
     if status_filter and status_filter != "all":
@@ -631,9 +631,9 @@ async def get_order_history(
     total = query.count()
     orders = query.order_by(desc(VayneOrder.created_at)).offset(offset).limit(limit).all()
     
-    # Build response from database only - no external API calls
-    # Status updates are handled by webhook when scraping completes
+    # Build response - fetch file_url from Vayne API if missing for completed orders
     order_responses = []
+    vayne_client = None
     
     for order in orders:
         # Derive scraping_status from status for display
@@ -646,6 +646,26 @@ async def get_order_history(
             scraping_status = "finished"
         elif order.status == "failed":
             scraping_status = "failed"
+        
+        file_url = order.file_url
+        
+        # If order is completed but missing file_url, try to fetch it from Vayne API
+        if order.status == "completed" and not file_url and order.vayne_order_id:
+            try:
+                if vayne_client is None:
+                    vayne_client = get_vayne_client()
+                
+                # Try to get file_url from Vayne API
+                file_url = await vayne_client.check_export_ready(str(order.vayne_order_id), order.export_format or "simple")
+                
+                # If found, update the database
+                if file_url:
+                    order.file_url = file_url
+                    db.commit()
+                    logger.info(f"✅ Fetched and stored file_url for order {order.id} (vayne_order_id: {order.vayne_order_id})")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to fetch file_url for order {order.id} from Vayne API: {e}")
+                # Continue without file_url - don't fail the request
         
         order_responses.append(
             VayneOrderResponse(
@@ -663,7 +683,7 @@ async def get_order_history(
                 created_at=order.created_at.isoformat(),
                 completed_at=order.completed_at.isoformat() if order.completed_at else None,
                 csv_file_path=order.csv_file_path,
-                file_url=order.file_url,  # Direct URL to CSV file from Vayne
+                file_url=file_url,  # Use fetched file_url if available
                 targeting=order.targeting,
                 name=order.name,  # Include name field
                 exports=None,  # Exports fetched on-demand when downloading
