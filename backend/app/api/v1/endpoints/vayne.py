@@ -737,13 +737,21 @@ async def vayne_webhook(
         body_data = payload.get("body", payload)  # Fallback to flat structure for compatibility
         
         # Extract order_id (required for database matching - this is the vayne_order_id from webhook)
+        # Check both nested body structure and flat payload structure
         order_id_raw = None
+        
+        # First, check if there's a nested "body" structure
         if "body" in payload and isinstance(payload.get("body"), dict):
             body_dict = payload.get("body", {})
             if "order_id" in body_dict:
                 order_id_raw = body_dict["order_id"]
-        if order_id_raw is None and "order_id" in payload:
-            order_id_raw = payload["order_id"]
+                logger.info(f"📥 Found order_id in nested body: {order_id_raw}")
+        
+        # If not found in body, check top-level payload
+        if order_id_raw is None:
+            if "order_id" in payload:
+                order_id_raw = payload["order_id"]
+                logger.info(f"📥 Found order_id in top-level payload: {order_id_raw}")
         
         # Convert order_id to string (required field)
         vayne_order_id_str = None
@@ -754,9 +762,12 @@ async def vayne_webhook(
                 vayne_order_id_str = order_id_raw.strip()
             else:
                 vayne_order_id_str = str(order_id_raw)
+            logger.info(f"📥 Converted order_id to string: '{vayne_order_id_str}' (from {type(order_id_raw).__name__})")
         
         if not vayne_order_id_str:
             logger.warning(f"⚠️ Webhook received without order_id field. Raw payload: {payload}")
+            logger.warning(f"⚠️ Payload keys: {list(payload.keys()) if isinstance(payload, dict) else 'not a dict'}")
+            logger.warning(f"⚠️ Body data keys: {list(body_data.keys()) if isinstance(body_data, dict) else 'not a dict'}")
             return {"status": "ok", "message": "No order_id provided (ignored)"}
         
         # Extract name (optional - for logging only)
