@@ -417,15 +417,34 @@ export default function SalesNavScraperPage() {
 
   const handleDownloadCSV = async (order: VayneOrder) => {
     try {
-      // Query PostgreSQL for file_url via backend
-      const response = await apiClient.getVayneOrderFileUrl(order.id);
+      // Use new download protocol: request download, then poll for status
+      if (!order.vayne_order_id) {
+        throw new Error("Order ID not available for download");
+      }
+
+      // Step 1: Request download (triggers n8n webhook)
+      await apiClient.requestVayneOrderDownload(order.vayne_order_id);
+
+      // Step 2: Poll download status until ready
+      const maxAttempts = 30; // 30 attempts = 30 seconds max wait
+      const pollInterval = 1000; // 1 second between polls
       
-      if (!response.file_url) {
-        throw new Error("CSV file URL not available for this order");
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const statusResponse = await apiClient.getVayneOrderDownloadStatus(order.vayne_order_id);
+        
+        if (statusResponse.status === "ready" && statusResponse.file_url) {
+          // Step 3: Download file using the file_url
+          window.location.href = statusResponse.file_url;
+          return;
+        }
+        
+        // Wait before next poll (except on last attempt)
+        if (attempt < maxAttempts - 1) {
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
       }
       
-      // Redirect browser to file_url - browser will handle download
-      window.location.href = response.file_url;
+      throw new Error("Download timed out. Please try again.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to download CSV");
       setShowErrorModal(true);
