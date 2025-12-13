@@ -77,6 +77,10 @@ export default function ScrapeHistoryPage() {
       // Use vayne_order_id directly from the order (the ORDER ID shown in UI)
       const vayneOrderId = order.vayne_order_id;
       
+      if (!vayneOrderId) {
+        throw new Error("Order ID not available for download");
+      }
+      
       // Step 1: Request download from n8n webhook
       await apiClient.requestVayneOrderDownload(vayneOrderId);
       
