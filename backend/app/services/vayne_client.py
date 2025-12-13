@@ -76,3 +76,7 @@ class VayneClient:
 vayne_client = VayneClient()
 
 
+def get_vayne_client() -> VayneClient:
+    """Get a VayneClient instance. Returns the singleton instance."""
+    return vayne_client
+
