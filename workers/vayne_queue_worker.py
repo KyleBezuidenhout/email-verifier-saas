@@ -60,13 +60,14 @@ def log(message: str, level: str = "info"):
 def get_active_order(db):
     """
     Get the oldest active order that has been sent to Vayne.
-    Only checks orders with vayne_order_id IS NOT NULL to exclude old test orders.
+    Only checks orders with vayne_order_id IS NOT NULL and status = 'initialization'.
+    Status 'initialization' means order was created with Vayne but not yet completed.
     """
     result = db.execute(
         text("""
             SELECT * FROM vayne_orders 
             WHERE vayne_order_id IS NOT NULL 
-            AND status IN ('pending', 'processing')
+            AND status = 'initialization'
             ORDER BY created_at ASC 
             LIMIT 1
         """)
@@ -186,7 +187,8 @@ async def wait_for_active_order_completion(db, active_order):
             log(f"Active order {order_id} not found in database, proceeding", "wait")
             return True  # Order doesn't exist, proceed
         
-        # Status is still pending or processing, wait and check again
+        # Status is still initialization (not completed yet), wait and check again
+        # n8n workflow will update status to "completed" when done
         log(f"Active order {order_id} status: {status}, waiting {ACTIVE_CHECK_INTERVAL}s...", "wait")
         await asyncio.sleep(ACTIVE_CHECK_INTERVAL)
 
@@ -244,16 +246,25 @@ async def process_queued_order(order_row):
             vayne_order_id_str = str(vayne_order_id)
             order_name = vayne_order.get("name")
             
-            # Update database with vayne_order_id and set status to processing
+            # Extract scraping_status from Vayne's create_order response
+            # Vayne returns "initialization" status when order is first created
+            scraping_status = vayne_order.get("scraping_status", "initialization")
+            
+            # Set status to "initialization" - this is what Vayne returns in order creation response
+            # n8n workflow will update it to "completed" when done
+            # DO NOT poll Vayne API for status updates - let n8n handle it
+            db_status = "initialization"
+            
+            # Update database with vayne_order_id and set status to initialization
             update_order_status(
                 db,
                 order_id,
-                status="processing",
+                status=db_status,
                 vayne_order_id=vayne_order_id_str,
                 name=order_name
             )
             
-            log(f"Order {order_id} successfully sent to Vayne (Vayne ID: {vayne_order_id_str})", "success")
+            log(f"Order {order_id} successfully sent to Vayne (Vayne ID: {vayne_order_id_str}, Status: {db_status})", "success")
             return True
             
         except Exception as e:

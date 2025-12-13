@@ -12,7 +12,7 @@ class VayneOrder(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     vayne_order_id = Column(String(255), nullable=True, unique=True, index=True)  # Vayne's order ID (required for webhook matching, NULL for queued orders)
-    status = Column(String(50), default="queued", index=True)  # queued, pending, processing, completed, failed
+    status = Column(String(50), default="queued", index=True)  # queued, initialization, completed, failed
     sales_nav_url = Column(Text, nullable=False)
     export_format = Column(String(50), default="simple")  # simple or advanced
     only_qualified = Column(Boolean, default=False)
