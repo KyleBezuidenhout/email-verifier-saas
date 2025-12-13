@@ -536,20 +536,11 @@ async def get_order_file_url(
             detail="Order not found"
         )
     
-    # Refresh order from database to get latest file_url
-    # This ensures SQLAlchemy loads the latest state from PostgreSQL
-    db.refresh(order)
     logger.info(f"✅ Order found: id={order.id}, status={order.status}, has_file_url={bool(order.file_url)}")
     
-    # Extract file_url to local variable before closing transaction
+    # Extract file_url to local variable immediately (before any potential connection issues)
     # This prevents "unexpected EOF on client connection with an open transaction" errors
     file_url = order.file_url
-    
-    # CRITICAL FIX: Commit transaction and expire objects before returning
-    # This prevents connection reset errors when client disconnects
-    db.commit()
-    db.expire_all()  # Detach all objects from session
-    logger.info(f"✅ Database transaction closed before returning file_url")
     
     # Check if file_url exists and is not empty
     if not file_url or not file_url.strip():
