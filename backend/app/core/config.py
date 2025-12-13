@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     VAYNE_WORKER_MAX_RETRIES: int = 3  # Max retries for failed operations
     VAYNE_WORKER_BACKOFF_FACTOR: float = 2.0  # Exponential backoff multiplier
     VAYNE_WORKER_MAX_WAIT_MINUTES: int = 30  # Maximum wait time for order completion (matches test file max_wait_minutes=30)
+    
+    # Vayne Queue Worker Configuration
+    VAYNE_QUEUE_WORKER_POLL_INTERVAL: int = 30  # Seconds between checks for queued orders
+    VAYNE_QUEUE_WORKER_ACTIVE_CHECK_INTERVAL: int = 60  # Seconds between checks for active order status
 
     # App
     APP_NAME: str = "Email Verifier SaaS"

@@ -11,7 +11,7 @@ Backend proxy for Vayne API calls to:
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_, and_
 from typing import Optional
 from uuid import UUID
 from datetime import datetime, timedelta
@@ -229,7 +229,28 @@ async def update_auth(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update LinkedIn session cookie for current user (direct API approach - no queuing)."""
+    """
+    Update LinkedIn session cookie for current user.
+    Cannot update cookie while orders are queued or processing to prevent authentication conflicts.
+    """
+    # Check if there are any active or queued orders
+    # Only check orders with vayne_order_id (active Vayne orders) OR status = "queued" (new queued orders)
+    active_orders_count = db.query(VayneOrder).filter(
+        or_(
+            and_(
+                VayneOrder.vayne_order_id.isnot(None),
+                VayneOrder.status.in_(["pending", "processing"])
+            ),
+            VayneOrder.status == "queued"
+        )
+    ).count()
+    
+    if active_orders_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot update cookie while orders are queued or processing. Please wait for current orders to complete."
+        )
+    
     try:
         vayne_client = get_vayne_client()
         result = await vayne_client.update_authentication(auth_data.linkedin_cookie)
@@ -309,8 +330,8 @@ async def create_order(
 ):
     """
     Create a new scraping order.
-    Order status is set to "processing" immediately.
-    Webhook will handle completion and automatically trigger enrichment.
+    Order is queued immediately and will be processed by the queue worker.
+    The queue worker ensures only one order processes at a time to prevent cookie conflicts.
     """
     # Require cookie for each order
     if not order_data.linkedin_cookie or not order_data.linkedin_cookie.strip():
@@ -322,21 +343,7 @@ async def create_order(
     try:
         vayne_client = get_vayne_client()
         
-        # Step 1: Update LinkedIn session cookie with Vayne (required before URL check)
-        try:
-            cookie_response = await vayne_client.update_authentication(order_data.linkedin_cookie)
-            logger.info(f"LinkedIn authentication updated for user {current_user.id}")
-        except Exception as auth_error:
-            error_msg = str(auth_error).lower()
-            if "401" in error_msg or "unauthorized" in error_msg or "invalid" in error_msg or "expired" in error_msg:
-                logger.warning(f"LinkedIn cookie authentication failed for user {current_user.id}: {auth_error}")
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="LinkedIn session cookie is invalid or expired. Please get a fresh li_at cookie from LinkedIn and try again."
-                )
-            raise
-        
-        # Step 2: Validate the Sales Navigator URL
+        # Step 1: Validate the Sales Navigator URL (doesn't require cookie)
         url_check = await vayne_client.check_url(order_data.sales_nav_url)
         
         if not url_check.get("is_valid", False) or url_check.get("estimated_results", 0) == 0:
@@ -354,41 +361,19 @@ async def create_order(
                 detail=f"Insufficient credits. You have {current_user.credits} credits but this order requires approximately {estimated_leads} credits."
             )
         
-        # Step 3: Create the scraping order with Vayne API
-        vayne_order = await vayne_client.create_order(
-            sales_nav_url=order_data.sales_nav_url,
-            linkedin_cookie=order_data.linkedin_cookie
-        )
-        
-        # Extract vayne_order_id from Vayne's response - required for database matching
-        vayne_order_id = vayne_order.get("id")
-        if not vayne_order_id:
-            # vayne_order_id is required - fail immediately without creating order
-            logger.error(f"❌ Vayne order creation returned no order_id. Vayne response: {vayne_order}")
-            
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Vayne order creation failed: order_id is required but was not returned. Please try again."
-            )
-        
-        # Convert vayne_order_id to string (required field - already validated above)
-        vayne_order_id_str = str(vayne_order_id)
-        
-        # Extract name (optional - for logging/display only)
-        order_name = vayne_order.get("name")
-        
-        # Store order in database
+        # Step 2: Create order in database with status "queued"
+        # Cookie update and Vayne order creation will be handled by the queue worker
         order = VayneOrder(
             user_id=current_user.id,
             sales_nav_url=order_data.sales_nav_url,
             export_format="advanced",  # Hardcoded per specification
             only_qualified=False,  # Hardcoded per specification
             linkedin_cookie=order_data.linkedin_cookie,
-            status="processing",  # Set to processing immediately - webhook will update to completed
-            vayne_order_id=vayne_order_id_str,  # Required - used for webhook matching
+            status="queued",  # Queue worker will process this and set to "processing"
+            vayne_order_id=None,  # Will be set by queue worker after Vayne order creation
             leads_found=estimated_leads,
             targeting=order_data.targeting,
-            name=order_name,  # Optional - store if available
+            name=None,  # Will be set by queue worker from Vayne response
         )
         db.add(order)
         
@@ -399,19 +384,20 @@ async def create_order(
         db.commit()
         db.refresh(order)
         
-        # No automatic enrichment job creation - users will download CSV and upload manually
+        logger.info(f"Order {order.id} queued for user {current_user.id}. Queue worker will process it.")
         
         return VayneOrderCreateResponse(
             success=True,
             order_id=str(order.id),
-            status="pending",
-            message="Scraping order created successfully",
-            name=order_name or ""  # Optional field from Vayne's response
+            status="queued",
+            message="Scraping order queued successfully. It will be processed shortly.",
+            name=""  # Will be set by queue worker
         )
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to queue scraping order: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create scraping order. Please try again."
