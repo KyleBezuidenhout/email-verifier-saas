@@ -960,72 +960,12 @@ async def admin_sync_order(
             detail="Order not found"
         )
     
-    if not order.vayne_order_id:
-        return {
-            "status": "error",
-            "message": "Order has no Vayne order ID - cannot sync"
-        }
-    
-    # Sync with Vayne API
-    try:
-        vayne_client = get_vayne_client()
-        vayne_order = await vayne_client.get_order(order.vayne_order_id)
-        
-        scraping_status = vayne_order.get("scraping_status", "initialization")
-        old_status = order.status
-        
-        # Update order fields
-        order.progress_percentage = vayne_order.get("progress_percentage", order.progress_percentage)
-        order.leads_found = vayne_order.get("leads_found", order.leads_found)
-        
-        # If finished, try to export
-        if scraping_status == "finished":
-            try:
-                file_url = await vayne_client.check_export_ready(order.vayne_order_id, order.export_format)
-                if file_url:
-                    order.status = "completed"
-                    if not order.completed_at:
-                        order.completed_at = datetime.utcnow()
-                    
-                    # Try to get file_url from Vayne API (if not already stored)
-                    if not order.file_url:
-                        try:
-                            # Note: Vayne API may not return file_url in get_order response
-                            # This is mainly for webhook-stored file_urls
-                            logger.info(f"⚠️ Order {order.id} has no file_url - webhook should have stored it")
-                        except Exception as export_error:
-                            logger.warning(f"⚠️ Could not check file_url for order {order.id}: {export_error}")
-                else:
-                    order.status = "processing"
-            except Exception as export_error:
-                order.status = "processing"
-                logger.warning(f"⚠️ Export check failed for order {order.id}: {export_error}")
-        elif scraping_status == "failed":
-            order.status = "failed"
-        elif scraping_status == "scraping":
-            order.status = "processing"
-        
-        db.commit()
-        db.refresh(order)
-        
-        return {
-            "status": "success",
-            "message": f"Order synced: {old_status} -> {order.status}",
-            "order": {
-                "id": str(order.id),
-                "status": order.status,
-                "scraping_status": scraping_status,
-                "progress_percentage": order.progress_percentage,
-                "leads_found": order.leads_found,
-                "csv_file_path": order.csv_file_path
-            }
-        }
-    except Exception as e:
-        logger.error(f"❌ Failed to sync order {order_id}: {e}")
-        return {
-            "status": "error",
-            "message": f"Sync failed: {str(e)}"
-        }
+    # DISABLED: Do not sync with Vayne API - status updates are handled by n8n webhook
+    # Polling Vayne API interferes with the FIFO queue system
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="This endpoint has been disabled. Status updates are handled by n8n webhook workflow. Do not poll Vayne API for status updates as it interferes with the FIFO queue system."
+    )
 
 
 @router.post("/admin/mark-failed/{order_id}")
