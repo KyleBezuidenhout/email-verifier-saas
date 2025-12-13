@@ -551,6 +551,7 @@ async def export_order_download(
     logger.info(f"🔄 Refreshed order from DB: id={order.id}, status={order.status}, file_url present={bool(order.file_url)}")
     
     # Check if file_url exists and is not empty - use only what's in PostgreSQL
+    # Extract to local variable before closing transaction
     file_url = order.file_url
     
     if not file_url or not file_url.strip():
@@ -566,6 +567,13 @@ async def export_order_download(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=error_detail
         )
+    
+    # CRITICAL FIX: Commit transaction and expire objects before long-running HTTP operation
+    # This prevents "unexpected EOF on client connection with an open transaction" errors
+    # when client disconnects during download
+    db.commit()
+    db.expire_all()  # Detach all objects from session
+    logger.info(f"✅ Database transaction closed before CSV download")
     
     # Download CSV from file_url and stream it to the user
     try:
@@ -586,7 +594,7 @@ async def export_order_download(
                 }
             )
     except Exception as e:
-        logger.error(f"❌ Failed to download CSV from file_url for order {order.id} (user {current_user.id}): {e}")
+        logger.error(f"❌ Failed to download CSV from file_url for order {order_id} (user {current_user.id}): {e}")
         logger.error(f"❌ file_url that failed: {file_url[:100]}...")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -620,17 +628,27 @@ async def download_csv(
             detail="Order not found"
         )
     
-    if not order.file_url:
+    # Extract file_url to local variable before closing transaction
+    file_url = order.file_url
+    
+    if not file_url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CSV file not available for this order"
         )
     
+    # CRITICAL FIX: Commit transaction and expire objects before long-running HTTP operation
+    # This prevents "unexpected EOF on client connection with an open transaction" errors
+    # when client disconnects during download
+    db.commit()
+    db.expire_all()  # Detach all objects from session
+    logger.info(f"✅ Database transaction closed before CSV download (legacy endpoint)")
+    
     try:
         # Download CSV from Vayne's file_url and stream it to the user
         async with httpx.AsyncClient(timeout=60.0) as client:
-            logger.info(f"⬇️ Proxying CSV download from {order.file_url[:80]}...")
-            file_response = await client.get(order.file_url)
+            logger.info(f"⬇️ Proxying CSV download from {file_url[:80]}...")
+            file_response = await client.get(file_url)
             file_response.raise_for_status()
             csv_data = file_response.content
             
