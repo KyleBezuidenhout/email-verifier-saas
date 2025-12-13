@@ -60,15 +60,15 @@ def log(message: str, level: str = "info"):
 def get_active_order(db):
     """
     Get the oldest active order that has been sent to Vayne.
-    Only checks orders with vayne_order_id IS NOT NULL and status IN ('pending', 'initialization').
-    Both 'pending' and 'initialization' mean order was created with Vayne but not yet completed.
-    These are the two possible responses from Vayne's order creation API.
+    Only checks orders with vayne_order_id IS NOT NULL and status IN ('pending', 'initialization', 'scraping').
+    'pending', 'initialization', and 'scraping' mean order was created with Vayne but not yet completed.
+    These are the possible responses from Vayne's order creation API and status updates.
     """
     result = db.execute(
         text("""
             SELECT * FROM vayne_orders 
             WHERE vayne_order_id IS NOT NULL 
-            AND status IN ('pending', 'initialization')
+            AND status IN ('pending', 'initialization', 'scraping')
             ORDER BY created_at ASC 
             LIMIT 1
         """)
