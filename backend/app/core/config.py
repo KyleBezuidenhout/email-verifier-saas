@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     VAYNE_API_BASE_URL: str = "https://www.vayne.io"
     VAYNE_POLLING_INTERVAL_MS: int = 5000
     VAYNE_POLLING_MAX_INTERVAL_MS: int = 30000
+    VAYNE_QUEUE_WORKER_POLL_INTERVAL: int = 30  # seconds
+    VAYNE_QUEUE_WORKER_ACTIVE_CHECK_INTERVAL: int = 60  # seconds
 
     # OmniVerifier
     OMNIVERIFIER_API_KEY: str
