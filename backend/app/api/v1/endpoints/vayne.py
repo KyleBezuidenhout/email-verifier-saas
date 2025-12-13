@@ -500,6 +500,43 @@ async def delete_order(
     return {"message": "Order deleted successfully", "order_id": str(order.id)}
 
 
+@router.get("/orders/{order_id}/file-url")
+async def get_order_file_url(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get file_url from PostgreSQL for an order."""
+    try:
+        order_uuid = UUID(order_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid order ID format"
+        )
+    
+    # Query PostgreSQL for the order (filtered by user_id for security)
+    order = db.query(VayneOrder).filter(
+        VayneOrder.id == order_uuid,
+        VayneOrder.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Check if file_url exists and is not empty
+    if not order.file_url or not order.file_url.strip():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CSV file URL not available for this order"
+        )
+    
+    return {"file_url": order.file_url}
+
+
 @router.get("/orders/{order_id}/export")
 async def export_order_download(
     order_id: str,

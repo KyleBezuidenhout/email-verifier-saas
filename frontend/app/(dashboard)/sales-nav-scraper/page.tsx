@@ -415,18 +415,17 @@ export default function SalesNavScraperPage() {
     setLinkedinCookie(""); // Clear cookie
   };
 
-  const handleDownloadCSV = async (orderId: string) => {
+  const handleDownloadCSV = async (order: VayneOrder) => {
     try {
-      // Download CSV from backend endpoint which checks PostgreSQL DB for file_url
-      const blob = await apiClient.downloadVayneOrderCSV(orderId);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `sales-nav-leads-${orderId}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      // Query PostgreSQL for file_url via backend
+      const response = await apiClient.getVayneOrderFileUrl(order.id);
+      
+      if (!response.file_url) {
+        throw new Error("CSV file URL not available for this order");
+      }
+      
+      // Redirect browser to file_url - browser will handle download
+      window.location.href = response.file_url;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to download CSV");
       setShowErrorModal(true);
@@ -918,7 +917,7 @@ export default function SalesNavScraperPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                       {order.status === "completed" && (
                         <button
-                          onClick={() => handleDownloadCSV(order.id)}
+                          onClick={() => handleDownloadCSV(order)}
                           className="text-apple-accent hover:text-apple-accent-hover transition-colors"
                         >
                           Download CSV

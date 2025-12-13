@@ -606,6 +606,10 @@ class ApiClient {
       method: "DELETE",
     });
   }
+
+  async getVayneOrderFileUrl(orderId: string): Promise<{ file_url: string }> {
+    return this.request(`/api/v1/vayne/orders/${orderId}/file-url`);
+  }
 }
 
 export const apiClient = new ApiClient(API_URL);
