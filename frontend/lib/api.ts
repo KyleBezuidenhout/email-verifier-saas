@@ -592,6 +592,12 @@ class ApiClient {
     if (status) url += `&status=${status}`;
     return this.request(url);
   }
+
+  async deleteVayneOrder(orderId: string): Promise<void> {
+    return this.request<void>(`/api/v1/vayne/orders/${orderId}`, {
+      method: "DELETE",
+    });
+  }
 }
 
 export const apiClient = new ApiClient(API_URL);

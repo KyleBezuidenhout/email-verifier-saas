@@ -15,6 +15,7 @@ export default function ScrapeHistoryPage() {
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const [downloadingOrderId, setDownloadingOrderId] = useState<string | null>(null);
+  const [deleteConfirmOrderId, setDeleteConfirmOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     loadOrders();
@@ -84,6 +85,23 @@ export default function ScrapeHistoryPage() {
       setError(err instanceof Error ? err.message : "Failed to download CSV");
     } finally {
       setDownloadingOrderId(null);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (deleteConfirmOrderId === orderId) {
+      // Confirm delete
+      try {
+        await apiClient.deleteVayneOrder(orderId);
+        await loadOrders();
+        setDeleteConfirmOrderId(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to delete order");
+        setDeleteConfirmOrderId(null);
+      }
+    } else {
+      // First click - show confirm
+      setDeleteConfirmOrderId(orderId);
     }
   };
 
@@ -240,29 +258,30 @@ export default function ScrapeHistoryPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
                       {order.completed_at ? formatDate(order.completed_at) : "—"}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {order.status === "completed" && order.file_url ? (
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                      {order.status === "completed" && order.file_url && (
                         <button
                           onClick={() => handleDownloadCSV(order.id)}
                           disabled={downloadingOrderId === order.id}
-                          className="text-apple-accent hover:text-apple-accent/80 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          className="text-apple-accent hover:text-apple-accent/80 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {downloadingOrderId === order.id ? (
-                            <>
-                              <LoadingSpinner size="sm" />
-                              Downloading...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                              </svg>
-                              Download CSV
-                            </>
-                          )}
+                          {downloadingOrderId === order.id ? "Downloading..." : "Download"}
+                        </button>
+                      )}
+                      {deleteConfirmOrderId === order.id ? (
+                        <button
+                          onClick={() => handleDeleteOrder(order.id)}
+                          className="text-apple-error hover:text-apple-error/80 transition-colors"
+                        >
+                          Confirm
                         </button>
                       ) : (
-                        <span className="text-apple-text-muted text-xs">Not available</span>
+                        <button
+                          onClick={() => handleDeleteOrder(order.id)}
+                          className="text-apple-error hover:text-apple-error/80 transition-colors"
+                        >
+                          Delete
+                        </button>
                       )}
                     </td>
                   </tr>

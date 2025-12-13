@@ -36,22 +36,6 @@ export default function SalesNavScraperPage() {
   const [refreshTimer, setRefreshTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
-  
-  // Deleted orders (client-side only, stored in localStorage)
-  const [deletedOrderIds, setDeletedOrderIds] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem('vayne_deleted_orders');
-        return stored ? JSON.parse(stored) : [];
-      } catch (e) {
-        // If localStorage has invalid data, clear it
-        localStorage.removeItem('vayne_deleted_orders');
-        return [];
-      }
-    }
-    return [];
-  });
-  
   // Error state
   const [error, setError] = useState("");
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -65,6 +49,11 @@ export default function SalesNavScraperPage() {
   
   // FAQ state
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  // Scrape history state
+  const [scrapeHistoryOrders, setScrapeHistoryOrders] = useState<VayneOrder[]>([]);
+  const [loadingScrapeHistory, setLoadingScrapeHistory] = useState(false);
+  const [deleteConfirmOrderId, setDeleteConfirmOrderId] = useState<string | null>(null);
 
   // Define all callback functions BEFORE useEffect hooks to prevent initialization errors
   const loadCredits = useCallback(async () => {
@@ -325,33 +314,30 @@ export default function SalesNavScraperPage() {
     setShowDeleteModal(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!orderToDelete) return;
     
-    // Add to deleted orders array (client-side only)
-    const newDeletedIds = deletedOrderIds.includes(orderToDelete) 
-      ? deletedOrderIds 
-      : [...deletedOrderIds, orderToDelete];
-    setDeletedOrderIds(newDeletedIds);
-    
-    // Store in localStorage for persistence
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('vayne_deleted_orders', JSON.stringify(newDeletedIds));
-      } catch (e) {
-        console.error('Failed to save deleted orders to localStorage:', e);
+    try {
+      await apiClient.deleteVayneOrder(orderToDelete);
+      
+      // If deleted order was the current order, clear it
+      if (currentOrder && currentOrder.id === orderToDelete) {
+        setCurrentOrder(null);
       }
+      
+      // Reload scrape history if it's loaded
+      if (scrapeHistoryOrders.length > 0) {
+        await loadScrapeHistory();
+      }
+      
+      setShowDeleteModal(false);
+      setOrderToDelete(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete order");
+      setShowErrorModal(true);
+      setShowDeleteModal(false);
+      setOrderToDelete(null);
     }
-    
-
-    
-    // If deleted order was the current order, clear it
-    if (currentOrder && currentOrder.id === orderToDelete) {
-      setCurrentOrder(null);
-    }
-    
-    setShowDeleteModal(false);
-    setOrderToDelete(null);
   };
 
   const handleCancelDelete = () => {
@@ -399,6 +385,71 @@ export default function SalesNavScraperPage() {
       setShowErrorModal(true);
     }
   };
+
+  const loadScrapeHistory = useCallback(async () => {
+    setLoadingScrapeHistory(true);
+    try {
+      // Load all orders (with pagination if needed)
+      let allOrders: VayneOrder[] = [];
+      let offset = 0;
+      const limit = 100;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await apiClient.getVayneOrderHistory(limit, offset);
+        allOrders = [...allOrders, ...response.orders];
+        offset += limit;
+        hasMore = response.orders.length === limit;
+      }
+
+      setScrapeHistoryOrders(allOrders.sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ));
+    } catch (err) {
+      console.error("Failed to load scrape history:", err);
+    } finally {
+      setLoadingScrapeHistory(false);
+    }
+  }, []);
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (deleteConfirmOrderId === orderId) {
+      // Confirm delete
+      try {
+        await apiClient.deleteVayneOrder(orderId);
+        await loadScrapeHistory();
+        setDeleteConfirmOrderId(null);
+        
+        // If deleted order was the current order, clear it
+        if (currentOrder && currentOrder.id === orderId) {
+          setCurrentOrder(null);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to delete order");
+        setShowErrorModal(true);
+        setDeleteConfirmOrderId(null);
+      }
+    } else {
+      // First click - show confirm
+      setDeleteConfirmOrderId(orderId);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  // Load scrape history on mount
+  useEffect(() => {
+    loadScrapeHistory();
+  }, [loadScrapeHistory]);
 
   // Show loading state while initial data is being fetched
   if (initialLoading) {
@@ -790,6 +841,108 @@ export default function SalesNavScraperPage() {
           </div>
         </div>
       )}
+
+      {/* Scrape History Section */}
+      <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
+        <h3 className="text-lg font-semibold text-apple-text mb-4">Scrape History</h3>
+        {loadingScrapeHistory ? (
+          <div className="flex justify-center items-center py-8">
+            <LoadingSpinner size="sm" />
+          </div>
+        ) : scrapeHistoryOrders.length === 0 ? (
+          <p className="text-apple-text-muted text-center py-8">No scrape history yet. Start a new scrape above.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-apple-border">
+              <thead className="bg-apple-surface-hover">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                    Order ID
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                    Created At
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                    Leads Found
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                    Progress
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-apple-surface divide-y divide-apple-border">
+                {scrapeHistoryOrders.map((order) => (
+                  <tr key={order.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-apple-text">
+                      {order.vayne_order_id || order.id.slice(0, 8)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
+                      {formatDate(order.created_at)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          order.status === "completed" ? "badge-success" :
+                          order.status === "processing" ? "badge-warning" :
+                          order.status === "failed" ? "badge-error" :
+                          "badge-info"
+                        }`}
+                      >
+                        {order.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
+                      {order.leads_found?.toLocaleString() || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
+                      <div className="w-full bg-apple-surface-hover rounded-full h-2">
+                        <div
+                          className="bg-apple-accent h-2 rounded-full transition-all"
+                          style={{ width: `${order.progress_percentage || 0}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs text-apple-text-muted mt-1 block">
+                        {order.progress_percentage?.toFixed(1) || 0}%
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                      {order.status === "completed" && order.file_url && (
+                        <button
+                          onClick={() => handleDownloadCSV(order.id)}
+                          className="text-apple-accent hover:text-apple-accent-hover transition-colors"
+                        >
+                          Download
+                        </button>
+                      )}
+                      {deleteConfirmOrderId === order.id ? (
+                        <button
+                          onClick={() => handleDeleteOrder(order.id)}
+                          className="text-apple-error hover:text-apple-error/80 transition-colors"
+                        >
+                          Confirm
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleDeleteOrder(order.id)}
+                          className="text-apple-error hover:text-apple-error/80 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* FAQ Section */}
       <div className="bg-apple-surface border border-apple-border rounded-xl p-6">

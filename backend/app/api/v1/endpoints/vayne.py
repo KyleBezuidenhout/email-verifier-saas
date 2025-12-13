@@ -478,6 +478,38 @@ async def get_order(
     )
 
 
+@router.delete("/orders/{order_id}")
+async def delete_order(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a vayne order."""
+    try:
+        order_uuid = UUID(order_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid order ID format"
+        )
+    
+    order = db.query(VayneOrder).filter(
+        VayneOrder.id == order_uuid,
+        VayneOrder.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    db.delete(order)
+    db.commit()
+    
+    return {"message": "Order deleted successfully", "order_id": str(order.id)}
+
+
 @router.get("/orders/{order_id}/export")
 async def export_order_download(
     order_id: str,
