@@ -507,9 +507,12 @@ async def get_order_file_url(
     db: Session = Depends(get_db)
 ):
     """Get file_url from PostgreSQL for an order."""
+    logger.info(f"📥 File URL request for order_id: {order_id}, user_id: {current_user.id}")
+    
     try:
         order_uuid = UUID(order_id)
     except ValueError:
+        logger.error(f"❌ Invalid order ID format: {order_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid order ID format"
@@ -522,18 +525,28 @@ async def get_order_file_url(
     ).first()
     
     if not order:
+        # Check if order exists but belongs to different user
+        order_exists = db.query(VayneOrder).filter(VayneOrder.id == order_uuid).first()
+        if order_exists:
+            logger.warning(f"⚠️ Order {order_id} exists but belongs to user {order_exists.user_id}, not {current_user.id}")
+        else:
+            logger.warning(f"⚠️ Order {order_id} does not exist in database")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found"
         )
     
+    logger.info(f"✅ Order found: id={order.id}, status={order.status}, has_file_url={bool(order.file_url)}")
+    
     # Check if file_url exists and is not empty
     if not order.file_url or not order.file_url.strip():
+        logger.error(f"❌ Order {order_id} has no file_url. file_url value: {repr(order.file_url)}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CSV file URL not available for this order"
         )
     
+    logger.info(f"✅ Returning file_url for order {order_id}: {order.file_url[:80]}...")
     return {"file_url": order.file_url}
 
 
