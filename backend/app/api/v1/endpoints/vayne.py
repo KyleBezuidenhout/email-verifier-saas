@@ -166,10 +166,11 @@ async def clear_webhook_retries(vayne_order_id: str):
         logger.warning(f"Failed to clear webhook retries for order {vayne_order_id}: {e}")
 
 
-async def handle_webhook_max_retries_reached(order: VayneOrder, vayne_order_id: str, db: Session, error_reason: str):
+async def handle_webhook_max_retries_reached(order: VayneOrder, order_id: str, db: Session, error_reason: str):
     """
     Handle webhook failure after max retries reached.
     Marks enrichment job as failed and order as failed.
+    order_id is the order.id UUID string for tracking purposes.
     """
     try:
         logger.error(f"❌ Webhook failed after {MAX_WEBHOOK_RETRIES} retries for order {order.id}: {error_reason}")
@@ -705,12 +706,15 @@ async def vayne_webhook(
     {
       "body": {
         "event": "order.completed",
-        "order_id": 39119,
-        "export_format": "simple",
-        "file_url": "https://vayne-production-export.s3.eu-west-3.amazonaws.com/..."
+        "name": "Order_2025_12_13_000214",  # Required - used to match order in database
+        "file_url": "https://vayne-production-export.s3.eu-west-3.amazonaws.com/...",  # Required
+        "order_id": 39119,  # Optional - for backwards compatibility
+        "export_format": "simple"
       },
       ...
     }
+    
+    The webhook matches orders by 'name' field. The 'order_id' field is optional.
     
     Configure webhook URL in Vayne dashboard API Settings:
     - Primary: https://www.billionverifier.io/api/webhooks/vayne/orders
@@ -728,76 +732,70 @@ async def vayne_webhook(
         # Extract body (Vayne sends nested structure)
         body_data = payload.get("body", payload)  # Fallback to flat structure for compatibility
         
-        # Extract order_id - check both nested body and flat payload structure
-        # Handle integer order_id values (Vayne sends order_id as integer, e.g., 46221)
-        order_id_raw = None
+        # Extract name (required for database matching)
+        name = body_data.get("name")
+        if not name:
+            logger.warning(f"⚠️ Webhook received without name field. Raw payload: {payload}")
+            return {"status": "ok", "message": "No name provided (ignored)"}
         
-        # First, try to get from nested body structure
+        # Extract order_id (optional - for logging and backwards compatibility)
+        order_id_raw = None
         if "body" in payload and isinstance(payload.get("body"), dict):
             body_dict = payload.get("body", {})
-            # Check if order_id exists in body (could be int or str)
             if "order_id" in body_dict:
                 order_id_raw = body_dict["order_id"]
-        
-        # If not found in body, check root level
         if order_id_raw is None and "order_id" in payload:
             order_id_raw = payload["order_id"]
         
-        # Convert to string, handling None, int, and str types
-        if order_id_raw is None:
-            vayne_order_id = ""
-        elif isinstance(order_id_raw, (int, float)):
-            # Explicitly handle numeric types (integers from Vayne API)
-            vayne_order_id = str(int(order_id_raw))  # Convert to int first to handle floats, then to string
-        elif isinstance(order_id_raw, str):
-            # Already a string - strip whitespace
-            vayne_order_id = order_id_raw.strip()
-        else:
-            # Fallback: convert any other type to string
-            vayne_order_id = str(order_id_raw)
+        # Convert order_id to string for logging (optional field)
+        vayne_order_id_str = ""
+        if order_id_raw is not None:
+            if isinstance(order_id_raw, (int, float)):
+                vayne_order_id_str = str(int(order_id_raw))
+            elif isinstance(order_id_raw, str):
+                vayne_order_id_str = order_id_raw.strip()
+            else:
+                vayne_order_id_str = str(order_id_raw)
         
-        logger.info(f"📥 Extracted order_id: {order_id_raw} (type: {type(order_id_raw).__name__}) -> '{vayne_order_id}'")
+        logger.info(f"📥 Extracted name: '{name}', order_id (optional): {vayne_order_id_str}")
         
         # Extract other fields from body_data
         event = body_data.get("event", "")
         file_url = body_data.get("file_url")
         export_format = body_data.get("export_format", "simple")
         
-        if not vayne_order_id or vayne_order_id == "None":
-            logger.warning(f"⚠️ Webhook received without valid order ID. Raw payload: {payload}")
-            return {"status": "ok", "message": "No order ID provided (ignored)"}
-        
         if event != "order.completed":
             logger.info(f"📥 Webhook received for event '{event}' (not order.completed) - ignoring")
             return {"status": "ok", "message": f"Event '{event}' ignored (only processing order.completed)"}
         
         if not file_url:
-            logger.warning(f"⚠️ Webhook received for order {vayne_order_id} without file_url")
+            logger.warning(f"⚠️ Webhook received for order '{name}' without file_url")
             return {"status": "ok", "message": "No file_url provided (ignored)"}
         
-        logger.info(f"📥 Processing webhook for Vayne order ID: {vayne_order_id}, event: {event}")
+        logger.info(f"📥 Processing webhook for order name: '{name}', event: {event}")
         
-        # Find order by Vayne's order_id (client-specific via user_id in order)
+        # Find order by name (required field for matching)
         order = db.query(VayneOrder).filter(
-            VayneOrder.vayne_order_id == vayne_order_id
+            VayneOrder.name == name
         ).first()
         
         if not order:
-            logger.warning(f"⚠️ Webhook received for unknown order_id: {vayne_order_id}")
-            return {"status": "ok", "message": "Order not found (ignored)"}
+            logger.warning(f"⚠️ Webhook received for unknown order name: '{name}'")
+            return {"status": "ok", "message": f"Order with name '{name}' not found (ignored)"}
         
-        # Check if order has a name - required for database matching
-        # If name is None, mark as failed and skip webhook processing
-        if not order.name:
-            logger.error(f"❌ Webhook received for order {order.id} (Vayne ID: {vayne_order_id}) but order.name is None. Marking as failed and skipping webhook processing.")
-            order.status = "failed"
+        # Use order.id for locking and retry tracking (since we matched by name)
+        order_id_for_tracking = str(order.id)
+        
+        # Optionally update vayne_order_id if provided in webhook (for backwards compatibility)
+        if vayne_order_id_str and not order.vayne_order_id:
+            order.vayne_order_id = vayne_order_id_str
             db.commit()
-            return {"status": "ok", "message": "Order has no name - marked as failed and webhook processing skipped"}
+            logger.info(f"📝 Updated order {order.id} with vayne_order_id: {vayne_order_id_str}")
         
         # Process webhook sequentially using Redis lock
         async def process_webhook():
             """Inner function to process the webhook (called with lock)."""
-            logger.info(f"🔒 Acquired webhook lock for order {order.id} (Vayne ID: {vayne_order_id})")
+            logger.info(f"🔒 Acquired webhook lock for order {order.id} (name: '{name}')")
             
             # Refresh order from DB to get latest state
             db.refresh(order)
@@ -808,7 +806,7 @@ async def vayne_webhook(
                 logger.info(f"✅ Order {order.id} already completed and processed - skipping")
                 return {"status": "ok", "message": "Order already processed"}
             
-            logger.info(f"🔄 Processing order {order.id} (Vayne ID: {vayne_order_id}) for user {order.user_id}")
+            logger.info(f"🔄 Processing order {order.id} (name: '{name}') for user {order.user_id}")
             
             # Download CSV directly from file_url
             csv_data = None
@@ -823,12 +821,12 @@ async def vayne_webhook(
                 logger.error(f"❌ Failed to download CSV from file_url for order {order.id}: {e}")
                 db.rollback()
                 
-                # Track retry attempt
-                retry_count = await track_webhook_retry(vayne_order_id)
+                # Track retry attempt using order.id
+                retry_count = await track_webhook_retry(order_id_for_tracking)
                 
                 # If max retries reached, mark enrichment job and order as failed
                 if retry_count >= MAX_WEBHOOK_RETRIES:
-                    await handle_webhook_max_retries_reached(order, vayne_order_id, db, "CSV download failed")
+                    await handle_webhook_max_retries_reached(order, order_id_for_tracking, db, "CSV download failed")
                     # Return 200 to stop retries
                     return {"status": "error", "message": f"Failed after {MAX_WEBHOOK_RETRIES} retries: {str(e)}"}
                 
@@ -852,12 +850,12 @@ async def vayne_webhook(
                 logger.error(f"❌ Failed to store CSV in R2 for order {order.id}: {e}")
                 db.rollback()
                 
-                # Track retry attempt
-                retry_count = await track_webhook_retry(vayne_order_id)
+                # Track retry attempt using order.id
+                retry_count = await track_webhook_retry(order_id_for_tracking)
                 
                 # If max retries reached, mark enrichment job and order as failed
                 if retry_count >= MAX_WEBHOOK_RETRIES:
-                    await handle_webhook_max_retries_reached(order, vayne_order_id, db, "CSV storage failed")
+                    await handle_webhook_max_retries_reached(order, order_id_for_tracking, db, "CSV storage failed")
                     # Return 200 to stop retries
                     return {"status": "error", "message": f"Failed after {MAX_WEBHOOK_RETRIES} retries: {str(e)}"}
                 
@@ -883,7 +881,7 @@ async def vayne_webhook(
             logger.info(f"✅ Order {order.id} marked as completed with CSV path: {csv_file_path}")
             
             # Clear retry count on success
-            await clear_webhook_retries(vayne_order_id)
+            await clear_webhook_retries(order_id_for_tracking)
             
             # Find or create enrichment job and queue for enrichment
             logger.info(f"🔄 Setting up enrichment job for order {order.id} (user {order.user_id})")
@@ -968,8 +966,8 @@ async def vayne_webhook(
                     "error": str(e)
                 }
         
-        # Process with sequential locking
-        result = await process_webhook_sequentially(vayne_order_id, process_webhook)
+        # Process with sequential locking using order.id
+        result = await process_webhook_sequentially(order_id_for_tracking, process_webhook)
         return result
         
     except HTTPException:
@@ -984,13 +982,13 @@ async def vayne_webhook(
         except:
             pass
         
-        # Track retry attempt for general errors
-        if 'vayne_order_id' in locals():
-            retry_count = await track_webhook_retry(vayne_order_id)
+        # Track retry attempt for general errors (use order.id if we found the order)
+        if 'order' in locals() and 'order_id_for_tracking' in locals():
+            retry_count = await track_webhook_retry(order_id_for_tracking)
             
             # If max retries reached, try to mark as failed
-            if retry_count >= MAX_WEBHOOK_RETRIES and 'order' in locals():
-                await handle_webhook_max_retries_reached(order, vayne_order_id, db, f"General error: {str(e)}")
+            if retry_count >= MAX_WEBHOOK_RETRIES:
+                await handle_webhook_max_retries_reached(order, order_id_for_tracking, db, f"General error: {str(e)}")
                 # Return 200 to stop retries
                 return {"status": "error", "message": f"Failed after {MAX_WEBHOOK_RETRIES} retries: {str(e)}"}
         
