@@ -530,18 +530,39 @@ async def export_order_download(
             detail="Order not found"
         )
     
-    # CSV is available via file_url from Vayne
-    if not order.file_url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="CSV file not available for this order. The order may still be processing."
-        )
+    # Check if file_url exists and is not empty
+    file_url = order.file_url
+    if not file_url or not file_url.strip():
+        # If order is completed but missing file_url, try to fetch it from Vayne API
+        if order.status == "completed" and order.vayne_order_id:
+            try:
+                vayne_client = get_vayne_client()
+                logger.info(f"🔄 Order {order.id} missing file_url, fetching from Vayne API (vayne_order_id: {order.vayne_order_id})")
+                file_url = await vayne_client.check_export_ready(str(order.vayne_order_id), order.export_format or "simple")
+                
+                # If found, update the database
+                if file_url:
+                    order.file_url = file_url
+                    db.commit()
+                    logger.info(f"✅ Fetched and stored file_url for order {order.id}")
+                else:
+                    logger.warning(f"⚠️ Could not fetch file_url from Vayne API for order {order.id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to fetch file_url for order {order.id} from Vayne API: {e}")
+        
+        # If still no file_url after trying to fetch, return error
+        if not file_url or not file_url.strip():
+            logger.error(f"❌ Order {order.id} has no file_url. Status: {order.status}, vayne_order_id: {order.vayne_order_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="CSV file not available for this order. The order may still be processing."
+            )
     
     # Download CSV from Vayne's file_url and stream it to the user
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            logger.info(f"⬇️ Proxying CSV download from {order.file_url[:80]}...")
-            file_response = await client.get(order.file_url)
+            logger.info(f"⬇️ Proxying CSV download from {file_url[:80]}...")
+            file_response = await client.get(file_url)
             file_response.raise_for_status()
             csv_data = file_response.content
             
