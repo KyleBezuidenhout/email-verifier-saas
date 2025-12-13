@@ -74,8 +74,11 @@ export default function ScrapeHistoryPage() {
     setError("");
     
     try {
+      // Use vayne_order_id directly from the order (the ORDER ID shown in UI)
+      const vayneOrderId = order.vayne_order_id;
+      
       // Step 1: Request download from n8n webhook
-      await apiClient.requestVayneOrderDownload(order.id);
+      await apiClient.requestVayneOrderDownload(vayneOrderId);
       
       // Step 2: Poll status endpoint for file_url
       const timeout = 30000; // 30 seconds timeout
@@ -85,7 +88,7 @@ export default function ScrapeHistoryPage() {
       const pollForFileUrl = async (): Promise<string> => {
         while (Date.now() - startTime < timeout) {
           try {
-            const status = await apiClient.getVayneOrderDownloadStatus(order.id);
+            const status = await apiClient.getVayneOrderDownloadStatus(vayneOrderId);
             
             if (status.status === "ready" && status.file_url) {
               return status.file_url;

@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import Optional
-from uuid import UUID
 from datetime import datetime
 import httpx
 
@@ -190,49 +189,20 @@ async def export_order(
 async def request_csv_download(
     order_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
     """
     Send vayne_order_id and user_id to n8n webhook to fetch file_url.
+    No database validation - order_id is the vayne_order_id from frontend UI.
     Returns immediately; frontend should poll status endpoint for file_url.
     """
     try:
-        # Validate order_id is a valid UUID
-        try:
-            order_uuid = UUID(order_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid order ID format"
-            )
-        
-        # Validate order exists and belongs to current_user
-        order = db.query(VayneOrder).filter(
-            VayneOrder.id == order_uuid,
-            VayneOrder.user_id == current_user.id
-        ).first()
-        
-        if not order:
-            # Check if order exists but belongs to different user
-            order_exists = db.query(VayneOrder).filter(VayneOrder.id == order_uuid).first()
-            if order_exists:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Order not found"
-                )
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Order not found"
-                )
-        
-        # Extract vayne_order_id
-        vayne_order_id = order.vayne_order_id
+        # order_id is already the vayne_order_id from the frontend UI
+        # No need to validate or query database - if it's in the UI, it's valid
         
         # Send POST request to n8n webhook
         n8n_webhook_url = "https://n8n.meetautom8.com/webhook/8357f8da-83cf-4f0f-8269-ef2fafee48eb"
         payload = {
-            "order_id": vayne_order_id,
+            "order_id": order_id,  # This is already the vayne_order_id
             "user_id": str(current_user.id)
         }
         
@@ -295,44 +265,18 @@ async def n8n_csv_callback(request: Request):
 async def get_download_status(
     order_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
     """
     Check if file_url is available for this order.
     Returns file_url from temporary cache if available.
+    No database validation - order_id is the vayne_order_id from frontend UI.
     """
     try:
-        # Validate order_id is a valid UUID
-        try:
-            order_uuid = UUID(order_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid order ID format"
-            )
+        # order_id is already the vayne_order_id from the frontend UI
+        # No need to validate or query database
         
-        # Validate order exists and belongs to current_user
-        order = db.query(VayneOrder).filter(
-            VayneOrder.id == order_uuid,
-            VayneOrder.user_id == current_user.id
-        ).first()
-        
-        if not order:
-            # Check if order exists but belongs to different user
-            order_exists = db.query(VayneOrder).filter(VayneOrder.id == order_uuid).first()
-            if order_exists:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Order not found"
-                )
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Order not found"
-                )
-        
-        # Check cache using vayne_order_id (what n8n sends back)
-        cache_key = f"{order.vayne_order_id}_{current_user.id}"
+        # Check cache using order_id (vayne_order_id) and user_id
+        cache_key = f"{order_id}_{current_user.id}"
         
         if cache_key in _download_cache:
             cache_entry = _download_cache[cache_key]
