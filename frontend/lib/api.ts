@@ -610,6 +610,20 @@ class ApiClient {
   async getVayneOrderFileUrl(orderId: string): Promise<{ file_url: string }> {
     return this.request(`/api/v1/vayne/orders/${orderId}/file-url`);
   }
+
+  async requestVayneOrderDownload(orderId: string): Promise<{ status: string; message: string }> {
+    // POST to /api/v1/vayne/orders/{orderId}/request-download
+    // Triggers n8n webhook with vayne_order_id and user_id
+    return this.request<{ status: string; message: string }>(`/api/v1/vayne/orders/${orderId}/request-download`, {
+      method: "POST",
+    });
+  }
+
+  async getVayneOrderDownloadStatus(orderId: string): Promise<{ status: "ready" | "pending"; file_url?: string }> {
+    // GET /api/v1/vayne/orders/{orderId}/download-status
+    // Returns file_url from cache if available
+    return this.request<{ status: "ready" | "pending"; file_url?: string }>(`/api/v1/vayne/orders/${orderId}/download-status`);
+  }
 }
 
 export const apiClient = new ApiClient(API_URL);
