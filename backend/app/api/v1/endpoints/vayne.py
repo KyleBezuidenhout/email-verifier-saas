@@ -234,12 +234,12 @@ async def update_auth(
     Cannot update cookie while orders are queued or processing to prevent authentication conflicts.
     """
     # Check if there are any active or queued orders
-    # Only check orders with vayne_order_id (active Vayne orders with status "initialization") OR status = "queued" (new queued orders)
+    # Only check orders with vayne_order_id (active Vayne orders with status "pending" or "initialization") OR status = "queued" (new queued orders)
     active_orders_count = db.query(VayneOrder).filter(
         or_(
             and_(
                 VayneOrder.vayne_order_id.isnot(None),
-                VayneOrder.status == "initialization"
+                VayneOrder.status.in_(["pending", "initialization"])
             ),
             VayneOrder.status == "queued"
         )
@@ -437,6 +437,8 @@ async def get_order(
         scraping_status = None  # Not sent to Vayne yet
     elif order.status == "initialization":
         scraping_status = "initialization"  # Sent to Vayne, waiting to start
+    elif order.status == "pending":
+        scraping_status = "pending"  # Sent to Vayne, waiting to start (alternative status from Vayne)
     elif order.status == "processing":
         scraping_status = "scraping"  # Actively scraping (legacy status)
     elif order.status == "completed":
