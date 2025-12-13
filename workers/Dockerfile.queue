@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy backend requirements and install
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backend app directory (needed for imports)
+COPY backend/app ./app
+
+# Copy queue worker script
+COPY workers/vayne_queue_worker.py .
+
+# Set working directory to where the script is
+WORKDIR /app
+
+# Start command
+CMD ["python3", "vayne_queue_worker.py"]
+

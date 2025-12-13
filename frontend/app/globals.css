@@ -1,0 +1,91 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-apple-border;
+  }
+
+  body {
+    @apply bg-apple-bg text-apple-text font-sans;
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  /* Card component */
+  .dashbrd-card {
+    @apply bg-apple-surface border border-apple-border rounded-xl;
+    transition: all 0.2s ease;
+  }
+
+  .dashbrd-card-hover {
+    @apply dashbrd-card hover:bg-apple-surface-hover hover:border-apple-border;
+  }
+
+  /* Input/Select styling */
+  .dashbrd-input {
+    @apply bg-apple-surface border border-apple-border rounded-lg px-4 py-2 text-apple-text placeholder-apple-text-muted;
+    @apply focus:outline-none focus:ring-2 focus:ring-apple-accent focus:border-apple-accent;
+    transition: all 0.2s ease;
+  }
+
+  /* Badge variations */
+  .badge-success {
+    @apply bg-apple-success/20 text-apple-success border border-apple-success/30;
+  }
+
+  .badge-warning {
+    @apply bg-apple-warning/20 text-apple-warning border border-apple-warning/30;
+  }
+
+  .badge-error {
+    @apply bg-apple-error/20 text-apple-error border border-apple-error/30;
+  }
+
+  .badge-info {
+    @apply bg-apple-accent/20 text-apple-accent border border-apple-accent/30;
+  }
+
+  /* Button styles */
+  .btn-primary {
+    @apply bg-apple-accent text-white px-4 py-2 rounded-lg font-medium;
+    @apply hover:bg-apple-accent/90 transition-colors;
+  }
+
+  .btn-secondary {
+    @apply bg-apple-surface border border-apple-border text-apple-text px-4 py-2 rounded-lg font-medium;
+    @apply hover:bg-apple-surface-hover transition-colors;
+  }
+}
+
+@layer utilities {
+  .animate-in {
+    animation: slideIn 0.3s ease-out;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Gradient backgrounds for charts */
+  .gradient-accent {
+    background: linear-gradient(135deg, rgba(0, 122, 255, 0.1) 0%, rgba(0, 122, 255, 0.05) 100%);
+  }
+}
+
+
