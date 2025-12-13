@@ -536,18 +536,31 @@ async def get_order_file_url(
             detail="Order not found"
         )
     
+    # Refresh order from database to get latest file_url
+    # This ensures SQLAlchemy loads the latest state from PostgreSQL
+    db.refresh(order)
     logger.info(f"✅ Order found: id={order.id}, status={order.status}, has_file_url={bool(order.file_url)}")
     
+    # Extract file_url to local variable before closing transaction
+    # This prevents "unexpected EOF on client connection with an open transaction" errors
+    file_url = order.file_url
+    
+    # CRITICAL FIX: Commit transaction and expire objects before returning
+    # This prevents connection reset errors when client disconnects
+    db.commit()
+    db.expire_all()  # Detach all objects from session
+    logger.info(f"✅ Database transaction closed before returning file_url")
+    
     # Check if file_url exists and is not empty
-    if not order.file_url or not order.file_url.strip():
-        logger.error(f"❌ Order {order_id} has no file_url. file_url value: {repr(order.file_url)}")
+    if not file_url or not file_url.strip():
+        logger.error(f"❌ Order {order_id} has no file_url. file_url value: {repr(file_url)}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CSV file URL not available for this order"
         )
     
-    logger.info(f"✅ Returning file_url for order {order_id}: {order.file_url[:80]}...")
-    return {"file_url": order.file_url}
+    logger.info(f"✅ Returning file_url for order {order_id}: {file_url[:80]}...")
+    return {"file_url": file_url}
 
 
 @router.get("/orders/{order_id}/export")
