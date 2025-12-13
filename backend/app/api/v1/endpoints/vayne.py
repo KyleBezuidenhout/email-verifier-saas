@@ -544,13 +544,24 @@ async def export_order_download(
                 detail="Order not found"
             )
     
-    logger.info(f"✅ Order found: {order.id}, status: {order.status}, file_url present: {bool(order.file_url)}")
+    # CRITICAL FIX: Refresh order from database to get latest file_url
+    # This ensures SQLAlchemy loads the latest state from PostgreSQL, including any file_url
+    # that was added by the webhook in a different transaction
+    db.refresh(order)
+    logger.info(f"🔄 Refreshed order from DB: id={order.id}, status={order.status}, vayne_order_id={order.vayne_order_id}, file_url present={bool(order.file_url)}")
+    
+    # Add comprehensive logging before file_url check
+    logger.info(f"📋 Order details: id={order.id}, status={order.status}, vayne_order_id={order.vayne_order_id}, file_url_length={len(order.file_url) if order.file_url else 0}")
     
     # Check if file_url exists and is not empty
     file_url = order.file_url
+    
+    # Add detailed logging of the actual file_url value
+    logger.info(f"📋 file_url check: value={repr(order.file_url)[:100] if order.file_url else 'None'}, length={len(order.file_url) if order.file_url else 0}, stripped_length={len(order.file_url.strip()) if order.file_url else 0}")
     if not file_url or not file_url.strip():
-        # If order is completed but missing file_url, try to fetch it from Vayne API
-        if order.status == "completed" and order.vayne_order_id:
+        # Relaxed condition: Try to fetch from Vayne API if vayne_order_id exists (regardless of status)
+        # This handles cases where the webhook stored the URL but status wasn't updated properly
+        if order.vayne_order_id:
             try:
                 vayne_client = get_vayne_client()
                 logger.info(f"🔄 Order {order.id} missing file_url, fetching from Vayne API (vayne_order_id: {order.vayne_order_id})")
@@ -566,12 +577,26 @@ async def export_order_download(
             except Exception as e:
                 logger.warning(f"⚠️ Failed to fetch file_url for order {order.id} from Vayne API: {e}")
         
-        # If still no file_url after trying to fetch, return error
+        # If still no file_url after trying to fetch, return error with specific message
         if not file_url or not file_url.strip():
-            logger.error(f"❌ Order {order.id} has no file_url. Status: {order.status}, vayne_order_id: {order.vayne_order_id}")
+            # Query the order again using a fresh query to verify what's actually in the database
+            fresh_order = db.query(VayneOrder).filter(VayneOrder.id == order_uuid).first()
+            if fresh_order:
+                logger.error(f"❌ Order {order.id} has no file_url after refresh. Fresh query shows: status={fresh_order.status}, vayne_order_id={fresh_order.vayne_order_id}, file_url present={bool(fresh_order.file_url)}, file_url length={len(fresh_order.file_url) if fresh_order.file_url else 0}")
+            else:
+                logger.error(f"❌ Order {order.id} not found in fresh query")
+            
+            # Improve error messages with specific conditions
+            if order.status != "completed":
+                error_detail = f"Order is not yet completed (status: {order.status}). CSV file will be available once processing finishes."
+            elif not order.vayne_order_id:
+                error_detail = "Order processing information is missing. Please contact support."
+            else:
+                error_detail = "CSV file URL not available for this order. The order may still be processing or the file may have expired."
+            
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="CSV file not available for this order. The order may still be processing."
+                detail=error_detail
             )
     
     # Download CSV from Vayne's file_url and stream it to the user
@@ -582,6 +607,9 @@ async def export_order_download(
             file_response.raise_for_status()
             csv_data = file_response.content
             
+            # Log response details for verification
+            logger.info(f"✅ CSV download successful: size={len(csv_data)} bytes, content_type={file_response.headers.get('content-type', 'unknown')}")
+            
             return StreamingResponse(
                 io.BytesIO(csv_data),
                 media_type="text/csv",
@@ -590,7 +618,8 @@ async def export_order_download(
                 }
             )
     except Exception as e:
-        logger.error(f"Failed to download CSV from file_url for order {order.id} (user {current_user.id}): {e}")
+        logger.error(f"❌ Failed to download CSV from file_url for order {order.id} (user {current_user.id}): {e}")
+        logger.error(f"❌ file_url that failed: {file_url[:100] if file_url else 'None'}...")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"CSV file not available: {str(e)}"
