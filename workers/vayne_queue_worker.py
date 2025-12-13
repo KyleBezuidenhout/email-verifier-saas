@@ -150,8 +150,13 @@ async def wait_for_active_order_completion(db, active_order):
     Uses the order's own id (UUID) for tracking, not vayne_order_id.
     Returns True when order is completed, False if it fails.
     """
-    order_id = UUID(active_order.id)
-    vayne_order_id = active_order.vayne_order_id
+    # active_order.id is our internal UUID - PostgreSQL may return it as UUID object or string
+    if isinstance(active_order.id, UUID):
+        order_id = active_order.id  # Already a UUID, use it directly
+    else:
+        order_id = UUID(str(active_order.id))  # Convert string to UUID
+    
+    vayne_order_id = active_order.vayne_order_id  # This is Vayne's ID (string)
     log(f"Waiting for active order {order_id} (Vayne ID: {vayne_order_id}) to complete...", "wait")
     
     while True:
@@ -179,7 +184,12 @@ async def process_queued_order(order_row):
     2. Create Vayne order
     3. Update database with vayne_order_id and status
     """
-    order_id = UUID(order_row.id)
+    # order_row.id is our internal UUID - PostgreSQL may return it as UUID object or string
+    if isinstance(order_row.id, UUID):
+        order_id = order_row.id  # Already a UUID, use it directly
+    else:
+        order_id = UUID(str(order_row.id))  # Convert string to UUID
+    
     db = SessionLocal()
     
     try:
