@@ -768,10 +768,6 @@ async def vayne_webhook(
             logger.info(f"📥 Webhook received for event '{event}' (not order.completed) - ignoring")
             return {"status": "ok", "message": f"Event '{event}' ignored (only processing order.completed)"}
         
-        if not file_url:
-            logger.warning(f"⚠️ Webhook received for order '{name}' without file_url")
-            return {"status": "ok", "message": "No file_url provided (ignored)"}
-        
         logger.info(f"📥 Processing webhook for order name: '{name}', event: {event}")
         
         # Find order by name (required field for matching)
@@ -801,12 +797,39 @@ async def vayne_webhook(
             db.refresh(order)
             logger.info(f"📋 Order {order.id} current status: {order.status}, csv_file_path: {order.csv_file_path}")
             
-            # Check if already processed
+            # Check if already fully processed (completed with CSV)
             if order.status == "completed" and order.csv_file_path:
-                logger.info(f"✅ Order {order.id} already completed and processed - skipping")
+                logger.info(f"✅ Order {order.id} already completed with CSV - skipping")
                 return {"status": "ok", "message": "Order already processed"}
             
             logger.info(f"🔄 Processing order {order.id} (name: '{name}') for user {order.user_id}")
+            
+            # Update order status to completed IMMEDIATELY upon webhook receipt
+            # This happens even if webhook is completely empty (no file_url)
+            # Skip if already completed (to avoid overwriting completed_at timestamp)
+            if order.status != "completed":
+                logger.info(f"📝 Updating order {order.id} status to 'completed' (webhook received)")
+                order.status = "completed"
+                order.completed_at = datetime.utcnow()
+                order.progress_percentage = 100
+                if export_format:
+                    order.export_format = export_format
+                db.commit()
+                db.refresh(order)
+                logger.info(f"✅ Order {order.id} marked as completed immediately upon webhook receipt")
+            else:
+                logger.info(f"📝 Order {order.id} already marked as completed, proceeding with CSV processing if available")
+            
+            # Only process CSV if file_url is provided
+            if not file_url:
+                logger.warning(f"⚠️ Webhook received for order '{name}' without file_url - order marked as completed anyway")
+                # Clear retry count on success
+                await clear_webhook_retries(order_id_for_tracking)
+                return {
+                    "status": "ok",
+                    "message": "Order marked as completed (no file_url provided)",
+                    "order_id": str(order.id)
+                }
             
             # Download CSV directly from file_url
             csv_data = None
@@ -819,22 +842,16 @@ async def vayne_webhook(
                     logger.info(f"✅ Downloaded CSV ({len(csv_data)} bytes) for order {order.id}")
             except Exception as e:
                 logger.error(f"❌ Failed to download CSV from file_url for order {order.id}: {e}")
-                db.rollback()
-                
-                # Track retry attempt using order.id
-                retry_count = await track_webhook_retry(order_id_for_tracking)
-                
-                # If max retries reached, mark enrichment job and order as failed
-                if retry_count >= MAX_WEBHOOK_RETRIES:
-                    await handle_webhook_max_retries_reached(order, order_id_for_tracking, db, "CSV download failed")
-                    # Return 200 to stop retries
-                    return {"status": "error", "message": f"Failed after {MAX_WEBHOOK_RETRIES} retries: {str(e)}"}
-                
-                # Return 500 to trigger Vayne retry (if under max retries)
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to download CSV: {str(e)}"
-                )
+                # Order is already marked as completed, so we don't fail the webhook
+                # Just log the error and return success
+                logger.warning(f"⚠️ CSV download failed but order {order.id} already marked as completed")
+                await clear_webhook_retries(order_id_for_tracking)
+                return {
+                    "status": "ok",
+                    "message": "Order marked as completed (CSV download failed)",
+                    "order_id": str(order.id),
+                    "csv_download_error": str(e)
+                }
             
             # Store CSV in R2 (client-specific path: vayne-orders/{order.id}/export.csv)
             csv_file_path = f"vayne-orders/{order.id}/export.csv"
@@ -846,44 +863,29 @@ async def vayne_webhook(
                     ContentType="text/csv"
                 )
                 logger.info(f"✅ Stored CSV in R2: {csv_file_path}")
+                
+                # Update order with CSV path (order is already marked as completed)
+                order.csv_file_path = csv_file_path
+                db.commit()
+                db.refresh(order)
+                logger.info(f"✅ Order {order.id} updated with CSV path: {csv_file_path}")
             except Exception as e:
                 logger.error(f"❌ Failed to store CSV in R2 for order {order.id}: {e}")
-                db.rollback()
-                
-                # Track retry attempt using order.id
-                retry_count = await track_webhook_retry(order_id_for_tracking)
-                
-                # If max retries reached, mark enrichment job and order as failed
-                if retry_count >= MAX_WEBHOOK_RETRIES:
-                    await handle_webhook_max_retries_reached(order, order_id_for_tracking, db, "CSV storage failed")
-                    # Return 200 to stop retries
-                    return {"status": "error", "message": f"Failed after {MAX_WEBHOOK_RETRIES} retries: {str(e)}"}
-                
-                # Return 500 to trigger Vayne retry (if under max retries)
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to store CSV: {str(e)}"
-                )
-            
-            # Update order status to completed
-            logger.info(f"📝 Updating order {order.id} status to 'completed'")
-            order.status = "completed"
-            order.csv_file_path = csv_file_path
-            order.completed_at = datetime.utcnow()
-            order.export_format = export_format  # Update format if different
-            
-            # Update progress to 100%
-            order.progress_percentage = 100
-            
-            db.commit()
-            db.refresh(order)
-            
-            logger.info(f"✅ Order {order.id} marked as completed with CSV path: {csv_file_path}")
+                # Order is already marked as completed, so we don't fail the webhook
+                # Just log the error and return success
+                logger.warning(f"⚠️ CSV storage failed but order {order.id} already marked as completed")
+                await clear_webhook_retries(order_id_for_tracking)
+                return {
+                    "status": "ok",
+                    "message": "Order marked as completed (CSV storage failed)",
+                    "order_id": str(order.id),
+                    "csv_storage_error": str(e)
+                }
             
             # Clear retry count on success
             await clear_webhook_retries(order_id_for_tracking)
             
-            # Find or create enrichment job and queue for enrichment
+            # Find or create enrichment job and queue for enrichment (only if CSV was successfully stored)
             logger.info(f"🔄 Setting up enrichment job for order {order.id} (user {order.user_id})")
             try:
                 # Find existing placeholder job for this order
