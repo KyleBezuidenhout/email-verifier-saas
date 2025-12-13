@@ -40,7 +40,7 @@ def log(message: str, level: str = "info"):
     """Log a message with timestamp."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     prefix = "✅" if level == "success" else "❌" if level == "error" else "⏳" if level == "wait" else "ℹ️"
-    print(f"[{timestamp}] {prefix} {message}")
+    print(f"[{timestamp}] {prefix} {message}", flush=True)
 
 
 def get_active_order(db):
@@ -302,4 +302,15 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        # Force stdout to be unbuffered for Railway logs
+        import sys
+        sys.stdout.reconfigure(line_buffering=True)
+        
+        log("Initializing Vayne Queue Worker...", "info")
+        asyncio.run(main())
+    except Exception as e:
+        print(f"FATAL ERROR: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
