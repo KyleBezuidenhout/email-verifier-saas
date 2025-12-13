@@ -21,11 +21,25 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path to import app modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+backend_path = os.path.join(os.path.dirname(__file__), '..', 'backend')
+sys.path.insert(0, backend_path)
 
-from app.core.config import settings
-from app.services.vayne_client import get_vayne_client
-from app.models.vayne_order import VayneOrder
+# Log startup before imports to help debug
+print(f"Python path: {sys.path}", flush=True)
+print(f"Backend path: {backend_path}", flush=True)
+print(f"Current directory: {os.getcwd()}", flush=True)
+
+try:
+    from app.core.config import settings
+    from app.services.vayne_client import get_vayne_client
+    from app.models.vayne_order import VayneOrder
+    print("✓ Successfully imported app modules", flush=True)
+except ImportError as e:
+    print(f"❌ Import error: {e}", flush=True)
+    print(f"Looking for app in: {backend_path}", flush=True)
+    if os.path.exists(backend_path):
+        print(f"Backend directory exists: {os.listdir(backend_path)}", flush=True)
+    raise
 
 # PostgreSQL connection
 engine = create_engine(settings.DATABASE_URL)
