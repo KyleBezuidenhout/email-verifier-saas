@@ -415,12 +415,20 @@ export default function SalesNavScraperPage() {
     setLinkedinCookie(""); // Clear cookie
   };
 
-  const handleDownloadCSV = (fileUrl: string) => {
+  const handleDownloadCSV = async (orderId: string) => {
     try {
-      // Open the file_url directly in a new tab
-      window.open(fileUrl, '_blank');
+      // Download CSV from backend endpoint which checks PostgreSQL DB for file_url
+      const blob = await apiClient.downloadVayneOrderCSV(orderId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sales-nav-leads-${orderId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to open CSV file");
+      setError(err instanceof Error ? err.message : "Failed to download CSV");
       setShowErrorModal(true);
     }
   };
@@ -908,9 +916,9 @@ export default function SalesNavScraperPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                      {order.status === "completed" && order.file_url && (
+                      {order.status === "completed" && (
                         <button
-                          onClick={() => handleDownloadCSV(order.file_url!)}
+                          onClick={() => handleDownloadCSV(order.id)}
                           className="text-apple-accent hover:text-apple-accent-hover transition-colors"
                         >
                           Download CSV
