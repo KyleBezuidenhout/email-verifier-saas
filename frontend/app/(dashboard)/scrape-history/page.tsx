@@ -69,20 +69,13 @@ export default function ScrapeHistoryPage() {
     return orders.filter(order => new Date(order.created_at) >= startDate);
   }, [orders, dateRange, customStartDate, customEndDate]);
 
-  const handleDownloadCSV = async (orderId: string) => {
+  const handleDownloadCSV = (fileUrl: string, orderId: string) => {
     setDownloadingOrderId(orderId);
     try {
-      const blob = await apiClient.downloadVayneOrderCSV(orderId);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `sales-nav-leads-${orderId}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      // Open the file_url directly in a new tab
+      window.open(fileUrl, '_blank');
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to download CSV");
+      setError(err instanceof Error ? err.message : "Failed to open CSV file");
     } finally {
       setDownloadingOrderId(null);
     }
@@ -261,11 +254,11 @@ export default function ScrapeHistoryPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                       {order.status === "completed" && order.file_url && (
                         <button
-                          onClick={() => handleDownloadCSV(order.id)}
+                          onClick={() => handleDownloadCSV(order.file_url!, order.id)}
                           disabled={downloadingOrderId === order.id}
                           className="text-apple-accent hover:text-apple-accent/80 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {downloadingOrderId === order.id ? "Downloading..." : "Download"}
+                          {downloadingOrderId === order.id ? "Opening..." : "Download CSV"}
                         </button>
                       )}
                       {deleteConfirmOrderId === order.id ? (

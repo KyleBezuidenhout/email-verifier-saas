@@ -65,6 +65,36 @@ export default function SalesNavScraperPage() {
     }
   }, []);
 
+  const loadScrapeHistory = useCallback(async () => {
+    setLoadingScrapeHistory(true);
+    try {
+      // Load all orders (with pagination if needed)
+      let allOrders: VayneOrder[] = [];
+      let offset = 0;
+      const limit = 100;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await apiClient.getVayneOrderHistory(limit, offset);
+        allOrders = [...allOrders, ...response.orders];
+        offset += limit;
+        hasMore = response.orders.length === limit;
+      }
+
+      // Filter to only show completed orders in history
+      const completedOrders = allOrders
+        .filter(order => order.status === "completed")
+        .sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+      setScrapeHistoryOrders(completedOrders);
+    } catch (err) {
+      console.error("Failed to load scrape history:", err);
+    } finally {
+      setLoadingScrapeHistory(false);
+    }
+  }, []);
 
   const refreshOrderStatus = useCallback(async (orderId: string, retryCount: number = 0) => {
     try {
@@ -73,7 +103,6 @@ export default function SalesNavScraperPage() {
       
       // Update current order with status data
       const order = await apiClient.getVayneOrder(orderId);
-      setCurrentOrder(order);
       
       // Log polling status for debugging
       console.log(`🔄 Polling order ${orderId}: scraping_status=${statusData.scraping_status}, progress=${statusData.progress_percentage}%`);
@@ -86,7 +115,7 @@ export default function SalesNavScraperPage() {
         console.log(`✅ Scraping finished, refreshing order to get file_url...`);
         try {
           const updatedOrder = await apiClient.getVayneOrder(orderId);
-          setCurrentOrder(updatedOrder);
+          order.file_url = updatedOrder.file_url;
           if (updatedOrder.file_url) {
             console.log(`✅ CSV file_url available: ${updatedOrder.file_url.substring(0, 50)}...`);
           }
@@ -95,9 +124,26 @@ export default function SalesNavScraperPage() {
         }
       }
       
-      // If order completed or failed, refresh credits and history
-      if (statusData.status === "completed" || statusData.status === "failed" || scrapingStatus === "finished") {
+      // If order is completed, move it to history and clear current order
+      if (statusData.status === "completed" || (scrapingStatus === "finished" && order.file_url)) {
+        // Update order status to completed if it's finished
+        if (scrapingStatus === "finished" && statusData.status !== "completed") {
+          order.status = "completed";
+        }
+        
+        // Clear current order (it will appear in history)
+        setCurrentOrder(null);
+        
+        // Refresh scrape history to include the completed order
+        await loadScrapeHistory();
         await loadCredits();
+      } else if (statusData.status === "failed" || scrapingStatus === "failed") {
+        // For failed orders, keep in current view but refresh credits
+        setCurrentOrder(order);
+        await loadCredits();
+      } else {
+        // For active orders, keep in current view
+        setCurrentOrder(order);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -121,7 +167,7 @@ export default function SalesNavScraperPage() {
       // For other errors, log but continue polling (might be temporary network issues)
       console.error("❌ Failed to refresh order status:", err);
     }
-  }, [loadCredits]);
+  }, [loadCredits, loadScrapeHistory]);
 
   const validateUrl = useCallback(async (url: string) => {
     if (!url.trim()) {
@@ -369,48 +415,15 @@ export default function SalesNavScraperPage() {
     setLinkedinCookie(""); // Clear cookie
   };
 
-  const handleDownloadCSV = async (orderId: string) => {
+  const handleDownloadCSV = (fileUrl: string) => {
     try {
-      const blob = await apiClient.downloadVayneOrderCSV(orderId);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `sales-nav-leads-${orderId}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      // Open the file_url directly in a new tab
+      window.open(fileUrl, '_blank');
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to download CSV");
+      setError(err instanceof Error ? err.message : "Failed to open CSV file");
       setShowErrorModal(true);
     }
   };
-
-  const loadScrapeHistory = useCallback(async () => {
-    setLoadingScrapeHistory(true);
-    try {
-      // Load all orders (with pagination if needed)
-      let allOrders: VayneOrder[] = [];
-      let offset = 0;
-      const limit = 100;
-      let hasMore = true;
-
-      while (hasMore) {
-        const response = await apiClient.getVayneOrderHistory(limit, offset);
-        allOrders = [...allOrders, ...response.orders];
-        offset += limit;
-        hasMore = response.orders.length === limit;
-      }
-
-      setScrapeHistoryOrders(allOrders.sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      ));
-    } catch (err) {
-      console.error("Failed to load scrape history:", err);
-    } finally {
-      setLoadingScrapeHistory(false);
-    }
-  }, []);
 
   const handleDeleteOrder = async (orderId: string) => {
     if (deleteConfirmOrderId === orderId) {
@@ -749,7 +762,7 @@ export default function SalesNavScraperPage() {
       </div>
 
       {/* Order Status & Results */}
-      {currentOrder && (
+      {currentOrder && currentOrder.status !== "completed" && (
         <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
           <h3 className="text-lg font-semibold text-apple-text mb-4">Current Order</h3>
           <div className="space-y-4">
@@ -820,23 +833,6 @@ export default function SalesNavScraperPage() {
               </div>
             )}
 
-            {/* Download CSV button when order is completed */}
-            {currentOrder && currentOrder.status === "completed" && currentOrder.file_url && (
-              <div className="mt-4 pt-4 border-t border-apple-border">
-                <button
-                  onClick={() => handleDownloadCSV(currentOrder.id)}
-                  className="w-full bg-apple-accent hover:bg-apple-accent/90 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download CSV
-                </button>
-                <p className="text-xs text-apple-text-muted mt-2 text-center">
-                  Download the CSV file and upload it to the enrichment page to find valid emails
-                </p>
-              </div>
-            )}
 
           </div>
         </div>
@@ -914,10 +910,10 @@ export default function SalesNavScraperPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                       {order.status === "completed" && order.file_url && (
                         <button
-                          onClick={() => handleDownloadCSV(order.id)}
+                          onClick={() => handleDownloadCSV(order.file_url!)}
                           className="text-apple-accent hover:text-apple-accent-hover transition-colors"
                         >
-                          Download
+                          Download CSV
                         </button>
                       )}
                       {deleteConfirmOrderId === order.id ? (
