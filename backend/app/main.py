@@ -71,6 +71,7 @@ async def run_migrations_on_startup():
         from migrate_add_vayne_orders import migrate as migrate_vayne_orders
         from migrate_add_vayne_csv_path import migrate_add_vayne_csv_path
         from migrate_add_targeting_to_vayne_orders import migrate_add_targeting_to_vayne_orders
+        from migrate_add_queued_status import migrate as migrate_add_queued_status
         
         print("Running database migrations on startup...")
         migrate_catchall_key()
@@ -83,6 +84,7 @@ async def run_migrations_on_startup():
         migrate_vayne_orders()
         migrate_add_vayne_csv_path()
         migrate_add_targeting_to_vayne_orders()
+        migrate_add_queued_status()
         print("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
