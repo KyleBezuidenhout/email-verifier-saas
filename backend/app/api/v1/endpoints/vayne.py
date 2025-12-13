@@ -55,7 +55,7 @@ from app.schemas.vayne import (
     VayneExportsInfo,
 )
 from app.services.vayne_client import get_vayne_client
-from app.services.vayne_enrichment import create_placeholder_enrichment_job, mark_enrichment_job_scrape_failed
+from app.services.vayne_enrichment import mark_enrichment_job_scrape_failed
 from app.core.config import settings
 
 # Initialize S3 client for Cloudflare R2
@@ -399,16 +399,7 @@ async def create_order(
         db.commit()
         db.refresh(order)
         
-        # Immediately create and queue placeholder enrichment job
-        # This allows job queuing to start as soon as client clicks "start scraping"
-        # Webhook will update the job with CSV data when scraping completes
-        try:
-            placeholder_job = await create_placeholder_enrichment_job(order, db)
-            if placeholder_job:
-                logger.info(f"✅ Created placeholder enrichment job {placeholder_job.id} for order {order.id}")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to create placeholder enrichment job for order {order.id}: {e}")
-            # Don't fail the order creation if job creation fails
+        # No automatic enrichment job creation - users will download CSV and upload manually
         
         return VayneOrderCreateResponse(
             success=True,
@@ -480,6 +471,7 @@ async def get_order(
         created_at=order.created_at.isoformat(),
         completed_at=order.completed_at.isoformat() if order.completed_at else None,
         csv_file_path=order.csv_file_path,
+        file_url=order.file_url,  # Direct URL to CSV file from Vayne
         targeting=order.targeting,
         name=order.name,  # Include name field
         exports=None,  # Exports handled by webhook
@@ -492,8 +484,8 @@ async def export_order_download(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Download CSV file from R2 for an order.
-    CSV is stored by webhook when scraping completes.
+    """Download CSV file from Vayne's file_url for an order.
+    CSV is available via file_url stored by webhook when scraping completes.
     Ensures client-specific (user_id) and job-specific (order_id) access control.
     """
     try:
@@ -516,36 +508,34 @@ async def export_order_download(
             detail="Order not found"
         )
     
-    # CSV should be stored in PostgreSQL by webhook when order completes
-    if not order.csv_data:
+    # CSV is available via file_url from Vayne
+    if not order.file_url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CSV file not available for this order. The order may still be processing."
         )
     
-    # Read CSV from PostgreSQL
+    # Download CSV from Vayne's file_url and stream it to the user
     try:
-        csv_data_bytes = order.csv_data.encode('utf-8')
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            logger.info(f"⬇️ Proxying CSV download from {order.file_url[:80]}...")
+            file_response = await client.get(order.file_url)
+            file_response.raise_for_status()
+            csv_data = file_response.content
+            
+            return StreamingResponse(
+                io.BytesIO(csv_data),
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=leads_export_{order_id}.csv"
+                }
+            )
     except Exception as e:
-        logger.error(f"Failed to read CSV from PostgreSQL for order {order.id} (user {current_user.id}): {e}")
+        logger.error(f"Failed to download CSV from file_url for order {order.id} (user {current_user.id}): {e}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="CSV file not available for this order."
+            detail=f"CSV file not available: {str(e)}"
         )
-    
-    if not csv_data_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="CSV file not available for this order. The order may still be processing."
-        )
-    
-    return StreamingResponse(
-        io.BytesIO(csv_data_bytes),
-        media_type="text/csv",
-        headers={
-            "Content-Disposition": f"attachment; filename=leads_export_{order_id}.csv"
-        }
-    )
 
 
 @router.get("/orders/{order_id}/csv")
@@ -554,7 +544,7 @@ async def download_csv(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Download CSV file from PostgreSQL for an order (legacy endpoint)."""
+    """Download CSV file from Vayne's file_url for an order (legacy endpoint)."""
     try:
         order_uuid = UUID(order_id)
     except ValueError:
@@ -574,23 +564,27 @@ async def download_csv(
             detail="Order not found"
         )
     
-    if not order.csv_data:
+    if not order.file_url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CSV file not available for this order"
         )
     
     try:
-        # Read CSV from PostgreSQL
-        csv_data_bytes = order.csv_data.encode('utf-8')
-        
-        return StreamingResponse(
-            io.BytesIO(csv_data_bytes),
-            media_type="text/csv",
-            headers={
-                "Content-Disposition": f"attachment; filename=sales-nav-leads-{order.id}.csv"
-            }
-        )
+        # Download CSV from Vayne's file_url and stream it to the user
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            logger.info(f"⬇️ Proxying CSV download from {order.file_url[:80]}...")
+            file_response = await client.get(order.file_url)
+            file_response.raise_for_status()
+            csv_data = file_response.content
+            
+            return StreamingResponse(
+                io.BytesIO(csv_data),
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=sales-nav-leads-{order.id}.csv"
+                }
+            )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -647,6 +641,7 @@ async def get_order_history(
                 created_at=order.created_at.isoformat(),
                 completed_at=order.completed_at.isoformat() if order.completed_at else None,
                 csv_file_path=order.csv_file_path,
+                file_url=order.file_url,  # Direct URL to CSV file from Vayne
                 targeting=order.targeting,
                 name=order.name,  # Include name field
                 exports=None,  # Exports fetched on-demand when downloading
@@ -675,7 +670,7 @@ async def vayne_webhook(
     """
     Scalable webhook endpoint for Vayne API to receive completed scraping results.
     Processes webhooks sequentially (1 at a time) using Redis locks.
-    Immediately downloads CSV from file_url and triggers enrichment job.
+    Stores file_url in PostgreSQL for user download (no automatic enrichment).
     
     This endpoint is public (no auth required) but validates payload structure.
     
@@ -767,10 +762,10 @@ async def vayne_webhook(
             
             # Refresh order from DB to get latest state
             db.refresh(order)
-            logger.info(f"📋 Order {order.id} current status: {order.status}, has_csv_data: {bool(order.csv_data)}")
+            logger.info(f"📋 Order {order.id} current status: {order.status}, has_file_url: {bool(order.file_url)}")
             
-            # Check if already fully processed (completed with CSV)
-            if order.status == "completed" and order.csv_data:
+            # Check if already fully processed (completed with file_url)
+            if order.status == "completed" and order.file_url:
                 logger.info(f"✅ Order {order.id} already completed with CSV - skipping")
                 return {"status": "ok", "message": "Order already processed"}
             
@@ -792,146 +787,31 @@ async def vayne_webhook(
             else:
                 logger.info(f"📝 Order {order.id} already marked as completed, proceeding with CSV processing if available")
             
-            # Only process CSV if file_url is provided
-            if not file_url:
-                logger.warning(f"⚠️ Webhook received for order '{vayne_order_id_str}' without file_url - order marked as completed anyway")
-                # Clear retry count on success
-                await clear_webhook_retries(order_id_for_tracking)
-                return {
-                    "status": "ok",
-                    "message": "Order marked as completed (no file_url provided)",
-                    "order_id": str(order.id)
-                }
-            
-            # Download CSV directly from file_url
-            csv_data = None
-            try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    logger.info(f"⬇️ Downloading CSV from {file_url[:80]}...")
-                    file_response = await client.get(file_url)
-                    file_response.raise_for_status()
-                    csv_data = file_response.content
-                    logger.info(f"✅ Downloaded CSV ({len(csv_data)} bytes) for order {order.id}")
-            except Exception as e:
-                logger.error(f"❌ Failed to download CSV from file_url for order {order.id}: {e}")
-                # Order is already marked as completed, so we don't fail the webhook
-                # Just log the error and return success
-                logger.warning(f"⚠️ CSV download failed but order {order.id} already marked as completed")
-                await clear_webhook_retries(order_id_for_tracking)
-                return {
-                    "status": "ok",
-                    "message": "Order marked as completed (CSV download failed)",
-                    "order_id": str(order.id),
-                    "csv_download_error": str(e)
-                }
-            
-            # Store CSV data in PostgreSQL (replaces R2 storage)
-            try:
-                csv_data_text = csv_data.decode('utf-8')
-                order.csv_data = csv_data_text
-                # Keep csv_file_path for backwards compatibility (deprecated)
-                order.csv_file_path = f"vayne-order:{order.id}"  # Reference to order ID instead of R2 path
-                db.commit()
-                db.refresh(order)
-                logger.info(f"✅ Stored CSV data in PostgreSQL for order {order.id} ({len(csv_data_text)} characters)")
-            except Exception as e:
-                logger.error(f"❌ Failed to store CSV in PostgreSQL for order {order.id}: {e}")
-                # Order is already marked as completed, so we don't fail the webhook
-                # Just log the error and return success
-                logger.warning(f"⚠️ CSV storage failed but order {order.id} already marked as completed")
-                await clear_webhook_retries(order_id_for_tracking)
-                return {
-                    "status": "ok",
-                    "message": "Order marked as completed (CSV storage failed)",
-                    "order_id": str(order.id),
-                    "csv_storage_error": str(e)
-                }
+            # Store file_url if provided (users will download CSV manually)
+            if file_url:
+                try:
+                    order.file_url = file_url
+                    db.commit()
+                    db.refresh(order)
+                    logger.info(f"✅ Stored file_url for order {order.id}: {file_url[:80]}...")
+                except Exception as e:
+                    logger.error(f"❌ Failed to store file_url for order {order.id}: {e}")
+                    # Don't fail webhook - order is already marked as completed
+            else:
+                logger.warning(f"⚠️ Webhook received for order '{vayne_order_id_str}' without file_url")
             
             # Clear retry count on success
             await clear_webhook_retries(order_id_for_tracking)
             
-            # Find or create enrichment job and queue for enrichment (only if CSV was successfully stored)
-            logger.info(f"🔄 Setting up enrichment job for order {order.id} (user {order.user_id})")
-            try:
-                # Find existing placeholder job for this order
-                placeholder_job = db.query(Job).filter(
-                    Job.user_id == order.user_id,
-                    Job.status == "waiting_for_csv",
-                    Job.input_file_path.like(f"vayne-order:{order.id}")
-                ).first()
-                
-                if placeholder_job:
-                    logger.info(f"✅ Found existing placeholder job {placeholder_job.id} for order {order.id}")
-                    job = placeholder_job
-                else:
-                    logger.warning(f"⚠️ No placeholder job found for order {order.id} - creating new job")
-                    # Create new job
-                    from app.models.user import User
-                    user = db.query(User).filter(User.id == order.user_id).first()
-                    if not user:
-                        logger.error(f"❌ User not found for order {order.id}")
-                        return {
-                            "status": "ok",
-                            "message": "Order completed but user not found",
-                            "order_id": str(order.id)
-                        }
-                    
-                    job = Job(
-                        user_id=user.id,
-                        status="pending",
-                        job_type="enrichment",
-                        original_filename=f"sales-nav-{order.id}.csv",
-                        total_leads=0,
-                        processed_leads=0,
-                        valid_emails_found=0,
-                        catchall_emails_found=0,
-                        cost_in_credits=0,
-                        source="Scraped",
-                    )
-                    db.add(job)
-                    db.commit()
-                    db.refresh(job)
-                    logger.info(f"✅ Created new job {job.id} for order {order.id}")
-                
-                # Update job with order reference (enrichment worker will read from PostgreSQL)
-                job.input_file_path = f"vayne-order:{order.id}"  # Reference to order ID for PostgreSQL lookup
-                job.status = "pending"  # Ready for enrichment
-                db.commit()
-                db.refresh(job)
-                
-                logger.info(f"✅ Updated job {job.id} with order reference: vayne-order:{order.id}")
-                
-                # Queue job for enrichment
-                try:
-                    job_id_str = str(job.id)
-                    queue_name = "enrichment-job-creation"
-                    redis_client.lpush(queue_name, job_id_str)
-                    queue_length = redis_client.llen(queue_name)
-                    logger.info(f"📤 QUEUED job {job.id} to enrichment queue '{queue_name}' (queue length: {queue_length})")
-                except Exception as e:
-                    logger.error(f"❌ Failed to queue job {job.id} for enrichment: {e}")
-                    import traceback
-                    traceback.print_exc()
-                
-                return {
-                    "status": "ok",
-                    "message": "Webhook processed successfully",
-                    "order_id": str(order.id),
-                    "enrichment_job_id": str(job.id),
-                    "job_status": job.status
-                }
-                
-            except Exception as e:
-                logger.error(f"❌ Exception setting up enrichment job for order {order.id}: {e}")
-                import traceback
-                traceback.print_exc()
-                # Still return success since order is completed
-                return {
-                    "status": "ok",
-                    "message": "Order completed but enrichment job setup failed",
-                    "order_id": str(order.id),
-                    "error": str(e)
-                }
+            # No automatic enrichment - users will download CSV and upload manually
+            logger.info(f"✅ Order {order.id} completed. User can download CSV from file_url when ready.")
+            
+            return {
+                "status": "ok",
+                "message": "Webhook processed successfully - CSV available for download",
+                "order_id": str(order.id),
+                "file_url": file_url
+            }
         
         # Process with sequential locking using order.id
         result = await process_webhook_sequentially(order_id_for_tracking, process_webhook)
@@ -1076,17 +956,14 @@ async def admin_sync_order(
                     if not order.completed_at:
                         order.completed_at = datetime.utcnow()
                     
-                    # Try to download and store CSV in PostgreSQL
-                    if not order.csv_data:
+                    # Try to get file_url from Vayne API (if not already stored)
+                    if not order.file_url:
                         try:
-                            csv_data = await vayne_client.export_order_with_retry(order.vayne_order_id, "advanced")
-                            csv_data_text = csv_data.decode('utf-8')
-                            order.csv_data = csv_data_text
-                            # Keep csv_file_path for backwards compatibility
-                            order.csv_file_path = f"vayne-order:{order.id}"
-                            logger.info(f"✅ Stored CSV in PostgreSQL for order {order.id} via admin sync")
+                            # Note: Vayne API may not return file_url in get_order response
+                            # This is mainly for webhook-stored file_urls
+                            logger.info(f"⚠️ Order {order.id} has no file_url - webhook should have stored it")
                         except Exception as export_error:
-                            logger.warning(f"⚠️ Failed to store CSV for order {order.id}: {export_error}")
+                            logger.warning(f"⚠️ Could not check file_url for order {order.id}: {export_error}")
                 else:
                     order.status = "processing"
             except Exception as export_error:

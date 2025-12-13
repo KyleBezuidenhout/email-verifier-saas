@@ -32,7 +32,6 @@ from app.core.config import settings
 from app.models.job import Job
 from app.models.lead import Lead
 from app.models.user import User
-from app.models.vayne_order import VayneOrder
 from app.services.permutation import generate_email_permutations, normalize_domain, clean_first_name
 from app.api.dependencies import ADMIN_EMAIL
 
@@ -173,54 +172,26 @@ def process_enrichment_job(job_id: str) -> bool:
         
         logger.info(f"🔄 Processing enrichment job {job_id} (status: {job.status})")
         
-        # Read CSV from PostgreSQL (for vayne orders) or R2 (for legacy uploads)
-        csv_data = None
+        # Skip vayne orders - users upload CSV manually now
         if job.input_file_path and job.input_file_path.startswith("vayne-order:"):
-            # Extract order ID from input_file_path (format: "vayne-order:{order_id}")
-            try:
-                order_id_str = job.input_file_path.replace("vayne-order:", "")
-                order_uuid = UUID(order_id_str)
-                order = db.query(VayneOrder).filter(VayneOrder.id == order_uuid).first()
-                
-                if not order:
-                    logger.error(f"❌ Vayne order {order_id_str} not found for job {job_id}")
-                    job.status = "failed"
-                    db.commit()
-                    return False
-                
-                if not order.csv_data:
-                    logger.error(f"❌ Vayne order {order_id_str} has no CSV data for job {job_id}")
-                    job.status = "failed"
-                    db.commit()
-                    return False
-                
-                # Read CSV from PostgreSQL
-                csv_data = order.csv_data.encode('utf-8')
-                logger.info(f"✅ Read CSV from PostgreSQL for order {order_id_str}: {len(csv_data)} bytes")
-            except ValueError as e:
-                logger.error(f"❌ Invalid order ID format in input_file_path '{job.input_file_path}' for job {job_id}: {e}")
-                job.status = "failed"
-                db.commit()
-                return False
-            except Exception as e:
-                logger.error(f"❌ Failed to read CSV from PostgreSQL for job {job_id}: {e}")
-                job.status = "failed"
-                db.commit()
-                return False
-        else:
-            # Legacy: Download CSV from R2 (for non-vayne orders)
-            try:
-                response = s3_client.get_object(
-                    Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-                    Key=job.input_file_path
-                )
-                csv_data = response['Body'].read()
-                logger.info(f"✅ Downloaded CSV from R2: {len(csv_data)} bytes")
-            except Exception as e:
-                logger.error(f"❌ Failed to download CSV from R2 for job {job_id}: {e}")
-                job.status = "failed"
-                db.commit()
-                return False
+            logger.warning(f"⚠️ Job {job_id} references vayne order - users should upload CSV manually. Skipping.")
+            job.status = "failed"
+            db.commit()
+            return False
+        
+        # Download CSV from R2 (for regular file uploads)
+        try:
+            response = s3_client.get_object(
+                Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+                Key=job.input_file_path
+            )
+            csv_data = response['Body'].read()
+            logger.info(f"✅ Downloaded CSV from R2: {len(csv_data)} bytes")
+        except Exception as e:
+            logger.error(f"❌ Failed to download CSV from R2 for job {job_id}: {e}")
+            job.status = "failed"
+            db.commit()
+            return False
         
         # Parse CSV
         remapped_rows = parse_csv_from_r2(csv_data)

@@ -116,7 +116,8 @@ export interface VayneOrder {
   estimated_completion?: string;
   created_at: string;
   completed_at?: string;
-  csv_file_path?: string;  // R2 path to exported CSV
+  csv_file_path?: string;  // Deprecated: kept for backwards compatibility
+  file_url?: string;  // Direct URL to CSV file from Vayne (for download)
   vayne_order_id: string;  // Vayne's order ID (required for webhook matching)
   targeting?: string;  // Job name/targeting description
   exports?: {

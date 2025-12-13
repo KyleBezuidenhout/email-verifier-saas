@@ -21,8 +21,9 @@ class VayneOrder(Base):
     progress_percentage = Column(Integer, default=0)
     estimated_completion = Column(String(255), nullable=True)
     linkedin_cookie = Column(Text, nullable=True)  # Store li_at cookie temporarily (encrypted in production)
-    csv_file_path = Column(String(500), nullable=True)  # Deprecated: kept for backwards compatibility, use csv_data instead
-    csv_data = Column(Text, nullable=True)  # CSV content stored in PostgreSQL (replaces R2 storage)
+    csv_file_path = Column(String(500), nullable=True)  # Deprecated: kept for backwards compatibility
+    csv_data = Column(Text, nullable=True)  # Deprecated: kept for backwards compatibility, use file_url instead
+    file_url = Column(Text, nullable=True)  # Direct URL to CSV file from Vayne (stored from webhook)
     targeting = Column(String(255), nullable=True)  # Job name/targeting description
     name = Column(String(255), nullable=True)  # Order name from Vayne API (optional - for display/logging only)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)

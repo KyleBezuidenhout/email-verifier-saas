@@ -76,7 +76,8 @@ class VayneOrderResponse(BaseModel):
     estimated_completion: Optional[str] = None
     created_at: str
     completed_at: Optional[str] = None
-    csv_file_path: Optional[str] = None  # Deprecated: kept for backwards compatibility, CSV is now stored in csv_data column in PostgreSQL
+    csv_file_path: Optional[str] = None  # Deprecated: kept for backwards compatibility
+    file_url: Optional[str] = None  # Direct URL to CSV file from Vayne (for download)
     targeting: Optional[str] = None  # Job name/targeting description
     name: Optional[str] = None  # Order name from Vayne API
     exports: Optional[VayneExportsInfo] = None  # Direct export URLs from Vayne API

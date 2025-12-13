@@ -92,18 +92,17 @@ export default function SalesNavScraperPage() {
       // Parse scraping_status from status endpoint
       const scrapingStatus = statusData.scraping_status;
       
-      // If scraping is finished, call export endpoint to store CSV
-      if (scrapingStatus === "finished" && !order.csv_file_path) {
-        console.log(`✅ Scraping finished, exporting CSV for order ${orderId}...`);
+      // If scraping is finished, refresh order to get file_url (webhook should have stored it)
+      if (scrapingStatus === "finished" && !order.file_url) {
+        console.log(`✅ Scraping finished, refreshing order to get file_url...`);
         try {
-          await apiClient.exportVayneOrder(orderId);
-          // Refresh order to get updated csv_file_path
           const updatedOrder = await apiClient.getVayneOrder(orderId);
           setCurrentOrder(updatedOrder);
-          console.log(`✅ CSV exported and stored: ${updatedOrder.csv_file_path}`);
-        } catch (exportErr) {
-          console.error("❌ Failed to export CSV:", exportErr);
-          // Continue polling - export might not be ready yet
+          if (updatedOrder.file_url) {
+            console.log(`✅ CSV file_url available: ${updatedOrder.file_url.substring(0, 50)}...`);
+          }
+        } catch (refreshErr) {
+          console.error("❌ Failed to refresh order:", refreshErr);
         }
       }
       
@@ -301,9 +300,8 @@ export default function SalesNavScraperPage() {
       // Order status will be refreshed automatically via polling (with delay)
       await loadCredits(); // Refresh credits after order creation
       
-      // Redirect to enrichment page to watch the job
-      // The enrichment job is created automatically with status "waiting_for_csv"
-      router.push("/find-valid-emails");
+      // No redirect - user stays on page to monitor scraping progress
+      // When complete, they can download CSV and upload manually to enrichment
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -383,6 +381,23 @@ export default function SalesNavScraperPage() {
     setOnlyQualified(false);
     setCurrentOrder(null);
     setLinkedinCookie(""); // Clear cookie
+  };
+
+  const handleDownloadCSV = async (orderId: string) => {
+    try {
+      const blob = await apiClient.downloadVayneOrderCSV(orderId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sales-nav-leads-${orderId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to download CSV");
+      setShowErrorModal(true);
+    }
   };
 
   // Show loading state while initial data is being fetched
@@ -751,6 +766,24 @@ export default function SalesNavScraperPage() {
                 <span className="text-sm font-medium text-apple-text">
                   {currentOrder.leads_qualified.toLocaleString()}
                 </span>
+              </div>
+            )}
+
+            {/* Download CSV button when order is completed */}
+            {currentOrder && currentOrder.status === "completed" && currentOrder.file_url && (
+              <div className="mt-4 pt-4 border-t border-apple-border">
+                <button
+                  onClick={() => handleDownloadCSV(currentOrder.id)}
+                  className="w-full bg-apple-accent hover:bg-apple-accent/90 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download CSV
+                </button>
+                <p className="text-xs text-apple-text-muted mt-2 text-center">
+                  Download the CSV file and upload it to the enrichment page to find valid emails
+                </p>
               </div>
             )}
 
