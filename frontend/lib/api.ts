@@ -567,6 +567,11 @@ class ApiClient {
     // This endpoint downloads CSV from R2 (matches specification GET /api/vayne/orders/:id/export)
     const url = `${this.baseUrl}/api/vayne/orders/${orderId}/export`;
     const token = this.getToken();
+    
+    console.log(`[API] Downloading CSV for order ${orderId}`);
+    console.log(`[API] URL: ${url}`);
+    console.log(`[API] Has token: ${!!token}`);
+    
     const response = await fetch(url, {
       method: "GET",
       headers: {
@@ -574,10 +579,13 @@ class ApiClient {
       },
     });
 
+    console.log(`[API] Response status: ${response.status} ${response.statusText}`);
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({
         detail: response.statusText,
       }));
+      console.error(`[API] Download failed:`, error);
       throw new Error(error.detail || "Failed to export order. The order may still be processing.");
     }
 

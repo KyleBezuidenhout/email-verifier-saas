@@ -510,9 +510,13 @@ async def export_order_download(
     CSV is available via file_url stored by webhook when scraping completes.
     Ensures client-specific (user_id) and job-specific (order_id) access control.
     """
+    logger.info(f"📥 CSV download request for order_id: {order_id}, user_id: {current_user.id}")
+    
     try:
         order_uuid = UUID(order_id)
-    except ValueError:
+        logger.info(f"✅ Valid UUID format: {order_uuid}")
+    except ValueError as e:
+        logger.error(f"❌ Invalid order ID format: {order_id}, error: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid order ID format"
@@ -525,10 +529,22 @@ async def export_order_download(
     ).first()
     
     if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
+        # Check if order exists but belongs to different user
+        order_exists = db.query(VayneOrder).filter(VayneOrder.id == order_uuid).first()
+        if order_exists:
+            logger.warning(f"⚠️ Order {order_id} exists but belongs to user {order_exists.user_id}, not {current_user.id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Order not found"
+            )
+        else:
+            logger.warning(f"⚠️ Order {order_id} does not exist in database")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Order not found"
+            )
+    
+    logger.info(f"✅ Order found: {order.id}, status: {order.status}, file_url present: {bool(order.file_url)}")
     
     # Check if file_url exists and is not empty
     file_url = order.file_url
