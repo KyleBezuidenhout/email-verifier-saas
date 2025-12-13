@@ -360,37 +360,22 @@ async def create_order(
             linkedin_cookie=order_data.linkedin_cookie
         )
         
-        # Extract name from Vayne's response - required for database matching
-        order_name = vayne_order.get("name")
-        if not order_name:
-            # Name is required - mark order as failed
-            logger.error(f"❌ Vayne order creation returned no name. Vayne response: {vayne_order}")
-            
-            # Create order record with failed status
-            order = VayneOrder(
-                user_id=current_user.id,
-                sales_nav_url=order_data.sales_nav_url,
-                export_format="advanced",
-                only_qualified=False,
-                linkedin_cookie=order_data.linkedin_cookie,
-                status="failed",  # Mark as failed immediately
-                vayne_order_id=str(vayne_order.get("id", "")) if vayne_order.get("id") else None,  # Optional - allow None
-                leads_found=estimated_leads,
-                targeting=order_data.targeting,
-                name=None,  # No name available
-            )
-            db.add(order)
-            db.commit()
-            db.refresh(order)
+        # Extract vayne_order_id from Vayne's response - required for database matching
+        vayne_order_id = vayne_order.get("id")
+        if not vayne_order_id:
+            # vayne_order_id is required - fail immediately without creating order
+            logger.error(f"❌ Vayne order creation returned no order_id. Vayne response: {vayne_order}")
             
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Vayne order creation failed: order name is required but was not returned. The scraping job has been marked as failed."
+                detail="Vayne order creation failed: order_id is required but was not returned. Please try again."
             )
         
-        # Extract vayne_order_id (optional - allow None/empty)
-        vayne_order_id = vayne_order.get("id")
-        vayne_order_id_str = str(vayne_order_id) if vayne_order_id else None
+        # Convert vayne_order_id to string (required field - already validated above)
+        vayne_order_id_str = str(vayne_order_id)
+        
+        # Extract name (optional - for logging/display only)
+        order_name = vayne_order.get("name")
         
         # Store order in database
         order = VayneOrder(
@@ -400,10 +385,10 @@ async def create_order(
             only_qualified=False,  # Hardcoded per specification
             linkedin_cookie=order_data.linkedin_cookie,
             status="processing",  # Set to processing immediately - webhook will update to completed
-            vayne_order_id=vayne_order_id_str,  # Optional - can be None
+            vayne_order_id=vayne_order_id_str,  # Required - used for webhook matching
             leads_found=estimated_leads,
             targeting=order_data.targeting,
-            name=order_name,  # Store name for database matching
+            name=order_name,  # Optional - store if available
         )
         db.add(order)
         
@@ -430,7 +415,7 @@ async def create_order(
             order_id=str(order.id),
             status="pending",
             message="Scraping order created successfully",
-            name=order_name  # Required field from Vayne's response
+            name=order_name or ""  # Optional field from Vayne's response
         )
         
     except HTTPException:
@@ -531,35 +516,31 @@ async def export_order_download(
             detail="Order not found"
         )
     
-    # CSV should be stored in R2 by webhook when order completes
-    if not order.csv_file_path:
+    # CSV should be stored in PostgreSQL by webhook when order completes
+    if not order.csv_data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CSV file not available for this order. The order may still be processing."
         )
     
-    # Download CSV from R2
+    # Read CSV from PostgreSQL
     try:
-        response = s3_client.get_object(
-            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-            Key=order.csv_file_path
-        )
-        csv_data = response['Body'].read()
+        csv_data_bytes = order.csv_data.encode('utf-8')
     except Exception as e:
-        logger.error(f"Failed to download CSV from R2 for order {order.id} (user {current_user.id}): {e}")
+        logger.error(f"Failed to read CSV from PostgreSQL for order {order.id} (user {current_user.id}): {e}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CSV file not available for this order."
         )
     
-    if not csv_data:
+    if not csv_data_bytes:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CSV file not available for this order. The order may still be processing."
         )
     
     return StreamingResponse(
-        io.BytesIO(csv_data),
+        io.BytesIO(csv_data_bytes),
         media_type="text/csv",
         headers={
             "Content-Disposition": f"attachment; filename=leads_export_{order_id}.csv"
@@ -573,7 +554,7 @@ async def download_csv(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Download CSV file from R2 for an order (legacy endpoint)."""
+    """Download CSV file from PostgreSQL for an order (legacy endpoint)."""
     try:
         order_uuid = UUID(order_id)
     except ValueError:
@@ -593,22 +574,18 @@ async def download_csv(
             detail="Order not found"
         )
     
-    if not order.csv_file_path:
+    if not order.csv_data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="CSV file not available for this order"
         )
     
     try:
-        # Download CSV from R2
-        response = s3_client.get_object(
-            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-            Key=order.csv_file_path
-        )
-        csv_data = response['Body'].read()
+        # Read CSV from PostgreSQL
+        csv_data_bytes = order.csv_data.encode('utf-8')
         
         return StreamingResponse(
-            io.BytesIO(csv_data),
+            io.BytesIO(csv_data_bytes),
             media_type="text/csv",
             headers={
                 "Content-Disposition": f"attachment; filename=sales-nav-leads-{order.id}.csv"
@@ -706,15 +683,15 @@ async def vayne_webhook(
     {
       "body": {
         "event": "order.completed",
-        "name": "Order_2025_12_13_000214",  # Required - used to match order in database
+        "order_id": 39119,  # Required - used to match order in database (vayne_order_id)
         "file_url": "https://vayne-production-export.s3.eu-west-3.amazonaws.com/...",  # Required
-        "order_id": 39119,  # Optional - for backwards compatibility
+        "name": "Order_2025_12_13_000214",  # Optional - for logging only
         "export_format": "simple"
       },
       ...
     }
     
-    The webhook matches orders by 'name' field. The 'order_id' field is optional.
+    The webhook matches orders by 'order_id' field (vayne_order_id). The 'name' field is optional.
     
     Configure webhook URL in Vayne dashboard API Settings:
     - Primary: https://www.billionverifier.io/api/webhooks/vayne/orders
@@ -732,13 +709,7 @@ async def vayne_webhook(
         # Extract body (Vayne sends nested structure)
         body_data = payload.get("body", payload)  # Fallback to flat structure for compatibility
         
-        # Extract name (required for database matching)
-        name = body_data.get("name")
-        if not name:
-            logger.warning(f"⚠️ Webhook received without name field. Raw payload: {payload}")
-            return {"status": "ok", "message": "No name provided (ignored)"}
-        
-        # Extract order_id (optional - for logging and backwards compatibility)
+        # Extract order_id (required for database matching - this is the vayne_order_id from webhook)
         order_id_raw = None
         if "body" in payload and isinstance(payload.get("body"), dict):
             body_dict = payload.get("body", {})
@@ -747,8 +718,8 @@ async def vayne_webhook(
         if order_id_raw is None and "order_id" in payload:
             order_id_raw = payload["order_id"]
         
-        # Convert order_id to string for logging (optional field)
-        vayne_order_id_str = ""
+        # Convert order_id to string (required field)
+        vayne_order_id_str = None
         if order_id_raw is not None:
             if isinstance(order_id_raw, (int, float)):
                 vayne_order_id_str = str(int(order_id_raw))
@@ -757,7 +728,14 @@ async def vayne_webhook(
             else:
                 vayne_order_id_str = str(order_id_raw)
         
-        logger.info(f"📥 Extracted name: '{name}', order_id (optional): {vayne_order_id_str}")
+        if not vayne_order_id_str:
+            logger.warning(f"⚠️ Webhook received without order_id field. Raw payload: {payload}")
+            return {"status": "ok", "message": "No order_id provided (ignored)"}
+        
+        # Extract name (optional - for logging only)
+        name = body_data.get("name")
+        
+        logger.info(f"📥 Extracted order_id: '{vayne_order_id_str}', name (optional): '{name}'")
         
         # Extract other fields from body_data
         event = body_data.get("event", "")
@@ -768,41 +746,35 @@ async def vayne_webhook(
             logger.info(f"📥 Webhook received for event '{event}' (not order.completed) - ignoring")
             return {"status": "ok", "message": f"Event '{event}' ignored (only processing order.completed)"}
         
-        logger.info(f"📥 Processing webhook for order name: '{name}', event: {event}")
+        logger.info(f"📥 Processing webhook for order_id: '{vayne_order_id_str}', event: {event}")
         
-        # Find order by name (required field for matching)
+        # Find order by vayne_order_id (required field for matching)
         order = db.query(VayneOrder).filter(
-            VayneOrder.name == name
+            VayneOrder.vayne_order_id == vayne_order_id_str
         ).first()
         
         if not order:
-            logger.warning(f"⚠️ Webhook received for unknown order name: '{name}'")
-            return {"status": "ok", "message": f"Order with name '{name}' not found (ignored)"}
+            logger.warning(f"⚠️ Webhook received for unknown order_id: '{vayne_order_id_str}'")
+            return {"status": "ok", "message": f"Order with order_id '{vayne_order_id_str}' not found (ignored)"}
         
-        # Use order.id for locking and retry tracking (since we matched by name)
+        # Use order.id for locking and retry tracking
         order_id_for_tracking = str(order.id)
-        
-        # Optionally update vayne_order_id if provided in webhook (for backwards compatibility)
-        if vayne_order_id_str and not order.vayne_order_id:
-            order.vayne_order_id = vayne_order_id_str
-            db.commit()
-            logger.info(f"📝 Updated order {order.id} with vayne_order_id: {vayne_order_id_str}")
         
         # Process webhook sequentially using Redis lock
         async def process_webhook():
             """Inner function to process the webhook (called with lock)."""
-            logger.info(f"🔒 Acquired webhook lock for order {order.id} (name: '{name}')")
+            logger.info(f"🔒 Acquired webhook lock for order {order.id} (vayne_order_id: '{vayne_order_id_str}')")
             
             # Refresh order from DB to get latest state
             db.refresh(order)
-            logger.info(f"📋 Order {order.id} current status: {order.status}, csv_file_path: {order.csv_file_path}")
+            logger.info(f"📋 Order {order.id} current status: {order.status}, has_csv_data: {bool(order.csv_data)}")
             
             # Check if already fully processed (completed with CSV)
-            if order.status == "completed" and order.csv_file_path:
+            if order.status == "completed" and order.csv_data:
                 logger.info(f"✅ Order {order.id} already completed with CSV - skipping")
                 return {"status": "ok", "message": "Order already processed"}
             
-            logger.info(f"🔄 Processing order {order.id} (name: '{name}') for user {order.user_id}")
+            logger.info(f"🔄 Processing order {order.id} (vayne_order_id: '{vayne_order_id_str}') for user {order.user_id}")
             
             # Update order status to completed IMMEDIATELY upon webhook receipt
             # This happens even if webhook is completely empty (no file_url)
@@ -822,7 +794,7 @@ async def vayne_webhook(
             
             # Only process CSV if file_url is provided
             if not file_url:
-                logger.warning(f"⚠️ Webhook received for order '{name}' without file_url - order marked as completed anyway")
+                logger.warning(f"⚠️ Webhook received for order '{vayne_order_id_str}' without file_url - order marked as completed anyway")
                 # Clear retry count on success
                 await clear_webhook_retries(order_id_for_tracking)
                 return {
@@ -853,24 +825,17 @@ async def vayne_webhook(
                     "csv_download_error": str(e)
                 }
             
-            # Store CSV in R2 (client-specific path: vayne-orders/{order.id}/export.csv)
-            csv_file_path = f"vayne-orders/{order.id}/export.csv"
+            # Store CSV data in PostgreSQL (replaces R2 storage)
             try:
-                s3_client.put_object(
-                    Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-                    Key=csv_file_path,
-                    Body=csv_data,
-                    ContentType="text/csv"
-                )
-                logger.info(f"✅ Stored CSV in R2: {csv_file_path}")
-                
-                # Update order with CSV path (order is already marked as completed)
-                order.csv_file_path = csv_file_path
+                csv_data_text = csv_data.decode('utf-8')
+                order.csv_data = csv_data_text
+                # Keep csv_file_path for backwards compatibility (deprecated)
+                order.csv_file_path = f"vayne-order:{order.id}"  # Reference to order ID instead of R2 path
                 db.commit()
                 db.refresh(order)
-                logger.info(f"✅ Order {order.id} updated with CSV path: {csv_file_path}")
+                logger.info(f"✅ Stored CSV data in PostgreSQL for order {order.id} ({len(csv_data_text)} characters)")
             except Exception as e:
-                logger.error(f"❌ Failed to store CSV in R2 for order {order.id}: {e}")
+                logger.error(f"❌ Failed to store CSV in PostgreSQL for order {order.id}: {e}")
                 # Order is already marked as completed, so we don't fail the webhook
                 # Just log the error and return success
                 logger.warning(f"⚠️ CSV storage failed but order {order.id} already marked as completed")
@@ -928,13 +893,13 @@ async def vayne_webhook(
                     db.refresh(job)
                     logger.info(f"✅ Created new job {job.id} for order {order.id}")
                 
-                # Update job with R2 CSV path
-                job.input_file_path = csv_file_path
+                # Update job with order reference (enrichment worker will read from PostgreSQL)
+                job.input_file_path = f"vayne-order:{order.id}"  # Reference to order ID for PostgreSQL lookup
                 job.status = "pending"  # Ready for enrichment
                 db.commit()
                 db.refresh(job)
                 
-                logger.info(f"✅ Updated job {job.id} with CSV path: {csv_file_path}")
+                logger.info(f"✅ Updated job {job.id} with order reference: vayne-order:{order.id}")
                 
                 # Queue job for enrichment
                 try:
@@ -1111,19 +1076,15 @@ async def admin_sync_order(
                     if not order.completed_at:
                         order.completed_at = datetime.utcnow()
                     
-                    # Try to download and store CSV
-                    if not order.csv_file_path:
+                    # Try to download and store CSV in PostgreSQL
+                    if not order.csv_data:
                         try:
                             csv_data = await vayne_client.export_order_with_retry(order.vayne_order_id, "advanced")
-                            csv_file_path = f"vayne-orders/{order.id}/export.csv"
-                            s3_client.put_object(
-                                Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-                                Key=csv_file_path,
-                                Body=csv_data,
-                                ContentType="text/csv"
-                            )
-                            order.csv_file_path = csv_file_path
-                            logger.info(f"✅ Stored CSV for order {order.id} via admin sync")
+                            csv_data_text = csv_data.decode('utf-8')
+                            order.csv_data = csv_data_text
+                            # Keep csv_file_path for backwards compatibility
+                            order.csv_file_path = f"vayne-order:{order.id}"
+                            logger.info(f"✅ Stored CSV in PostgreSQL for order {order.id} via admin sync")
                         except Exception as export_error:
                             logger.warning(f"⚠️ Failed to store CSV for order {order.id}: {export_error}")
                 else:

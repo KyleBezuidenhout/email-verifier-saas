@@ -11,7 +11,7 @@ class VayneOrder(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    vayne_order_id = Column(String(255), nullable=True, unique=True, index=True)  # Vayne's order ID
+    vayne_order_id = Column(String(255), nullable=False, unique=True, index=True)  # Vayne's order ID (required for webhook matching)
     status = Column(String(50), default="pending", index=True)  # pending, processing, completed, failed
     sales_nav_url = Column(Text, nullable=False)
     export_format = Column(String(50), default="simple")  # simple or advanced
@@ -21,9 +21,10 @@ class VayneOrder(Base):
     progress_percentage = Column(Integer, default=0)
     estimated_completion = Column(String(255), nullable=True)
     linkedin_cookie = Column(Text, nullable=True)  # Store li_at cookie temporarily (encrypted in production)
-    csv_file_path = Column(String(500), nullable=True)  # R2 path to exported CSV file
+    csv_file_path = Column(String(500), nullable=True)  # Deprecated: kept for backwards compatibility, use csv_data instead
+    csv_data = Column(Text, nullable=True)  # CSV content stored in PostgreSQL (replaces R2 storage)
     targeting = Column(String(255), nullable=True)  # Job name/targeting description
-    name = Column(String(255), nullable=True)  # Order name from Vayne API (required for processing)
+    name = Column(String(255), nullable=True)  # Order name from Vayne API (optional - for display/logging only)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 

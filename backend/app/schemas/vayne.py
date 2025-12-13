@@ -49,7 +49,7 @@ class VayneOrderCreateResponse(BaseModel):
     order_id: str
     status: str = "pending"
     message: str
-    name: str  # Order name from Vayne API (required)
+    name: Optional[str] = None  # Order name from Vayne API (optional)
 
 
 class VayneExportInfo(BaseModel):
@@ -66,7 +66,7 @@ class VayneOrderResponse(BaseModel):
     id: str
     status: str  # pending, processing, completed, failed
     scraping_status: Optional[str] = None  # Direct from Vayne: initialization, scraping, finished, failed
-    vayne_order_id: Optional[str] = None  # Vayne's order ID (set by worker)
+    vayne_order_id: str  # Vayne's order ID (required for webhook matching)
     sales_nav_url: str
     export_format: str
     only_qualified: bool
@@ -76,7 +76,7 @@ class VayneOrderResponse(BaseModel):
     estimated_completion: Optional[str] = None
     created_at: str
     completed_at: Optional[str] = None
-    csv_file_path: Optional[str] = None  # R2 path to exported CSV
+    csv_file_path: Optional[str] = None  # Deprecated: kept for backwards compatibility, CSV is now stored in csv_data column in PostgreSQL
     targeting: Optional[str] = None  # Job name/targeting description
     name: Optional[str] = None  # Order name from Vayne API
     exports: Optional[VayneExportsInfo] = None  # Direct export URLs from Vayne API

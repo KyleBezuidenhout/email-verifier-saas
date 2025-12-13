@@ -117,7 +117,7 @@ export interface VayneOrder {
   created_at: string;
   completed_at?: string;
   csv_file_path?: string;  // R2 path to exported CSV
-  vayne_order_id?: string;  // Vayne's order ID
+  vayne_order_id: string;  // Vayne's order ID (required for webhook matching)
   targeting?: string;  // Job name/targeting description
   exports?: {
     simple?: {

@@ -120,9 +120,9 @@ async def create_enrichment_job_from_order(order: VayneOrder, db: Session) -> Op
         db.commit()
         db.refresh(job)
     
-    # Update job with CSV path if available
-    if order.csv_file_path:
-        job.input_file_path = order.csv_file_path
+    # Update job with order reference if CSV data is available
+    if order.csv_data:
+        job.input_file_path = f"vayne-order:{order.id}"  # Reference to order ID for PostgreSQL lookup
         job.status = "pending"
         db.commit()
         db.refresh(job)
