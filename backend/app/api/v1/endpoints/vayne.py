@@ -162,7 +162,8 @@ async def get_order(
     """
     try:
         # If check_download is True, check cache and return download status
-        if check_download:
+        # FastAPI converts ?check_download=true to boolean True
+        if check_download is True:
             cache_key = f"{order_id}_{current_user.id}"
             if cache_key in _download_cache:
                 cache_entry = _download_cache[cache_key]
