@@ -17,6 +17,7 @@ from app.schemas.vayne import (
     UrlValidationResponse,
     CreateOrderRequest,
     OrderStatusResponse,
+    DownloadStatusResponse,
 )
 from app.services.vayne_client import vayne_client
 
@@ -33,6 +34,7 @@ def is_admin_user(user: User) -> bool:
 
 
 # CRITICAL: Define download-status route FIRST to ensure it matches before /orders/{order_id}
+@router.get("/orders/{order_id}/download-status", response_model=DownloadStatusResponse)
 async def get_download_status(
     order_id: str,
     current_user: User = Depends(get_current_user),
@@ -59,14 +61,6 @@ async def get_download_status(
             }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-# Explicitly register the route FIRST to ensure priority
-router.add_api_route(
-    "/orders/{order_id}/download-status",
-    get_download_status,
-    methods=["GET"],
-    tags=["vayne"]
-)
 
 
 
