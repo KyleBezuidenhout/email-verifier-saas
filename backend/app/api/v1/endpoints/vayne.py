@@ -212,6 +212,7 @@ async def export_order(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/webhook")
 @router.post("/webhook/n8n-csv-callback")
 async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
     """
@@ -233,6 +234,10 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
     
     The enrichment worker will then process the job and it will appear
     in the "enrich" job history page.
+    
+    Accessible at both:
+    - /api/v1/vayne/webhook
+    - /api/v1/vayne/webhook/n8n-csv-callback
     """
     try:
         payload = await request.json()
