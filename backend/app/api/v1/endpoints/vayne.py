@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime
 import httpx
 import redis
+import boto3
 from uuid import UUID
 
 from app.db.session import get_db
@@ -28,6 +29,15 @@ router = APIRouter()
 
 # Initialize Redis connection for job queue
 redis_client = redis.from_url(settings.REDIS_URL)
+
+# Initialize S3 client for Cloudflare R2
+s3_client = boto3.client(
+    's3',
+    endpoint_url=settings.CLOUDFLARE_R2_ENDPOINT_URL,
+    aws_access_key_id=settings.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    region_name='auto'
+)
 
 # Enrichment queue name
 ENRICHMENT_QUEUE = "enrichment-job-creation"
@@ -207,14 +217,19 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
     """
     Receive callback from n8n workflow when scraping is completed.
     
-    n8n workflow should have already updated the postgres database with:
-    - All scrape outputs/leads
-    - Status set to "completed"
+    Accepts data directly from n8n/Vayne:
+    - file_url: URL where CSV file is stored (from Vayne)
+    - order_id: vayne_order_id
+    - user_id: user UUID
+    - leads_found: number of leads (optional)
+    - leads_qualified: number of qualified leads (optional)
     
     This webhook will:
-    1. Verify the order exists and is marked as completed
-    2. Create an enrichment job from the completed scraping order
-    3. Queue the enrichment job for processing
+    1. Download CSV from file_url
+    2. Store CSV in R2 (Cloudflare)
+    3. Update order status to "completed" in postgres
+    4. Create enrichment job immediately
+    5. Queue enrichment job for processing
     
     The enrichment worker will then process the job and it will appear
     in the "enrich" job history page.
@@ -222,14 +237,29 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
     try:
         payload = await request.json()
         
-        # n8n should send the vayne_order_id (the order ID from Vayne's system)
+        # Get required fields
         vayne_order_id = payload.get("order_id") or payload.get("vayne_order_id")
         user_id = payload.get("user_id")
+        file_url = payload.get("file_url")
+        leads_found = payload.get("leads_found")
+        leads_qualified = payload.get("leads_qualified")
         
         if not vayne_order_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Missing required field: order_id or vayne_order_id"
+            )
+        
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing required field: user_id"
+            )
+        
+        if not file_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing required field: file_url"
             )
         
         # Find the order by vayne_order_id
@@ -243,13 +273,57 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
                 detail=f"Order with vayne_order_id {vayne_order_id} not found"
             )
         
-        # Verify the order is marked as completed (n8n should have updated this)
-        if order.status != "completed":
-            # If n8n hasn't updated it yet, update it now
-            order.status = "completed"
-            if not order.completed_at:
-                order.completed_at = datetime.utcnow()
-            db.commit()
+        # Verify user_id matches
+        if str(order.user_id) != str(user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User ID does not match order owner"
+            )
+        
+        # Download CSV from file_url
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                csv_response = await client.get(file_url)
+                csv_response.raise_for_status()
+                csv_bytes = csv_response.content
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to download CSV from file_url: {str(e)}"
+            )
+        
+        # Store CSV in R2
+        csv_file_path = f"vayne-orders/{order.id}/export.csv"
+        try:
+            s3_client.put_object(
+                Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+                Key=csv_file_path,
+                Body=csv_bytes,
+                ContentType="text/csv"
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to store CSV in R2: {str(e)}"
+            )
+        
+        # Update order status and metadata in postgres
+        order.status = "completed"
+        if not order.completed_at:
+            order.completed_at = datetime.utcnow()
+        
+        # Update csv_file_path (using setattr to handle potential missing column)
+        if hasattr(order, 'csv_file_path'):
+            order.csv_file_path = csv_file_path
+        
+        # Update leads counts if provided
+        if leads_found is not None:
+            order.leads_found = leads_found
+        if leads_qualified is not None:
+            order.leads_qualified = leads_qualified
+        
+        db.commit()
+        db.refresh(order)
         
         # Get user for job creation
         user = db.query(User).filter(User.id == order.user_id).first()
@@ -257,16 +331,6 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"User not found for order"
-            )
-        
-        # Check if CSV file path is available (n8n should have set this)
-        csv_file_path = getattr(order, 'csv_file_path', None)
-        if not csv_file_path:
-            # If n8n provides file_url in payload, note it but don't fail
-            # The enrichment worker expects CSV to be in R2
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Order CSV file path not found. Ensure n8n workflow has stored the CSV in R2 and set csv_file_path."
             )
         
         # Check if enrichment job already exists for this order
@@ -284,8 +348,9 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
                     redis_client.lpush(ENRICHMENT_QUEUE, job_id_str)
                     return {
                         "status": "success",
-                        "message": f"Enrichment job {existing_job.id} already exists and has been queued",
-                        "job_id": str(existing_job.id)
+                        "message": f"CSV stored, order updated, and enrichment job {existing_job.id} queued",
+                        "job_id": str(existing_job.id),
+                        "csv_file_path": csv_file_path
                     }
                 except Exception as e:
                     raise HTTPException(
@@ -296,11 +361,11 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
                 return {
                     "status": "success",
                     "message": f"Enrichment job {existing_job.id} already exists with status {existing_job.status}",
-                    "job_id": str(existing_job.id)
+                    "job_id": str(existing_job.id),
+                    "csv_file_path": csv_file_path
                 }
         
-        # Create new enrichment job
-        # The enrichment job will read CSV from R2 and process it
+        # Create new enrichment job immediately
         job = Job(
             user_id=user.id,
             status="pending",
@@ -318,14 +383,16 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(job)
         
-        # Queue the enrichment job
+        # Queue the enrichment job immediately
         try:
             job_id_str = str(job.id)
             redis_client.lpush(ENRICHMENT_QUEUE, job_id_str)
             return {
                 "status": "success",
-                "message": f"Enrichment job {job.id} created and queued successfully",
-                "job_id": str(job.id)
+                "message": f"CSV downloaded and stored, order updated, and enrichment job {job.id} created and queued successfully",
+                "job_id": str(job.id),
+                "csv_file_path": csv_file_path,
+                "order_status": "completed"
             }
         except Exception as e:
             raise HTTPException(
