@@ -150,36 +150,42 @@ async def create_order(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/orders/{order_id}")
+@router.get("/orders/{order_id}/download-status")
+async def get_download_status(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Check if file_url is available in cache for this order.
+    Called when user clicks download button.
+    No validation - just checks the cache.
+    """
+    try:
+        cache_key = f"{order_id}_{current_user.id}"
+        if cache_key in _download_cache:
+            cache_entry = _download_cache[cache_key]
+            file_url = cache_entry.get("file_url")
+            # One-time use - delete after returning
+            del _download_cache[cache_key]
+            return {
+                "status": "ready",
+                "file_url": file_url
+            }
+        else:
+            return {
+                "status": "pending"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/orders/{order_id}", response_model=OrderStatusResponse)
 async def get_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    check_download: Optional[bool] = Query(None, description="Check download cache status"),
 ):
-    """
-    Get order status. If check_download=true, returns download cache status instead.
-    """
     try:
-        # If check_download is True, check cache and return download status
-        # FastAPI converts ?check_download=true to boolean True
-        if check_download is True:
-            cache_key = f"{order_id}_{current_user.id}"
-            if cache_key in _download_cache:
-                cache_entry = _download_cache[cache_key]
-                file_url = cache_entry.get("file_url")
-                # One-time use - delete after returning
-                del _download_cache[cache_key]
-                return {
-                    "status": "ready",
-                    "file_url": file_url
-                }
-            else:
-                return {
-                    "status": "pending"
-                }
-        
-        # Normal order status
         data = vayne_client.get_order(order_id)
         # Sync status to DB if we have it
         vo: Optional[VayneOrder] = (
