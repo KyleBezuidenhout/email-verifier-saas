@@ -54,6 +54,13 @@ def migrate():
     except Exception as e:
         print(f"⚠ Could not create vayne_orders table: {e}")
 
+    # Add url column if it doesn't exist (for tables created by older migrations)
+    try:
+        cur.execute("ALTER TABLE vayne_orders ADD COLUMN IF NOT EXISTS url TEXT;")
+        print("✓ Added url column to vayne_orders (if not existed)")
+    except Exception as e:
+        print(f"⚠ Could not add url column to vayne_orders: {e}")
+
     cur.close()
     conn.close()
 
