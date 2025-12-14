@@ -13,6 +13,7 @@ import asyncio
 import os
 import sys
 import time
+import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import UUID
@@ -33,6 +34,9 @@ try:
     from app.core.config import settings
     from app.services.vayne_client import get_vayne_client
     from app.models.vayne_order import VayneOrder
+    from app.models.job import Job
+    from app.models.user import User
+    import redis
     print("✓ Successfully imported app modules", flush=True)
 except ImportError as e:
     print(f"❌ Import error: {e}", flush=True)
@@ -44,6 +48,10 @@ except ImportError as e:
 # PostgreSQL connection
 engine = create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
+
+# Redis connection for enrichment queue
+redis_client = redis.from_url(settings.REDIS_URL)
+ENRICHMENT_QUEUE = "enrichment-job-creation"
 
 # Worker configuration
 QUEUE_POLL_INTERVAL = settings.VAYNE_QUEUE_WORKER_POLL_INTERVAL  # 30 seconds
@@ -160,10 +168,121 @@ def mark_order_failed(db, order_id: UUID, error_reason: str):
         raise
 
 
+def get_order_full_details(db, order_id: UUID):
+    """Get full order details including all fields."""
+    result = db.execute(
+        text("""
+            SELECT * FROM vayne_orders 
+            WHERE id = :order_id
+        """),
+        {"order_id": str(order_id)}
+    )
+    return result.fetchone()
+
+
+def trigger_enrichment_for_completed_order(db, order_id: UUID):
+    """
+    Trigger enrichment for a completed scraping order.
+    Creates an enrichment job and queues it for processing.
+    """
+    try:
+        # Get full order details
+        order_row = get_order_full_details(db, order_id)
+        if not order_row:
+            log(f"Order {order_id} not found, cannot trigger enrichment", "error")
+            return False
+        
+        # Get user
+        user_result = db.execute(
+            text("SELECT * FROM users WHERE id = :user_id"),
+            {"user_id": str(order_row.user_id)}
+        )
+        user_row = user_result.fetchone()
+        if not user_row:
+            log(f"User not found for order {order_id}, cannot trigger enrichment", "error")
+            return False
+        
+        # Construct CSV file path (same pattern as webhook)
+        csv_file_path = f"vayne-orders/{order_id}/export.csv"
+        
+        log(f"🔄 Triggering enrichment for completed order {order_id}", "info")
+        log(f"   CSV path: {csv_file_path}", "info")
+        log(f"   User ID: {order_row.user_id}", "info")
+        
+        # Check if enrichment job already exists for this order
+        existing_job_result = db.execute(
+            text("""
+                SELECT * FROM jobs 
+                WHERE user_id = :user_id 
+                AND source = 'Sales Nav'
+                AND input_file_path = :csv_file_path
+            """),
+            {"user_id": str(order_row.user_id), "csv_file_path": csv_file_path}
+        )
+        existing_job_row = existing_job_result.fetchone()
+        
+        if existing_job_row:
+            # Job already exists, queue it if it's pending
+            if existing_job_row.status == "pending":
+                try:
+                    job_id_str = str(existing_job_row.id)
+                    redis_client.lpush(ENRICHMENT_QUEUE, job_id_str)
+                    log(f"✅ Queued existing enrichment job {existing_job_row.id} for order {order_id}", "success")
+                    return True
+                except Exception as e:
+                    log(f"❌ Failed to queue existing enrichment job: {e}", "error")
+                    return False
+            else:
+                log(f"ℹ️ Enrichment job {existing_job_row.id} already exists with status {existing_job_row.status}", "info")
+                return True
+        
+        # Create new enrichment job
+        job_id = uuid.uuid4()
+        job_result = db.execute(
+            text("""
+                INSERT INTO jobs (
+                    id, user_id, status, job_type, original_filename,
+                    total_leads, processed_leads, valid_emails_found,
+                    catchall_emails_found, cost_in_credits, source, input_file_path,
+                    created_at
+                ) VALUES (
+                    :id, :user_id, 'pending', 'enrichment', :original_filename,
+                    0, 0, 0, 0, 0, 'Sales Nav', :input_file_path,
+                    NOW()
+                )
+                RETURNING id
+            """),
+            {
+                "id": str(job_id),
+                "user_id": str(order_row.user_id),
+                "original_filename": f"sales-nav-{order_id}.csv",
+                "input_file_path": csv_file_path
+            }
+        )
+        db.commit()
+        
+        # Queue the enrichment job
+        try:
+            job_id_str = str(job_id)
+            redis_client.lpush(ENRICHMENT_QUEUE, job_id_str)
+            log(f"✅ Created and queued enrichment job {job_id} for order {order_id}", "success")
+            return True
+        except Exception as e:
+            log(f"❌ Failed to queue enrichment job {job_id}: {e}", "error")
+            return False
+            
+    except Exception as e:
+        log(f"❌ Error triggering enrichment for order {order_id}: {e}", "error")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 async def wait_for_active_order_completion(db, active_order):
     """
     Wait for an active order to complete by polling its status.
     Uses the order's own id (UUID) for tracking, not vayne_order_id.
+    When status becomes "completed", triggers enrichment before returning.
     Returns True when order is completed, False if it fails.
     """
     # active_order.id is our internal UUID - PostgreSQL may return it as UUID object or string
@@ -179,7 +298,18 @@ async def wait_for_active_order_completion(db, active_order):
         status = check_order_status(db, order_id)  # Use order's own id
         
         if status == "completed":
-            log(f"Active order {order_id} completed, proceeding to next queued order", "success")
+            log(f"Active order {order_id} completed", "success")
+            
+            # A. Trigger enrichment for the completed order
+            log(f"🚀 Triggering enrichment for completed order {order_id}", "info")
+            enrichment_success = trigger_enrichment_for_completed_order(db, order_id)
+            if enrichment_success:
+                log(f"✅ Enrichment triggered successfully for order {order_id}", "success")
+            else:
+                log(f"⚠️ Failed to trigger enrichment for order {order_id}, but continuing...", "error")
+            
+            # B. Allow next scraping order to process (this happens automatically in main loop)
+            log(f"Proceeding to next queued order", "success")
             return True
         elif status == "failed":
             log(f"Active order {order_id} failed, proceeding to next queued order", "error")
