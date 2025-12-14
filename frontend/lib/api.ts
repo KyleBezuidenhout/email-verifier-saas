@@ -552,11 +552,8 @@ class ApiClient {
     }
   }
 
-  async getVayneOrder(orderId: string, checkDownload?: boolean): Promise<VayneOrder | { status: "ready" | "pending"; file_url?: string }> {
-    const url = checkDownload 
-      ? `/api/v1/vayne/orders/${orderId}?check_download=true`
-      : `/api/v1/vayne/orders/${orderId}`;
-    return this.request(url);
+  async getVayneOrder(orderId: string): Promise<VayneOrder> {
+    return this.request(`/api/v1/vayne/orders/${orderId}`);
   }
 
   async exportVayneOrder(orderId: string): Promise<{ status: string; message: string; csv_file_path?: string }> {
@@ -615,9 +612,9 @@ class ApiClient {
   }
 
   async getVayneOrderDownloadStatus(orderId: string): Promise<{ status: "ready" | "pending"; file_url?: string }> {
-    // GET /api/v1/vayne/orders/{orderId}?check_download=true
+    // GET /api/v1/vayne/orders/{orderId}/download-status
     // Checks download cache status
-    return this.request<{ status: "ready" | "pending"; file_url?: string }>(`/api/v1/vayne/orders/${orderId}?check_download=true`);
+    return this.request<{ status: "ready" | "pending"; file_url?: string }>(`/api/v1/vayne/orders/${orderId}/download-status`);
   }
 }
 
