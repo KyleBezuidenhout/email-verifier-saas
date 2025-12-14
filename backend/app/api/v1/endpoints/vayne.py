@@ -72,13 +72,6 @@ async def request_csv_download(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# Explicitly register the route using add_api_route to ensure it's registered
-router.add_api_route(
-    "/orders/{order_id}/request-download",
-    request_csv_download,
-    methods=["POST"],
-    tags=["vayne"]
-)
 
 
 # TEST: Simple endpoint to verify router is working
@@ -314,4 +307,13 @@ async def n8n_csv_callback(request: Request):
             detail=f"Failed to process webhook callback: {str(e)}"
         )
 
+
+# CRITICAL: Register request-download route at the END of file to ensure all dependencies are loaded
+# This route must be registered after all other routes are defined
+router.add_api_route(
+    "/orders/{order_id}/request-download",
+    request_csv_download,
+    methods=["POST"],
+    tags=["vayne"]
+)
 
