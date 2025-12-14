@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Job } from "@/types";
 import { apiClient } from "@/lib/api";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useAuth } from "@/context/AuthContext";
 
 type DateRange = "7d" | "30d" | "90d" | "all" | "custom";
+
+const POLLING_INTERVAL = 60000; // 60 seconds
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -17,11 +19,7 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
 
-  useEffect(() => {
-    loadJobs();
-  }, []);
-
-  const loadJobs = async () => {
+  const loadJobs = useCallback(async () => {
     try {
       const jobList = await apiClient.getJobs();
       setJobs(jobList.sort((a, b) => 
@@ -32,7 +30,22 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Initial load on mount
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
+
+  // Poll for new jobs every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadJobs();
+    }, POLLING_INTERVAL);
+
+    // Cleanup interval on unmount
+    return () => clearInterval(interval);
+  }, [loadJobs]);
 
   // Filter jobs by date range
   const filteredJobs = useMemo(() => {
