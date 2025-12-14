@@ -32,46 +32,6 @@ def is_admin_user(user: User) -> bool:
     return user.email == ADMIN_EMAIL or getattr(user, "is_admin", False)
 
 
-# CRITICAL: Define request-download route FIRST to ensure it's registered
-# This route must be defined before any other /orders/{order_id} routes
-@router.post("/orders/{order_id}/request-download")
-async def request_csv_download(
-    order_id: str,
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Send vayne_order_id and user_id to n8n webhook to fetch file_url.
-    No database validation - order_id is the vayne_order_id from frontend UI.
-    Returns immediately; frontend should poll status endpoint for file_url.
-    """
-    try:
-        # order_id is already the vayne_order_id from the frontend UI
-        # No need to validate or query database - if it's in the UI, it's valid
-        
-        # Send POST request to n8n webhook
-        n8n_webhook_url = "https://n8n.meetautom8.com/webhook/8357f8da-83cf-4f0f-8269-ef2fafee48eb"
-        payload = {
-            "order_id": order_id,  # This is already the vayne_order_id
-            "user_id": str(current_user.id)
-        }
-        
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(n8n_webhook_url, json=payload)
-                response.raise_for_status()
-        except Exception as e:
-            # Log error but don't fail the request - n8n will handle it
-            # The frontend will poll and handle timeout
-            pass
-        
-        return {
-            "status": "success",
-            "message": "Download request sent to n8n. Please wait for file to be ready."
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 
@@ -190,21 +150,37 @@ async def create_order(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/orders/{order_id}/download-status")
-async def get_download_status(
+@router.post("/orders/{order_id}/download-status")
+async def request_and_get_download_status(
     order_id: str,
     current_user: User = Depends(get_current_user),
 ):
     """
-    Check if file_url is available for this order.
-    Returns file_url from temporary cache if available.
+    Request download and check if file_url is available for this order.
+    Sends request to n8n webhook, then returns file_url from cache if available.
     No database validation - order_id is the vayne_order_id from frontend UI.
     """
     try:
         # order_id is already the vayne_order_id from the frontend UI
         # No need to validate or query database
         
-        # Check cache using order_id (vayne_order_id) and user_id
+        # Step 1: Send POST request to n8n webhook to trigger download
+        n8n_webhook_url = "https://n8n.meetautom8.com/webhook/8357f8da-83cf-4f0f-8269-ef2fafee48eb"
+        payload = {
+            "order_id": order_id,  # This is already the vayne_order_id
+            "user_id": str(current_user.id)
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(n8n_webhook_url, json=payload)
+                response.raise_for_status()
+        except Exception as e:
+            # Log error but don't fail the request - n8n will handle it
+            # The frontend will poll and handle timeout
+            pass
+        
+        # Step 2: Check cache using order_id (vayne_order_id) and user_id
         cache_key = f"{order_id}_{current_user.id}"
         
         if cache_key in _download_cache:

@@ -417,15 +417,12 @@ export default function SalesNavScraperPage() {
 
   const handleDownloadCSV = async (order: VayneOrder) => {
     try {
-      // Use new download protocol: request download, then poll for status
+      // Use existing download-status endpoint (POST) which requests download and checks status
       if (!order.vayne_order_id) {
         throw new Error("Order ID not available for download");
       }
 
-      // Step 1: Request download (triggers n8n webhook)
-      await apiClient.requestVayneOrderDownload(order.vayne_order_id);
-
-      // Step 2: Poll download status until ready
+      // Poll download-status endpoint until ready
       const maxAttempts = 30; // 30 attempts = 30 seconds max wait
       const pollInterval = 1000; // 1 second between polls
       
@@ -433,7 +430,7 @@ export default function SalesNavScraperPage() {
         const statusResponse = await apiClient.getVayneOrderDownloadStatus(order.vayne_order_id);
         
         if (statusResponse.status === "ready" && statusResponse.file_url) {
-          // Step 3: Download file using the file_url
+          // Download file using the file_url
           window.location.href = statusResponse.file_url;
           return;
         }
