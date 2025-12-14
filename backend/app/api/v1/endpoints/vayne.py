@@ -141,7 +141,6 @@ async def create_order(
 
 
 # More specific routes must be defined before general routes
-@router.post("/orders/{order_id}/request-download")
 async def request_csv_download(
     order_id: str,
     current_user: User = Depends(get_current_user),
@@ -179,6 +178,14 @@ async def request_csv_download(
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# Explicitly register the route to ensure it's available
+router.add_api_route(
+    "/orders/{order_id}/request-download",
+    request_csv_download,
+    methods=["POST"],
+    tags=["vayne"]
+)
 
 
 @router.get("/orders/{order_id}/download-status")
