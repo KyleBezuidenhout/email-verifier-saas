@@ -58,3 +58,8 @@ class OrderStatusResponse(BaseModel):
     leads_qualified: Optional[int] = None
 
 
+class DownloadStatusResponse(BaseModel):
+    status: str  # "ready" or "pending"
+    file_url: Optional[str] = None
+
+

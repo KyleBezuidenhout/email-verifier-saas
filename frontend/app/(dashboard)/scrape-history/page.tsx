@@ -14,7 +14,6 @@ export default function ScrapeHistoryPage() {
   const [dateRange, setDateRange] = useState<DateRange>("30d");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
-  const [downloadingOrderId, setDownloadingOrderId] = useState<string | null>(null);
   const [deleteConfirmOrderId, setDeleteConfirmOrderId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,58 +68,6 @@ export default function ScrapeHistoryPage() {
     return orders.filter(order => new Date(order.created_at) >= startDate);
   }, [orders, dateRange, customStartDate, customEndDate]);
 
-  const handleDownloadCSV = async (order: VayneOrder) => {
-    setDownloadingOrderId(order.id);
-    setError("");
-    
-    try {
-      // Use vayne_order_id directly from the order (the ORDER ID shown in UI)
-      const vayneOrderId = order.vayne_order_id;
-      
-      if (!vayneOrderId) {
-        throw new Error("Order ID not available for download");
-      }
-      
-      // Step 1: Request download from n8n webhook
-      await apiClient.requestVayneOrderDownload(vayneOrderId);
-      
-      // Step 2: Poll status endpoint for file_url
-      const timeout = 30000; // 30 seconds timeout
-      const pollInterval = 1500; // Poll every 1.5 seconds
-      const startTime = Date.now();
-      
-      const pollForFileUrl = async (): Promise<string> => {
-        while (Date.now() - startTime < timeout) {
-          try {
-            const status = await apiClient.getVayneOrderDownloadStatus(vayneOrderId);
-            
-            if (status.status === "ready" && status.file_url) {
-              return status.file_url;
-            }
-            
-            // Wait before next poll
-            await new Promise(resolve => setTimeout(resolve, pollInterval));
-          } catch (pollError) {
-            // Continue polling on error (might be transient)
-            await new Promise(resolve => setTimeout(resolve, pollInterval));
-          }
-        }
-        throw new Error("Timeout waiting for file URL");
-      };
-      
-      const fileUrl = await pollForFileUrl();
-      
-      // Step 3: Redirect user to file_url
-      if (fileUrl) {
-        window.location.href = fileUrl;
-      } else {
-        throw new Error("File URL not available");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to download CSV. Please try again.");
-      setDownloadingOrderId(null);
-    }
-  };
 
   const handleDeleteOrder = async (orderId: string) => {
     if (deleteConfirmOrderId === orderId) {
@@ -293,15 +240,6 @@ export default function ScrapeHistoryPage() {
                       {order.completed_at ? formatDate(order.completed_at) : "—"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      {order.status === "completed" && (
-                        <button
-                          onClick={() => handleDownloadCSV(order)}
-                          disabled={downloadingOrderId === order.id}
-                          className="text-apple-accent hover:text-apple-accent/80 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {downloadingOrderId === order.id ? "Downloading..." : "Download CSV"}
-                        </button>
-                      )}
                       {deleteConfirmOrderId === order.id ? (
                         <button
                           onClick={() => handleDeleteOrder(order.id)}
