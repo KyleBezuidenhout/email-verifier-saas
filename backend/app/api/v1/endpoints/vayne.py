@@ -34,6 +34,7 @@ def is_admin_user(user: User) -> bool:
 
 # CRITICAL: Define request-download route FIRST to ensure it's registered
 # This route must be defined before any other /orders/{order_id} routes
+@router.post("/orders/{order_id}/request-download")
 async def request_csv_download(
     order_id: str,
     current_user: User = Depends(get_current_user),
@@ -308,12 +309,4 @@ async def n8n_csv_callback(request: Request):
         )
 
 
-# CRITICAL: Register request-download route at the END of file to ensure all dependencies are loaded
-# This route must be registered after all other routes are defined
-router.add_api_route(
-    "/orders/{order_id}/request-download",
-    request_csv_download,
-    methods=["POST"],
-    tags=["vayne"]
-)
 
