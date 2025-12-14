@@ -30,6 +30,10 @@ class UrlValidationRequest(BaseModel):
     url: HttpUrl
 
 
+class UrlCheckRequest(BaseModel):
+    sales_nav_url: str
+
+
 class UrlValidationResponse(BaseModel):
     valid: bool
     url: str

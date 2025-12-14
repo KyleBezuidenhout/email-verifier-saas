@@ -19,6 +19,7 @@ from app.schemas.vayne import (
     CreditsResponse,
     UrlValidationRequest,
     UrlValidationResponse,
+    UrlCheckRequest,
     CreateOrderRequest,
     OrderStatusResponse,
 )
@@ -154,6 +155,22 @@ async def validate_url(
 ):
     try:
         return vayne_client.validate_url(payload.url)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/url-check", response_model=UrlValidationResponse)
+async def check_url(
+    payload: UrlCheckRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint to check/validate a Sales Navigator URL.
+    Accepts { sales_nav_url: string } and maps it to the validation function.
+    """
+    try:
+        return vayne_client.validate_url(payload.sales_nav_url)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
