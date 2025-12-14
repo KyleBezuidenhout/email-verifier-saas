@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     VAYNE_POLLING_MAX_INTERVAL_MS: int = 30000
     VAYNE_QUEUE_WORKER_POLL_INTERVAL: int = 30  # seconds
     VAYNE_QUEUE_WORKER_ACTIVE_CHECK_INTERVAL: int = 60  # seconds
+    
+    # Webhook authentication
+    WEBHOOK_SECRET_TOKEN: str = ""  # Secret token for webhook authentication
 
     # OmniVerifier
     OMNIVERIFIER_API_KEY: str

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, Header
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
@@ -26,6 +26,34 @@ from app.services.vayne_client import vayne_client
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def verify_webhook_token(x_webhook_token: Optional[str] = Header(None, alias="X-Webhook-Token")):
+    """
+    Verify webhook authentication token.
+    Webhooks must include X-Webhook-Token header with the secret token.
+    """
+    if not settings.WEBHOOK_SECRET_TOKEN:
+        # If no token is configured, allow access (for development)
+        logger.warning("⚠️  WEBHOOK_SECRET_TOKEN not set - webhook is unauthenticated!")
+        return True
+    
+    if not x_webhook_token:
+        logger.error("❌ Webhook request missing X-Webhook-Token header")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-Webhook-Token header. Webhook authentication required."
+        )
+    
+    if x_webhook_token != settings.WEBHOOK_SECRET_TOKEN:
+        logger.error(f"❌ Invalid webhook token provided")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook token. Authentication failed."
+        )
+    
+    logger.info("✅ Webhook token verified successfully")
+    return True
 
 
 router = APIRouter()
@@ -239,7 +267,11 @@ async def export_order(
 
 @router.post("/webhook")
 @router.post("/webhook/n8n-csv-callback")
-async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
+async def n8n_csv_callback(
+    request: Request, 
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_webhook_token)
+):
     """
     Receive callback from n8n workflow when scraping is completed.
     
