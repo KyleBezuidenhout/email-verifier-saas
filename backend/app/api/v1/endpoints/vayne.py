@@ -32,6 +32,13 @@ def is_admin_user(user: User) -> bool:
     return user.email == ADMIN_EMAIL or getattr(user, "is_admin", False)
 
 
+# TEST: Simple endpoint to verify router is working
+@router.get("/test-route-registration")
+async def test_route_registration():
+    """Test endpoint to verify routes are being registered"""
+    return {"message": "Router is working", "routes_registered": True}
+
+
 @router.get("/auth", response_model=LinkedInAuthStatus)
 async def check_linkedin_auth(
     current_user: User = Depends(get_current_user),
