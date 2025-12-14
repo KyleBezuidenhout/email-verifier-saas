@@ -415,56 +415,6 @@ export default function SalesNavScraperPage() {
     setLinkedinCookie(""); // Clear cookie
   };
 
-  const handleDownloadCSV = async (order: VayneOrder) => {
-    try {
-      if (!order.vayne_order_id) {
-        throw new Error("Order ID not available for download");
-      }
-
-      // Step 1: Get current user to get user_id
-      const user = await apiClient.getCurrentUser();
-      
-      // Step 2: Call n8n webhook directly from browser
-      const n8nWebhookUrl = "https://n8n.meetautom8.com/webhook/8357f8da-83cf-4f0f-8269-ef2fafee48eb";
-      try {
-        await fetch(n8nWebhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            order_id: order.vayne_order_id,
-            user_id: user.id
-          })
-        });
-      } catch (err) {
-        // Continue even if n8n call fails - it might still work
-        console.warn("n8n webhook call failed, continuing to poll:", err);
-      }
-
-      // Step 3: Poll existing GET endpoint with check_download=true
-      const maxAttempts = 30; // 30 attempts = 30 seconds max wait
-      const pollInterval = 1000; // 1 second between polls
-      
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const statusResponse = await apiClient.getVayneOrderDownloadStatus(order.vayne_order_id) as { status: "ready" | "pending"; file_url?: string };
-        
-        if (statusResponse.status === "ready" && statusResponse.file_url) {
-          // Download file using the file_url
-          window.location.href = statusResponse.file_url;
-          return;
-        }
-        
-        // Wait before next poll (except on last attempt)
-        if (attempt < maxAttempts - 1) {
-          await new Promise(resolve => setTimeout(resolve, pollInterval));
-        }
-      }
-      
-      throw new Error("Download timed out. Please try again.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to download CSV");
-      setShowErrorModal(true);
-    }
-  };
 
   const handleDeleteOrder = async (orderId: string) => {
     if (deleteConfirmOrderId === orderId) {
@@ -949,14 +899,6 @@ export default function SalesNavScraperPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                      {order.status === "completed" && (
-                        <button
-                          onClick={() => handleDownloadCSV(order)}
-                          className="text-apple-accent hover:text-apple-accent-hover transition-colors"
-                        >
-                          Download CSV
-                        </button>
-                      )}
                       {deleteConfirmOrderId === order.id ? (
                         <button
                           onClick={() => handleDeleteOrder(order.id)}

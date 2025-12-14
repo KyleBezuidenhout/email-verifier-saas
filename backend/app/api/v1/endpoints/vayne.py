@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
 import httpx
+import redis
+from uuid import UUID
 
 from app.db.session import get_db
 from app.models.user import User
@@ -17,50 +19,24 @@ from app.schemas.vayne import (
     UrlValidationResponse,
     CreateOrderRequest,
     OrderStatusResponse,
-    DownloadStatusResponse,
 )
 from app.services.vayne_client import vayne_client
+from app.core.config import settings
 
 
 router = APIRouter()
 
-# In-memory cache to store file_url temporarily (NOT in database)
-# Key format: f"{order_id}_{user_id}" -> {"file_url": "...", "timestamp": "..."}
-_download_cache: dict[str, dict[str, str]] = {}
+# Initialize Redis connection for job queue
+redis_client = redis.from_url(settings.REDIS_URL)
+
+# Enrichment queue name
+ENRICHMENT_QUEUE = "enrichment-job-creation"
 
 
 def is_admin_user(user: User) -> bool:
     return user.email == ADMIN_EMAIL or getattr(user, "is_admin", False)
 
 
-# CRITICAL: Define download-status route FIRST to ensure it matches before /orders/{order_id}
-@router.get("/orders/{order_id}/download-status", response_model=DownloadStatusResponse)
-async def get_download_status(
-    order_id: str,
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Check if file_url is available in cache for this order.
-    Called when user clicks download button.
-    No validation - just checks the cache.
-    """
-    try:
-        cache_key = f"{order_id}_{current_user.id}"
-        if cache_key in _download_cache:
-            cache_entry = _download_cache[cache_key]
-            file_url = cache_entry.get("file_url")
-            # One-time use - delete after returning
-            del _download_cache[cache_key]
-            return {
-                "status": "ready",
-                "file_url": file_url
-            }
-        else:
-            return {
-                "status": "pending"
-            }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 
@@ -227,32 +203,136 @@ async def export_order(
 
 
 @router.post("/webhook/n8n-csv-callback")
-async def n8n_csv_callback(request: Request):
+async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
     """
-    Receive order_id, user_id, and file_url from n8n workflow.
-    Stores file_url in temporary in-memory cache (NOT in database).
+    Receive callback from n8n workflow when scraping is completed.
+    
+    n8n workflow should have already updated the postgres database with:
+    - All scrape outputs/leads
+    - Status set to "completed"
+    
+    This webhook will:
+    1. Verify the order exists and is marked as completed
+    2. Create an enrichment job from the completed scraping order
+    3. Queue the enrichment job for processing
+    
+    The enrichment worker will then process the job and it will appear
+    in the "enrich" job history page.
     """
     try:
         payload = await request.json()
         
-        order_id = payload.get("order_id")
+        # n8n should send the vayne_order_id (the order ID from Vayne's system)
+        vayne_order_id = payload.get("order_id") or payload.get("vayne_order_id")
         user_id = payload.get("user_id")
-        file_url = payload.get("file_url")
         
-        if not order_id or not user_id or not file_url:
+        if not vayne_order_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Missing required fields: order_id, user_id, or file_url"
+                detail="Missing required field: order_id or vayne_order_id"
             )
         
-        # Store in cache with key format: order_id_user_id
-        cache_key = f"{order_id}_{user_id}"
-        _download_cache[cache_key] = {
-            "file_url": file_url,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        # Find the order by vayne_order_id
+        order = db.query(VayneOrder).filter(
+            VayneOrder.vayne_order_id == str(vayne_order_id)
+        ).first()
         
-        return {"status": "success"}
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Order with vayne_order_id {vayne_order_id} not found"
+            )
+        
+        # Verify the order is marked as completed (n8n should have updated this)
+        if order.status != "completed":
+            # If n8n hasn't updated it yet, update it now
+            order.status = "completed"
+            if not order.completed_at:
+                order.completed_at = datetime.utcnow()
+            db.commit()
+        
+        # Get user for job creation
+        user = db.query(User).filter(User.id == order.user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User not found for order"
+            )
+        
+        # Check if CSV file path is available (n8n should have set this)
+        csv_file_path = getattr(order, 'csv_file_path', None)
+        if not csv_file_path:
+            # If n8n provides file_url in payload, note it but don't fail
+            # The enrichment worker expects CSV to be in R2
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Order CSV file path not found. Ensure n8n workflow has stored the CSV in R2 and set csv_file_path."
+            )
+        
+        # Check if enrichment job already exists for this order
+        existing_job = db.query(Job).filter(
+            Job.user_id == order.user_id,
+            Job.source == "Sales Nav",
+            Job.input_file_path == csv_file_path
+        ).first()
+        
+        if existing_job:
+            # Job already exists, queue it if it's pending
+            if existing_job.status == "pending":
+                try:
+                    job_id_str = str(existing_job.id)
+                    redis_client.lpush(ENRICHMENT_QUEUE, job_id_str)
+                    return {
+                        "status": "success",
+                        "message": f"Enrichment job {existing_job.id} already exists and has been queued",
+                        "job_id": str(existing_job.id)
+                    }
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Failed to queue existing enrichment job: {str(e)}"
+                    )
+            else:
+                return {
+                    "status": "success",
+                    "message": f"Enrichment job {existing_job.id} already exists with status {existing_job.status}",
+                    "job_id": str(existing_job.id)
+                }
+        
+        # Create new enrichment job
+        # The enrichment job will read CSV from R2 and process it
+        job = Job(
+            user_id=user.id,
+            status="pending",
+            job_type="enrichment",
+            original_filename=f"sales-nav-{order.id}.csv",
+            total_leads=0,  # Will be set by enrichment worker
+            processed_leads=0,
+            valid_emails_found=0,
+            catchall_emails_found=0,
+            cost_in_credits=0,
+            source="Sales Nav",
+            input_file_path=csv_file_path  # Path to CSV in R2
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        
+        # Queue the enrichment job
+        try:
+            job_id_str = str(job.id)
+            redis_client.lpush(ENRICHMENT_QUEUE, job_id_str)
+            return {
+                "status": "success",
+                "message": f"Enrichment job {job.id} created and queued successfully",
+                "job_id": str(job.id)
+            }
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to queue enrichment job: {str(e)}"
+            )
+            
     except HTTPException:
         raise
     except Exception as e:
