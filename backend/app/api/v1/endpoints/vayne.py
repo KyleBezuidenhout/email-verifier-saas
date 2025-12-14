@@ -149,11 +149,7 @@ async def create_order(
 
 # More specific routes must be defined before general routes to ensure proper matching
 # IMPORTANT: This route must be defined BEFORE the general /orders/{order_id} route
-@router.post(
-    "/orders/{order_id}/request-download",
-    name="request_csv_download",
-    status_code=status.HTTP_200_OK
-)
+@router.post("/orders/{order_id}/request-download")
 async def request_csv_download(
     order_id: str,
     current_user: User = Depends(get_current_user),
