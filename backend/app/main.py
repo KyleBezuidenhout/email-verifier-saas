@@ -70,9 +70,6 @@ async def log_requests(request: Request, call_next):
             f"✗ 404 NOT FOUND: {method} {path} from {client_ip} "
             f"(duration: {duration:.3f}s) - Route not registered!"
         )
-        # Log available routes for debugging
-        available_routes = [route.path for route in app.routes if hasattr(route, 'path')]
-        logger.debug(f"Available routes: {sorted(set(available_routes))}")
     else:
         logger.info(f"← {method} {path} → {status_code} (duration: {duration:.3f}s)")
     
@@ -84,12 +81,48 @@ async def log_requests(request: Request, call_next):
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """Handle HTTP exceptions with detailed logging."""
     if exc.status_code == 404:
-        logger.error(
-            f"404 NOT FOUND: {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}\n"
-            f"  Query params: {dict(request.query_params)}\n"
-            f"  Headers: {dict(request.headers)}\n"
-            f"  Available routes: {[route.path for route in app.routes if hasattr(route, 'path')]}"
-        )
+        # Get all registered routes
+        available_routes = []
+        for route in app.routes:
+            if hasattr(route, "path"):
+                if hasattr(route, "methods"):
+                    for method in route.methods:
+                        if method != "HEAD":
+                            available_routes.append(f"{method} {route.path}")
+                else:
+                    available_routes.append(route.path)
+        
+        # Filter webhook-related routes
+        webhook_routes = [r for r in available_routes if "webhook" in r.lower()]
+        
+        # Build error message
+        error_msg = f"""
+{'=' * 80}
+❌ 404 NOT FOUND
+  Method: {request.method}
+  Path: {request.url.path}
+  Client IP: {request.client.host if request.client else 'unknown'}
+  Query params: {dict(request.query_params)}
+  Requested URL: {request.url}
+
+  WEBHOOK ROUTES FOUND:
+"""
+        if webhook_routes:
+            for route in webhook_routes:
+                error_msg += f"    ✓ {route}\n"
+        else:
+            error_msg += "    ⚠️  NO WEBHOOK ROUTES REGISTERED!\n"
+        
+        error_msg += f"\n  ALL AVAILABLE ROUTES (first 20):\n"
+        for route in sorted(set(available_routes))[:20]:
+            error_msg += f"    - {route}\n"
+        if len(available_routes) > 20:
+            error_msg += f"    ... and {len(available_routes) - 20} more routes\n"
+        error_msg += "=" * 80
+        
+        # Use both print and logger to ensure visibility
+        print(error_msg)  # Print to ensure it shows in console/logs
+        logger.error(error_msg)
     
     return JSONResponse(
         status_code=exc.status_code,
@@ -184,10 +217,15 @@ async def startup_tasks():
     if webhook_routes:
         logger.info("=" * 80)
         logger.info("WEBHOOK ROUTES:")
+        print("=" * 80)
+        print("WEBHOOK ROUTES REGISTERED:")
         for route in webhook_routes:
             logger.info(route)
+            print(f"  ✓ {route}")
+        print("=" * 80)
     else:
         logger.warning("⚠️  NO WEBHOOK ROUTES FOUND!")
+        print("⚠️  NO WEBHOOK ROUTES FOUND!")
     logger.info("=" * 80)
 
 

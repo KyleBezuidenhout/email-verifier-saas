@@ -60,12 +60,26 @@ def is_admin_user(user: User) -> bool:
 async def test_route_registration():
     """Test endpoint to verify routes are being registered"""
     logger.info("✅ Test route registration endpoint called - router is working!")
+    print("✅ Vayne router test endpoint called - router is registered!")
     return {
         "message": "Router is working", 
         "routes_registered": True,
         "webhook_routes": [
             "/api/v1/vayne/webhook",
             "/api/v1/vayne/webhook/n8n-csv-callback"
+        ]
+    }
+
+# TEST: Verify webhook endpoint exists
+@router.get("/test-webhook-exists")
+async def test_webhook_exists():
+    """Test endpoint to verify webhook routes are registered"""
+    print("✅ Webhook test endpoint called!")
+    return {
+        "webhook_endpoints_exist": True,
+        "endpoints": [
+            "POST /api/v1/vayne/webhook",
+            "POST /api/v1/vayne/webhook/n8n-csv-callback"
         ]
     }
 
@@ -251,6 +265,7 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
     - /api/v1/vayne/webhook/n8n-csv-callback
     """
     client_ip = request.client.host if request.client else "unknown"
+    print(f"🔔 WEBHOOK CALLED! Path: {request.url.path}, IP: {client_ip}")
     logger.info(f"🔔 Webhook called from {client_ip} - Path: {request.url.path}")
     
     try:
