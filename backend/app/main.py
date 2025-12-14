@@ -1,11 +1,22 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import sys
 import os
+import logging
+from time import time
 
 from app.core.config import settings
 from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -34,9 +45,67 @@ app.add_middleware(
 )
 
 
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests with detailed information."""
+    start_time = time()
+    method = request.method
+    path = request.url.path
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # Log request
+    logger.info(f"→ {method} {path} from {client_ip}")
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Calculate duration
+    duration = time() - start_time
+    status_code = response.status_code
+    
+    # Log response with special attention to 404s
+    if status_code == 404:
+        logger.warning(
+            f"✗ 404 NOT FOUND: {method} {path} from {client_ip} "
+            f"(duration: {duration:.3f}s) - Route not registered!"
+        )
+        # Log available routes for debugging
+        available_routes = [route.path for route in app.routes if hasattr(route, 'path')]
+        logger.debug(f"Available routes: {sorted(set(available_routes))}")
+    else:
+        logger.info(f"← {method} {path} → {status_code} (duration: {duration:.3f}s)")
+    
+    return response
+
+
+# 404 handler with detailed logging
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Handle HTTP exceptions with detailed logging."""
+    if exc.status_code == 404:
+        logger.error(
+            f"404 NOT FOUND: {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}\n"
+            f"  Query params: {dict(request.query_params)}\n"
+            f"  Headers: {dict(request.headers)}\n"
+            f"  Available routes: {[route.path for route in app.routes if hasattr(route, 'path')]}"
+        )
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+
 # Global exception handler to ensure CORS headers on errors
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled exception: {exc} for {request.method} {request.url.path}")
     return JSONResponse(
         status_code=500,
         content={"detail": str(exc)},
@@ -54,10 +123,21 @@ async def health_check():
     return {"status": "healthy"}
 
 
-# Run migrations on startup
+# Include routers
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
+app.include_router(results.router, prefix="/api/v1/results", tags=["results"])
+app.include_router(test.router, prefix="/api/v1", tags=["test"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+# Vayne router - must be included to register all endpoints
+app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])
+
+
+# Run migrations and log routes on startup
 @app.on_event("startup")
-async def run_migrations_on_startup():
-    """Run database migrations on application startup."""
+async def startup_tasks():
+    """Run database migrations and log registered routes on application startup."""
+    # Run migrations
     try:
         # Add parent directory to path to import migrations
         backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -72,7 +152,7 @@ async def run_migrations_on_startup():
         from migrate_add_is_admin import run_migration as migrate_is_admin
         from migrate_add_job_source_and_vayne_orders import migrate as migrate_job_source_and_vayne_orders
 
-        print("Running database migrations on startup...")
+        logger.info("Running database migrations on startup...")
         migrate_catchall_key()
         migrate_verification_tag()
         migrate_job_type()
@@ -80,19 +160,34 @@ async def run_migrations_on_startup():
         migrate_mx_provider()
         migrate_is_admin()
         migrate_job_source_and_vayne_orders()
-        print("✓ Migrations completed successfully!")
+        logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
-        print(f"⚠ Migration warning (this is OK if columns already exist): {e}")
-
-
-# Include routers
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
-app.include_router(results.router, prefix="/api/v1/results", tags=["results"])
-app.include_router(test.router, prefix="/api/v1", tags=["test"])
-app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
-# Vayne router - must be included to register all endpoints
-app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])
+        logger.warning(f"⚠ Migration warning (this is OK if columns already exist): {e}")
+    
+    # Log all registered routes
+    logger.info("=" * 80)
+    logger.info("REGISTERED ROUTES:")
+    logger.info("=" * 80)
+    routes = []
+    for route in app.routes:
+        if hasattr(route, "methods") and hasattr(route, "path"):
+            for method in route.methods:
+                if method != "HEAD":  # Skip HEAD methods
+                    routes.append(f"  {method:6} {route.path}")
+    
+    for route in sorted(routes):
+        logger.info(route)
+    
+    # Specifically log webhook routes
+    webhook_routes = [r for r in routes if "webhook" in r.lower()]
+    if webhook_routes:
+        logger.info("=" * 80)
+        logger.info("WEBHOOK ROUTES:")
+        for route in webhook_routes:
+            logger.info(route)
+    else:
+        logger.warning("⚠️  NO WEBHOOK ROUTES FOUND!")
+    logger.info("=" * 80)
 
 

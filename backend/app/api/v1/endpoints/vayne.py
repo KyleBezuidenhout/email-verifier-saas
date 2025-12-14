@@ -5,6 +5,7 @@ from datetime import datetime
 import httpx
 import redis
 import boto3
+import logging
 from uuid import UUID
 
 from app.db.session import get_db
@@ -23,6 +24,8 @@ from app.schemas.vayne import (
 )
 from app.services.vayne_client import vayne_client
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter()
@@ -56,7 +59,15 @@ def is_admin_user(user: User) -> bool:
 @router.get("/test-route-registration")
 async def test_route_registration():
     """Test endpoint to verify routes are being registered"""
-    return {"message": "Router is working", "routes_registered": True}
+    logger.info("✅ Test route registration endpoint called - router is working!")
+    return {
+        "message": "Router is working", 
+        "routes_registered": True,
+        "webhook_routes": [
+            "/api/v1/vayne/webhook",
+            "/api/v1/vayne/webhook/n8n-csv-callback"
+        ]
+    }
 
 
 @router.get("/auth", response_model=LinkedInAuthStatus)
@@ -239,8 +250,12 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
     - /api/v1/vayne/webhook
     - /api/v1/vayne/webhook/n8n-csv-callback
     """
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info(f"🔔 Webhook called from {client_ip} - Path: {request.url.path}")
+    
     try:
         payload = await request.json()
+        logger.info(f"📥 Webhook payload received: {list(payload.keys())}")
         
         # Get required fields
         vayne_order_id = payload.get("order_id") or payload.get("vayne_order_id")
@@ -248,6 +263,8 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
         file_url = payload.get("file_url")
         leads_found = payload.get("leads_found")
         leads_qualified = payload.get("leads_qualified")
+        
+        logger.info(f"📋 Webhook data - order_id: {vayne_order_id}, user_id: {user_id}, file_url: {file_url[:50] if file_url else None}...")
         
         if not vayne_order_id:
             raise HTTPException(
@@ -268,11 +285,13 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
             )
         
         # Find the order by vayne_order_id
+        logger.info(f"🔍 Looking for order with vayne_order_id: {vayne_order_id}")
         order = db.query(VayneOrder).filter(
             VayneOrder.vayne_order_id == str(vayne_order_id)
         ).first()
         
         if not order:
+            logger.error(f"❌ Order not found with vayne_order_id: {vayne_order_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Order with vayne_order_id {vayne_order_id} not found"
@@ -286,12 +305,15 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
             )
         
         # Download CSV from file_url
+        logger.info(f"⬇️  Downloading CSV from: {file_url}")
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 csv_response = await client.get(file_url)
                 csv_response.raise_for_status()
                 csv_bytes = csv_response.content
+                logger.info(f"✅ CSV downloaded successfully ({len(csv_bytes)} bytes)")
         except Exception as e:
+            logger.error(f"❌ Failed to download CSV: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to download CSV from file_url: {str(e)}"
@@ -299,6 +321,7 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
         
         # Store CSV in R2
         csv_file_path = f"vayne-orders/{order.id}/export.csv"
+        logger.info(f"💾 Storing CSV in R2 at: {csv_file_path}")
         try:
             s3_client.put_object(
                 Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
@@ -306,7 +329,9 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
                 Body=csv_bytes,
                 ContentType="text/csv"
             )
+            logger.info(f"✅ CSV stored in R2 successfully")
         except Exception as e:
+            logger.error(f"❌ Failed to store CSV in R2: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to store CSV in R2: {str(e)}"
@@ -391,7 +416,9 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
         # Queue the enrichment job immediately
         try:
             job_id_str = str(job.id)
+            logger.info(f"🚀 Queuing enrichment job {job.id} to Redis queue: {ENRICHMENT_QUEUE}")
             redis_client.lpush(ENRICHMENT_QUEUE, job_id_str)
+            logger.info(f"✅ Webhook processing completed successfully - Job ID: {job.id}")
             return {
                 "status": "success",
                 "message": f"CSV downloaded and stored, order updated, and enrichment job {job.id} created and queued successfully",
@@ -400,14 +427,17 @@ async def n8n_csv_callback(request: Request, db: Session = Depends(get_db)):
                 "order_status": "completed"
             }
         except Exception as e:
+            logger.error(f"❌ Failed to queue enrichment job: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to queue enrichment job: {str(e)}"
             )
             
-    except HTTPException:
+    except HTTPException as e:
+        logger.error(f"❌ Webhook HTTP error: {e.status_code} - {e.detail}")
         raise
     except Exception as e:
+        logger.exception(f"❌ Webhook processing failed with exception: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to process webhook callback: {str(e)}"
