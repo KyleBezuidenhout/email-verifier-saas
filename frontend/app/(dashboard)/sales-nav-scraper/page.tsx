@@ -417,17 +417,35 @@ export default function SalesNavScraperPage() {
 
   const handleDownloadCSV = async (order: VayneOrder) => {
     try {
-      // Use existing download-status endpoint (POST) which requests download and checks status
       if (!order.vayne_order_id) {
         throw new Error("Order ID not available for download");
       }
 
-      // Poll download-status endpoint until ready
+      // Step 1: Get current user to get user_id
+      const user = await apiClient.getCurrentUser();
+      
+      // Step 2: Call n8n webhook directly from browser
+      const n8nWebhookUrl = "https://n8n.meetautom8.com/webhook/8357f8da-83cf-4f0f-8269-ef2fafee48eb";
+      try {
+        await fetch(n8nWebhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            order_id: order.vayne_order_id,
+            user_id: user.id
+          })
+        });
+      } catch (err) {
+        // Continue even if n8n call fails - it might still work
+        console.warn("n8n webhook call failed, continuing to poll:", err);
+      }
+
+      // Step 3: Poll existing GET endpoint with check_download=true
       const maxAttempts = 30; // 30 attempts = 30 seconds max wait
       const pollInterval = 1000; // 1 second between polls
       
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const statusResponse = await apiClient.getVayneOrderDownloadStatus(order.vayne_order_id);
+        const statusResponse = await apiClient.getVayneOrderDownloadStatus(order.vayne_order_id) as { status: "ready" | "pending"; file_url?: string };
         
         if (statusResponse.status === "ready" && statusResponse.file_url) {
           // Download file using the file_url
