@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
@@ -150,67 +150,35 @@ async def create_order(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/orders/{order_id}/download-status")
-async def request_and_get_download_status(
-    order_id: str,
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Request download and check if file_url is available for this order.
-    Sends request to n8n webhook, then returns file_url from cache if available.
-    No database validation - order_id is the vayne_order_id from frontend UI.
-    """
-    try:
-        # order_id is already the vayne_order_id from the frontend UI
-        # No need to validate or query database
-        
-        # Step 1: Send POST request to n8n webhook to trigger download
-        n8n_webhook_url = "https://n8n.meetautom8.com/webhook/8357f8da-83cf-4f0f-8269-ef2fafee48eb"
-        payload = {
-            "order_id": order_id,  # This is already the vayne_order_id
-            "user_id": str(current_user.id)
-        }
-        
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(n8n_webhook_url, json=payload)
-                response.raise_for_status()
-        except Exception as e:
-            # Log error but don't fail the request - n8n will handle it
-            # The frontend will poll and handle timeout
-            pass
-        
-        # Step 2: Check cache using order_id (vayne_order_id) and user_id
-        cache_key = f"{order_id}_{current_user.id}"
-        
-        if cache_key in _download_cache:
-            cache_entry = _download_cache[cache_key]
-            file_url = cache_entry.get("file_url")
-            
-            # Optionally clean up cache entry after returning (one-time use)
-            del _download_cache[cache_key]
-            
-            return {
-                "status": "ready",
-                "file_url": file_url
-            }
-        else:
-            return {
-                "status": "pending"
-            }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
 @router.get("/orders/{order_id}", response_model=OrderStatusResponse)
 async def get_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    check_download: Optional[bool] = Query(None, description="Check download cache status"),
 ):
+    """
+    Get order status. If check_download=true, returns download cache status instead.
+    """
     try:
+        # If check_download is True, check cache and return download status
+        if check_download:
+            cache_key = f"{order_id}_{current_user.id}"
+            if cache_key in _download_cache:
+                cache_entry = _download_cache[cache_key]
+                file_url = cache_entry.get("file_url")
+                # One-time use - delete after returning
+                del _download_cache[cache_key]
+                return {
+                    "status": "ready",
+                    "file_url": file_url
+                }
+            else:
+                return {
+                    "status": "pending"
+                }
+        
+        # Normal order status
         data = vayne_client.get_order(order_id)
         # Sync status to DB if we have it
         vo: Optional[VayneOrder] = (
