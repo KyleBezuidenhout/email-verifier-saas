@@ -150,7 +150,7 @@ async def create_order(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/orders/{order_id}", response_model=OrderStatusResponse)
+@router.get("/orders/{order_id}")
 async def get_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
