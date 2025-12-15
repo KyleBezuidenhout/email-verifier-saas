@@ -371,6 +371,14 @@ async def n8n_csv_callback(
         # This avoids database schema issues and works with cached data
         logger.info(f"✅ Using webhook data directly - no database query needed")
         
+        # Query the order from the database
+        order = db.query(VayneOrder).filter(VayneOrder.vayne_order_id == vayne_order_id).first()
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Order with vayne_order_id {vayne_order_id} not found"
+            )
+        
         # Download CSV from file_url
         logger.info(f"⬇️  Downloading CSV from: {file_url}")
         try:
