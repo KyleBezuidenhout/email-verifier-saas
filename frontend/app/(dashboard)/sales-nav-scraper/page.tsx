@@ -179,7 +179,7 @@ export default function SalesNavScraperPage() {
     try {
       const check = await apiClient.checkVayneUrl(url);
       // If the check returns invalid, sanitize the error message to hide Vayne API details
-      if (!check.is_valid) {
+      if (!check.valid) {
         setUrlValidation({
           ...check,
           error: "Invalid URL - Please make sure the URL you submitted is valid",
@@ -189,7 +189,7 @@ export default function SalesNavScraperPage() {
       }
     } catch (err) {
       setUrlValidation({
-        is_valid: false,
+        valid: false,
         error: "Invalid URL - Please make sure the URL you submitted is valid",
       });
     } finally {
