@@ -46,29 +46,21 @@ router = APIRouter()
 
 # Import functions from the main vayne router
 from app.api.v1.endpoints.vayne import (
-    get_auth_status,
-    update_auth,
+    check_linkedin_auth,
+    update_linkedin_auth,
     get_credits,
-    check_url,
-    get_order_status,
+    url_check,
     get_order,
     export_order,
-    export_order_download,
-    download_csv,
-    get_order_history,
     create_order,
 )
 
 # Register all routes
-router.add_api_route("/auth", get_auth_status, methods=["GET"], response_model=VayneAuthStatusResponse)
-router.add_api_route("/auth", update_auth, methods=["PATCH"], response_model=VayneAuthUpdateResponse)
+router.add_api_route("/auth", check_linkedin_auth, methods=["GET"], response_model=VayneAuthStatusResponse)
+router.add_api_route("/auth", update_linkedin_auth, methods=["PATCH"], response_model=VayneAuthUpdateResponse)
 router.add_api_route("/credits", get_credits, methods=["GET"], response_model=VayneCreditsResponse)
-router.add_api_route("/url-check", check_url, methods=["POST"], response_model=VayneUrlCheckResponse)
+router.add_api_route("/url-check", url_check, methods=["POST"], response_model=VayneUrlCheckResponse)
 router.add_api_route("/orders", create_order, methods=["POST"], response_model=VayneOrderCreateResponse, status_code=status.HTTP_201_CREATED)
-router.add_api_route("/orders/{order_id}/status", get_order_status, methods=["GET"])
 router.add_api_route("/orders/{order_id}", get_order, methods=["GET"], response_model=VayneOrderResponse)
 router.add_api_route("/orders/{order_id}/export", export_order, methods=["POST"])
-router.add_api_route("/orders/{order_id}/export", export_order_download, methods=["GET"])
-router.add_api_route("/orders/{order_id}/csv", download_csv, methods=["GET"])
-router.add_api_route("/orders", get_order_history, methods=["GET"], response_model=VayneOrderListResponse)
 
