@@ -176,12 +176,12 @@ async def url_check(payload: UrlCheckRequest):
     Accessible at: POST /api/v1/vayne/url-check
     """
     try:
-        logger.info(f"📋 URL check requested for: {payload.sales_nav_url}")
+        logger.info(f"URL check requested for: {payload.sales_nav_url}")
         result = vayne_client.validate_url(payload.sales_nav_url)
-        logger.info(f"✅ URL check result: valid={result.get('valid')}, estimated_results={result.get('estimated_results')}")
+        logger.info(f"URL check result: valid={result.get('valid')}, estimated_results={result.get('estimated_results')}")
         return result
     except Exception as e:
-        logger.error(f"❌ URL check failed: {str(e)}")
+        logger.error(f"URL check failed: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
