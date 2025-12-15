@@ -9,7 +9,7 @@ import logging
 from time import time
 
 from app.core.config import settings
-from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne
+from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne, vayne_direct
 
 # Configure logging
 logging.basicConfig(
@@ -164,6 +164,8 @@ app.include_router(test.router, prefix="/api/v1", tags=["test"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 # Vayne router - must be included to register all endpoints
 app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])
+# Vayne direct router - provides /api/vayne endpoints (without /v1) for frontend compatibility
+app.include_router(vayne_direct.router, prefix="/api/vayne", tags=["vayne-direct"])
 
 
 # Run migrations and log routes on startup
