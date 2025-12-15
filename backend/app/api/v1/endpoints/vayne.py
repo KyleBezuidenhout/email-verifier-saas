@@ -23,6 +23,7 @@ from app.schemas.vayne import (
     UrlValidationResponse,
     UrlCheckRequest,
     CreateOrderRequest,
+    CreateOrderResponse,
     OrderStatusResponse,
 )
 from app.services.vayne_client import vayne_client
@@ -204,7 +205,7 @@ def charge_credits(db: Session, user: User, amount: int):
     )
     db.commit()
 
-@router.post("/orders", response_model=OrderStatusResponse)
+@router.post("/orders", response_model=CreateOrderResponse)
 async def create_order(
     payload: CreateOrderRequest,
     current_user: User = Depends(get_current_user),
@@ -212,24 +213,25 @@ async def create_order(
 ):
     """Create a new Vayne order"""
     try:
-        # Charge credits
-        charge_credits(db, current_user, payload.credits_to_use)
-        
         # Create order in database
         order = VayneOrder(
             user_id=current_user.id,
-            vayne_order_id=str(UUID(int=0)),  # Placeholder
+            vayne_order_id=str(UUID(int=0)),  # Placeholder until Vayne returns real ID
             status="pending",
-            credits_used=payload.credits_to_use,
+            url=payload.sales_nav_url,
         )
         db.add(order)
         db.commit()
         db.refresh(order)
         
+        # TODO: Call Vayne API with linkedin_cookie to start the scraping job
+        # For now, just create the order record
+        
         return {
+            "success": True,
             "order_id": str(order.id),
             "status": order.status,
-            "credits_used": order.credits_used,
+            "message": "Order created successfully",
         }
     except HTTPException:
         raise

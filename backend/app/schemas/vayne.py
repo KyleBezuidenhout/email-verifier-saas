@@ -45,9 +45,16 @@ class UrlValidationResponse(BaseModel):
 
 
 class CreateOrderRequest(BaseModel):
-    url: HttpUrl
-    export_format: str  # simple or advanced
-    qualified_leads_only: bool = False
+    sales_nav_url: str
+    linkedin_cookie: str
+    targeting: Optional[str] = None  # Job name/targeting description
+
+
+class CreateOrderResponse(BaseModel):
+    success: bool
+    order_id: str
+    status: str
+    message: str
 
 
 class OrderStatusResponse(BaseModel):
