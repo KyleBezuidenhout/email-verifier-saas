@@ -28,12 +28,11 @@ from sqlalchemy.orm import sessionmaker
 # Add parent directory to path to import app modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
-from app.core.config import settings
+from app.core.config import settings, ADMIN_EMAIL
 from app.models.job import Job
 from app.models.lead import Lead
 from app.models.user import User
 from app.services.permutation import generate_email_permutations, normalize_domain, clean_first_name
-from app.api.dependencies import ADMIN_EMAIL
 
 # Configure logging
 logging.basicConfig(

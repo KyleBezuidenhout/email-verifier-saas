@@ -8,13 +8,10 @@ import uuid
 from app.db.session import get_db
 from app.core.security import decode_token
 from app.models.user import User
-from app.core.config import settings
+from app.core.config import settings, ADMIN_EMAIL
 
 security = HTTPBearer(auto_error=False)
 security_required = HTTPBearer()
-
-
-ADMIN_EMAIL = "ben@superwave.io"
 
 
 async def get_current_user(

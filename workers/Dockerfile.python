@@ -2,8 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy backend requirements and install
-COPY backend/requirements.txt ./requirements.txt
+# Copy worker requirements and install (minimal, faster builds)
+COPY workers/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend app directory (needed for imports)

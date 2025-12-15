@@ -1,6 +1,9 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 
+# Admin email constant - defined here to avoid circular imports in workers
+ADMIN_EMAIL = "ben@superwave.io"
+
 
 class Settings(BaseSettings):
     # Database
