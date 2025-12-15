@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, Header
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import Optional
 from datetime import datetime
 import httpx
@@ -195,7 +196,7 @@ def charge_credits(db: Session, user: User, amount: int):
             detail=f"Insufficient credits. Needed {amount}, you have {user.credits}",
         )
     db.execute(
-        "UPDATE users SET credits = GREATEST(0, credits - :amt) WHERE id = :uid",
+        text("UPDATE users SET credits = GREATEST(0, credits - :amt) WHERE id = :uid"),
         {"amt": amount, "uid": str(user.id)},
     )
     db.commit()
