@@ -161,7 +161,7 @@ async def validate_url(
 
 
 @router.post("/url-check", response_model=UrlValidationResponse)
-async def url_check(payload: UrlCheckRequest):
+async def check_url_endpoint(payload: UrlCheckRequest):
     """
     Check/validate a LinkedIn Sales Navigator URL (no authentication required).
     
