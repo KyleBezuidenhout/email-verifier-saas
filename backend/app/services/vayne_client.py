@@ -55,14 +55,37 @@ class VayneClient:
     def validate_url(self, url: str):
         return self._request("POST", "/api/url_checks", json={"url": url})
 
-    def create_order(self, url: str, export_format: str, qualified_leads_only: bool, webhook_url: Optional[str] = None):
+    def create_order(
+        self, 
+        url: str, 
+        name: str,
+        limit: Optional[int] = None,
+        email_enrichment: bool = False,
+        saved_search: bool = False,
+        secondary_webhook: str = "",
+        export_format: str = "simple"
+    ):
+        """
+        Create a new scraping order with Vayne API.
+        
+        Args:
+            url: Sales Navigator URL to scrape
+            name: Name/targeting description for the order
+            limit: Maximum number of leads to scrape (None = no limit)
+            email_enrichment: Whether to enrich emails
+            saved_search: Whether this is a saved search
+            secondary_webhook: Secondary webhook URL (empty string if not used)
+            export_format: Export format ("simple" or "advanced")
+        """
         payload = {
+            "name": name,
             "url": url,
+            "limit": limit,
+            "email_enrichment": email_enrichment,
+            "saved_search": saved_search,
+            "secondary_webhook": secondary_webhook,
             "export_format": export_format,
-            "qualified_leads_only": qualified_leads_only,
         }
-        if webhook_url:
-            payload["webhook_url"] = webhook_url
         return self._request("POST", "/api/orders", json=payload)
 
     def get_order(self, order_id: str):

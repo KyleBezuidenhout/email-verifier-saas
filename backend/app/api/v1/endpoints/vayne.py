@@ -213,26 +213,69 @@ async def create_order(
 ):
     """Create a new Vayne order"""
     try:
-        import uuid as uuid_module
-        # Create order in database
+        # Step 1: Update LinkedIn session with Vayne API using the provided cookie
+        logger.info(f"Updating LinkedIn session for user {current_user.id}")
+        try:
+            vayne_client.update_linkedin_session(payload.linkedin_cookie)
+            logger.info("LinkedIn session updated successfully")
+        except Exception as auth_error:
+            logger.error(f"Failed to update LinkedIn session: {str(auth_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"LinkedIn authentication failed: {str(auth_error)}"
+            )
+        
+        # Step 2: Create order with Vayne API
+        logger.info(f"Creating Vayne order for URL: {payload.sales_nav_url}")
+        try:
+            vayne_response = vayne_client.create_order(
+                url=payload.sales_nav_url,
+                name=payload.targeting or "Untitled Order",
+                limit=None,  # No limit
+                email_enrichment=False,
+                saved_search=False,
+                secondary_webhook="",
+                export_format="simple",
+            )
+            logger.info(f"Vayne order created: {vayne_response}")
+        except Exception as vayne_error:
+            error_msg = str(vayne_error)
+            logger.error(f"Failed to create Vayne order: {error_msg}")
+            # Pass through Vayne's error message (e.g., insufficient credits)
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        # Extract the vayne_order_id from response
+        # Vayne API returns: { "order": { "id": 123, ... } }
+        vayne_order_data = vayne_response.get("order", {})
+        vayne_order_id = str(vayne_order_data.get("id", ""))
+        
+        if not vayne_order_id:
+            logger.error(f"No order ID in Vayne response: {vayne_response}")
+            raise HTTPException(status_code=400, detail="Failed to get order ID from Vayne")
+        
+        # Step 3: Create order in our database
         order = VayneOrder(
             user_id=current_user.id,
-            vayne_order_id=str(uuid_module.uuid4()),  # Generate unique ID
-            status="pending",
+            vayne_order_id=vayne_order_id,
+            status="processing",
             url=payload.sales_nav_url,
         )
+        
+        # Set targeting if available
+        if hasattr(order, 'targeting') and payload.targeting:
+            order.targeting = payload.targeting
+        
         db.add(order)
         db.commit()
         db.refresh(order)
         
-        # TODO: Call Vayne API with linkedin_cookie to start the scraping job
-        # For now, just create the order record
+        logger.info(f"Order created successfully: {order.id} (Vayne ID: {vayne_order_id})")
         
         return {
             "success": True,
             "order_id": str(order.id),
             "status": order.status,
-            "message": "Order created successfully",
+            "message": f"Order created successfully. Vayne order ID: {vayne_order_id}",
         }
     except HTTPException:
         raise
