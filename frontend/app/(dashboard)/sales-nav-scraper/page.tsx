@@ -675,59 +675,6 @@ export default function SalesNavScraperPage() {
         )}
       </div>
 
-      {/* Export Format Selection */}
-      <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
-        <label className="block text-sm font-medium text-apple-text mb-4">
-          Export Format
-        </label>
-        <div className="space-y-3">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="radio"
-              name="exportFormat"
-              value="simple"
-              checked={exportFormat === "simple"}
-              onChange={(e) => setExportFormat(e.target.value as "simple" | "advanced")}
-              className="w-4 h-4 text-apple-accent"
-            />
-            <div>
-              <span className="text-sm font-medium text-apple-text">Simple</span>
-              <p className="text-xs text-apple-text-muted">Basic information (name, email, company)</p>
-            </div>
-          </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="radio"
-              name="exportFormat"
-              value="advanced"
-              checked={exportFormat === "advanced"}
-              onChange={(e) => setExportFormat(e.target.value as "simple" | "advanced")}
-              className="w-4 h-4 text-apple-accent"
-            />
-            <div>
-              <span className="text-sm font-medium text-apple-text">Advanced</span>
-              <p className="text-xs text-apple-text-muted">Complete profile data (all available fields)</p>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      {/* Data Filtering Options */}
-      <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={onlyQualified}
-            onChange={(e) => setOnlyQualified(e.target.checked)}
-            className="w-4 h-4 text-apple-accent rounded"
-          />
-          <div>
-            <span className="text-sm font-medium text-apple-text">Only Export Qualified Leads</span>
-            <p className="text-xs text-apple-text-muted">Filter out leads that don't meet qualification criteria</p>
-          </div>
-        </label>
-      </div>
-
       {/* Action Buttons */}
       <div className="flex gap-3 mb-6">
         <button
