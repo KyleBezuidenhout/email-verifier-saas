@@ -114,9 +114,29 @@ async def test_webhook_exists():
     }
 
 
-@router.post("/url-check")
+@router.post("/url-check", response_model=UrlValidationResponse)
 async def check_url_endpoint(payload: UrlCheckRequest):
-    return {"status": "ok", "message": "url-check endpoint is working"}
+    """
+    Check/validate a LinkedIn Sales Navigator URL (no authentication required).
+    
+    Accepts: { "sales_nav_url": "https://www.linkedin.com/sales/search/..." }
+    
+    This endpoint validates a Sales Navigator search URL and returns:
+    - Whether the URL is valid
+    - The type of search (people, accounts, etc.)
+    - Estimated number of results
+    - Any filters detected in the URL
+    
+    Accessible at: POST /api/v1/vayne/url-check
+    """
+    try:
+        logger.info(f"URL check requested for: {payload.sales_nav_url}")
+        result = vayne_client.validate_url(payload.sales_nav_url)
+        logger.info(f"URL check result: valid={result.get('valid')}, estimated_results={result.get('estimated_results')}")
+        return result
+    except Exception as e:
+        logger.error(f"URL check failed: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/auth", response_model=LinkedInAuthStatus)
