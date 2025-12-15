@@ -35,8 +35,8 @@ class UrlCheckRequest(BaseModel):
 
 
 class UrlValidationResponse(BaseModel):
-    valid: bool
-    url: str
+    is_valid: bool  # Renamed from 'valid' to match frontend VayneUrlCheck type
+    url: Optional[str] = None
     search_type: Optional[str] = None
     estimated_results: Optional[int] = None
     filters_detected: Optional[list[str]] = None

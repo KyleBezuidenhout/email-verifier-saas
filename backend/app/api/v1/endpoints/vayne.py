@@ -166,9 +166,10 @@ async def url_check(payload: UrlCheckRequest):
         logger.info(f"URL check requested for: {payload.sales_nav_url}")
         result = vayne_client.validate_url(payload.sales_nav_url)
         logger.info(f"URL check result: {result}")
+        # Determine validity by checking if we got meaningful results from Vayne API
         is_valid = result.get('total') is not None and result.get('type') is not None
         return {
-            "valid": is_valid,
+            "is_valid": is_valid,  # Use 'is_valid' to match frontend VayneUrlCheck type
             "url": payload.sales_nav_url,
             "search_type": result.get('type'),
             "estimated_results": result.get('total'),
@@ -179,7 +180,7 @@ async def url_check(payload: UrlCheckRequest):
     except Exception as e:
         logger.error(f"URL check failed: {str(e)}")
         return {
-            "valid": False,
+            "is_valid": False,  # Use 'is_valid' to match frontend VayneUrlCheck type
             "url": payload.sales_nav_url,
             "error": str(e),
             "suggestion": "Please check the URL and try again"
