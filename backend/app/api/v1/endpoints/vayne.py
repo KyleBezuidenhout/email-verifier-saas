@@ -259,11 +259,8 @@ async def create_order(
             vayne_order_id=vayne_order_id,
             status="processing",
             url=payload.sales_nav_url,
+            targeting=payload.targeting or "Untitled Order",
         )
-        
-        # Set targeting if available
-        if hasattr(order, 'targeting') and payload.targeting:
-            order.targeting = payload.targeting
         
         db.add(order)
         db.commit()
@@ -285,15 +282,63 @@ async def create_order(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/orders")
+async def list_orders(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    status: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all orders for current user from database (no Vayne API polling)"""
+    try:
+        query = db.query(VayneOrder).filter(VayneOrder.user_id == current_user.id)
+        
+        if status:
+            query = query.filter(VayneOrder.status == status)
+        
+        # Get total count
+        total = query.count()
+        
+        # Get paginated results, newest first
+        orders = query.order_by(VayneOrder.created_at.desc()).offset(offset).limit(limit).all()
+        
+        return {
+            "orders": [
+                {
+                    "id": str(order.id),
+                    "user_id": str(order.user_id),
+                    "vayne_order_id": order.vayne_order_id,
+                    "status": order.status,
+                    "targeting": getattr(order, 'targeting', None),
+                    "leads_found": getattr(order, 'leads_found', 0) or 0,
+                    "leads_qualified": getattr(order, 'leads_qualified', 0) or 0,
+                    "progress_percentage": getattr(order, 'progress_percentage', 0) or 0,
+                    "file_url": getattr(order, 'file_url', None),
+                    "created_at": order.created_at.isoformat() if order.created_at else None,
+                    "completed_at": order.completed_at.isoformat() if order.completed_at else None,
+                }
+                for order in orders
+            ],
+            "total": total,
+        }
+    except Exception as e:
+        logger.error(f"Error listing orders: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/orders/{order_id}", response_model=OrderStatusResponse)
 async def get_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get order status"""
+    """Get order status from database"""
     try:
-        order = db.query(VayneOrder).filter(VayneOrder.id == order_id).first()
+        order = db.query(VayneOrder).filter(
+            VayneOrder.id == order_id,
+            VayneOrder.user_id == current_user.id
+        ).first()
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
         
@@ -309,25 +354,88 @@ async def get_order(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/orders/{order_id}/export")
-async def export_order(
+@router.delete("/orders/{order_id}")
+async def delete_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Export order results"""
+    """Delete an order from database"""
     try:
-        order = db.query(VayneOrder).filter(VayneOrder.id == order_id).first()
+        order = db.query(VayneOrder).filter(
+            VayneOrder.id == order_id,
+            VayneOrder.user_id == current_user.id
+        ).first()
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
         
-        # Placeholder for export logic
-        return {"message": "Export started"}
+        db.delete(order)
+        db.commit()
+        
+        return {"message": "Order deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error exporting order: {str(e)}")
+        db.rollback()
+        logger.error(f"Error deleting order: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/orders/{order_id}/download")
+async def download_order_csv(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Download CSV file for a completed order"""
+    try:
+        order = db.query(VayneOrder).filter(
+            VayneOrder.id == order_id,
+            VayneOrder.user_id == current_user.id
+        ).first()
+        
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        if order.status != "completed":
+            raise HTTPException(status_code=400, detail="Order is not yet completed")
+        
+        # Get file_url (set by n8n when order completes)
+        file_url = getattr(order, 'file_url', None)
+        if not file_url:
+            raise HTTPException(status_code=404, detail="CSV file not available yet. Please try again later.")
+        
+        # Fetch CSV from the file_url
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.get(file_url)
+                response.raise_for_status()
+                csv_content = response.content
+        except Exception as e:
+            logger.error(f"Failed to fetch CSV from file_url: {str(e)}")
+            raise HTTPException(status_code=404, detail="Failed to download CSV file. Please try again later.")
+        
+        # Generate filename
+        targeting = getattr(order, 'targeting', None) or 'export'
+        # Sanitize filename
+        safe_targeting = "".join(c for c in targeting if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
+        if not safe_targeting:
+            safe_targeting = "export"
+        filename = f"{safe_targeting}_{str(order_id)[:8]}.csv"
+        
+        return StreamingResponse(
+            iter([csv_content]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(csv_content)),
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading order CSV: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/webhook")

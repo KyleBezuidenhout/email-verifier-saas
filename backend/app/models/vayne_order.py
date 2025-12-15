@@ -21,6 +21,8 @@ class VayneOrder(Base):
     leads_qualified = Column(Integer)
     progress_percentage = Column(Integer)
     credits_charged = Column(Integer)
+    file_url = Column(Text)  # URL to CSV file (set by n8n when order completes)
+    targeting = Column(String(255))  # Job name/description
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     completed_at = Column(DateTime(timezone=True))
 

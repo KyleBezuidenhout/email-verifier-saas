@@ -1,17 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
 import { VayneCredits, VayneUrlCheck, VayneOrder, VayneOrderCreate } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
-import { useRouter } from "next/navigation";
-
-const REFRESH_INTERVAL = 5000; // 5 seconds - poll Vayne API directly for real-time progress
 
 export default function SalesNavScraperPage() {
-  const router = useRouter();
-  
   // Auth state (cookie required for each order)
   const [linkedinCookie, setLinkedinCookie] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -23,18 +18,12 @@ export default function SalesNavScraperPage() {
   const [salesNavUrl, setSalesNavUrl] = useState("");
   const [urlValidation, setUrlValidation] = useState<VayneUrlCheck | null>(null);
   const [validatingUrl, setValidatingUrl] = useState(false);
-  const [urlDebounceTimer, setUrlDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   
   // Form state
   const [jobName, setJobName] = useState("");
-  const [exportFormat, setExportFormat] = useState<"simple" | "advanced">("simple");
-  const [onlyQualified, setOnlyQualified] = useState(false);
   
-  // Order state
-  const [currentOrder, setCurrentOrder] = useState<VayneOrder | null>(null);
+  // Order state - simplified, no polling
   const [creatingOrder, setCreatingOrder] = useState(false);
-  const [refreshTimer, setRefreshTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
-  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Error state
   const [error, setError] = useState("");
@@ -50,12 +39,13 @@ export default function SalesNavScraperPage() {
   // FAQ state
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  // Scrape history state
+  // Scrape history state - all orders from DB
   const [scrapeHistoryOrders, setScrapeHistoryOrders] = useState<VayneOrder[]>([]);
   const [loadingScrapeHistory, setLoadingScrapeHistory] = useState(false);
   const [deleteConfirmOrderId, setDeleteConfirmOrderId] = useState<string | null>(null);
+  const [downloadingOrderId, setDownloadingOrderId] = useState<string | null>(null);
 
-  // Define all callback functions BEFORE useEffect hooks to prevent initialization errors
+  // Load credits
   const loadCredits = useCallback(async () => {
     try {
       const creditsData = await apiClient.getVayneCredits();
@@ -65,10 +55,10 @@ export default function SalesNavScraperPage() {
     }
   }, []);
 
+  // Load all orders from database (no Vayne API polling)
   const loadScrapeHistory = useCallback(async () => {
     setLoadingScrapeHistory(true);
     try {
-      // Load all orders (with pagination if needed)
       let allOrders: VayneOrder[] = [];
       let offset = 0;
       const limit = 100;
@@ -81,93 +71,18 @@ export default function SalesNavScraperPage() {
         hasMore = response.orders.length === limit;
       }
 
-      // Filter to only show completed orders in history
-      const completedOrders = allOrders
-        .filter(order => order.status === "completed")
-        .sort((a, b) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
+      // Sort by date, newest first - show ALL orders (not just completed)
+      const sortedOrders = allOrders.sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
 
-      setScrapeHistoryOrders(completedOrders);
+      setScrapeHistoryOrders(sortedOrders);
     } catch (err) {
       console.error("Failed to load scrape history:", err);
     } finally {
       setLoadingScrapeHistory(false);
     }
   }, []);
-
-  const refreshOrderStatus = useCallback(async (orderId: string, retryCount: number = 0) => {
-    try {
-      // Poll status endpoint for real-time updates (matches specification)
-      const statusData = await apiClient.getVayneOrderStatus(orderId);
-      
-      // Update current order with status data
-      const order = await apiClient.getVayneOrder(orderId);
-      
-      // Log polling status for debugging
-      console.log(`🔄 Polling order ${orderId}: scraping_status=${statusData.scraping_status}, progress=${statusData.progress_percentage}%`);
-      
-      // Parse scraping_status from status endpoint
-      const scrapingStatus = statusData.scraping_status;
-      
-      // If scraping is finished, refresh order to get file_url (webhook should have stored it)
-      if (scrapingStatus === "finished" && !order.file_url) {
-        console.log(`✅ Scraping finished, refreshing order to get file_url...`);
-        try {
-          const updatedOrder = await apiClient.getVayneOrder(orderId);
-          order.file_url = updatedOrder.file_url;
-          if (updatedOrder.file_url) {
-            console.log(`✅ CSV file_url available: ${updatedOrder.file_url.substring(0, 50)}...`);
-          }
-        } catch (refreshErr) {
-          console.error("❌ Failed to refresh order:", refreshErr);
-        }
-      }
-      
-      // If order is completed, move it to history and clear current order
-      if (statusData.status === "completed" || (scrapingStatus === "finished" && order.file_url)) {
-        // Update order status to completed if it's finished
-        if (scrapingStatus === "finished" && statusData.status !== "completed") {
-          order.status = "completed";
-        }
-        
-        // Clear current order (it will appear in history)
-        setCurrentOrder(null);
-        
-        // Refresh scrape history to include the completed order
-        await loadScrapeHistory();
-        await loadCredits();
-      } else if (statusData.status === "failed" || scrapingStatus === "failed") {
-        // For failed orders, keep in current view but refresh credits
-        setCurrentOrder(order);
-        await loadCredits();
-      } else {
-        // For active orders, keep in current view
-        setCurrentOrder(order);
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      
-      // Handle 404 errors gracefully - order might not be ready yet (timing issue)
-      if (errorMessage.includes("404") || errorMessage.includes("Not Found") || errorMessage.includes("not found")) {
-        // Retry once after a delay if this is the first attempt
-        if (retryCount === 0) {
-          console.log(`⏳ Order ${orderId} not found yet, retrying after 1 second...`);
-          setTimeout(() => {
-            refreshOrderStatus(orderId, 1);
-          }, 1000);
-          return;
-        } else {
-          // Already retried once, log but continue (order might be created by worker later)
-          console.warn(`⚠️ Order ${orderId} still not found after retry. This may be normal if the order is being processed.`);
-          return;
-        }
-      }
-      
-      // For other errors, log but continue polling (might be temporary network issues)
-      console.error("❌ Failed to refresh order status:", err);
-    }
-  }, [loadCredits, loadScrapeHistory]);
 
   const validateUrl = useCallback(async (url: string) => {
     if (!url.trim()) {
@@ -178,8 +93,7 @@ export default function SalesNavScraperPage() {
     setValidatingUrl(true);
     try {
       const check = await apiClient.checkVayneUrl(url);
-      // If the check returns invalid, sanitize the error message to hide Vayne API details
-      if (!check.valid) {
+      if (!check.is_valid) {
         setUrlValidation({
           ...check,
           error: "Invalid URL - Please make sure the URL you submitted is valid",
@@ -197,13 +111,12 @@ export default function SalesNavScraperPage() {
     }
   }, []);
 
-  // Load auth status and credits on mount
+  // Load credits and history on mount
   useEffect(() => {
-    // Wrap in try-catch to prevent unhandled errors
     const loadInitialData = async () => {
       try {
         setInitialLoading(true);
-        loadCredits();
+        await Promise.all([loadCredits(), loadScrapeHistory()]);
       } catch (err) {
         console.error("Error loading initial data:", err);
         setError("Failed to load page data. Please refresh the page.");
@@ -213,62 +126,7 @@ export default function SalesNavScraperPage() {
       }
     };
     loadInitialData();
-  }, [loadCredits]);
-
-  // Poll Vayne API every 5 seconds until scraping is finished
-  // Add initial delay before first poll to avoid race conditions with order creation
-  useEffect(() => {
-    if (currentOrder) {
-      const scrapingStatus = currentOrder.scraping_status;
-      const hasVayneOrderId = !!currentOrder.vayne_order_id;
-      
-      // Stop polling when scraping is finished or failed
-      if (scrapingStatus === "finished" || scrapingStatus === "failed" || currentOrder.status === "failed") {
-        if (refreshTimerRef.current) {
-          clearInterval(refreshTimerRef.current);
-          refreshTimerRef.current = null;
-        }
-        if (refreshTimer) {
-          clearInterval(refreshTimer);
-          setRefreshTimer(null);
-        }
-        return;
-      }
-      
-      // Add initial delay before first poll to ensure order is committed to database
-      // This prevents 404 errors immediately after order creation
-      const initialDelay = setTimeout(() => {
-        // First poll after delay
-        refreshOrderStatus(currentOrder.id);
-        
-        // Then poll every 5 seconds
-        const timer = setInterval(() => {
-          refreshOrderStatus(currentOrder.id);
-        }, REFRESH_INTERVAL);
-        refreshTimerRef.current = timer;
-        setRefreshTimer(timer);
-      }, 1000); // 1 second delay before first poll
-      
-      return () => {
-        clearTimeout(initialDelay);
-        if (refreshTimerRef.current) {
-          clearInterval(refreshTimerRef.current);
-          refreshTimerRef.current = null;
-        }
-      };
-    } else {
-      // Clear timer when no current order
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-      if (refreshTimer) {
-        clearInterval(refreshTimer);
-        setRefreshTimer(null);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentOrder, refreshOrderStatus]);
+  }, [loadCredits, loadScrapeHistory]);
 
   // Debounced URL validation
   useEffect(() => {
@@ -278,7 +136,6 @@ export default function SalesNavScraperPage() {
       timer = setTimeout(() => {
         validateUrl(salesNavUrl);
       }, 500);
-      setUrlDebounceTimer(timer);
     } else {
       setUrlValidation(null);
     }
@@ -319,31 +176,52 @@ export default function SalesNavScraperPage() {
     try {
       const orderData: VayneOrderCreate = {
         sales_nav_url: salesNavUrl,
-        linkedin_cookie: linkedinCookie,  // Send cookie with order request
+        linkedin_cookie: linkedinCookie,
         targeting: jobName.trim(),
       };
       
       const response = await apiClient.createVayneOrder(orderData);
       
-      // Add a small delay before fetching order to ensure it's committed to database
-      // This prevents race conditions where the order might not be immediately available
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Immediately add a "processing" order to the UI (no polling, no fetching)
+      const newOrder: VayneOrder = {
+        id: response.order_id,
+        status: "processing", // Always show as processing initially
+        targeting: jobName.trim(),
+        created_at: new Date().toISOString(),
+        leads_found: 0,
+        progress_percentage: 0,
+        // Required fields with defaults
+        sales_nav_url: salesNavUrl,
+        export_format: "simple",
+        only_qualified: false,
+        vayne_order_id: "", // Will be set by backend
+      };
       
-      const order = await apiClient.getVayneOrder(response.order_id);
-      setCurrentOrder(order);
-      setLinkedinCookie(""); // Clear cookie after use (require fresh one for next scrape)
-      // Order status will be refreshed automatically via polling (with delay)
-      await loadCredits(); // Refresh credits after order creation
+      // Add to top of history list
+      setScrapeHistoryOrders((prev: VayneOrder[]) => [newOrder, ...prev]);
       
-      // No redirect - user stays on page to monitor scraping progress
-      // When complete, they can download CSV and upload manually to enrichment
+      // Clear form
+      setLinkedinCookie("");
+      setJobName("");
+      setSalesNavUrl("");
+      setUrlValidation(null);
+      
+      // Refresh credits after order creation
+      await loadCredits();
       
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorMessage = err instanceof Error 
+        ? err.message 
+        : (typeof err === 'object' && err !== null && 'message' in err) 
+          ? String((err as { message: unknown }).message)
+          : String(err);
+      
       if (errorMessage.includes("insufficient") || errorMessage.includes("credits")) {
         setError("Insufficient credits. Please top up your account.");
-      } else if (errorMessage.includes("401") || errorMessage.includes("authentication")) {
-        setError("LinkedIn authentication failed. Please check your session cookie and try again.");
+      } else if (errorMessage.includes("401") || errorMessage.includes("authentication") || errorMessage.includes("Session expired")) {
+        setError("Session expired. Please refresh the page and try again.");
+      } else if (errorMessage === "[object Object]") {
+        setError("An unexpected error occurred. Please try again.");
       } else {
         setError(errorMessage || "Failed to create order");
       }
@@ -366,15 +244,8 @@ export default function SalesNavScraperPage() {
     try {
       await apiClient.deleteVayneOrder(orderToDelete);
       
-      // If deleted order was the current order, clear it
-      if (currentOrder && currentOrder.id === orderToDelete) {
-        setCurrentOrder(null);
-      }
-      
-      // Reload scrape history if it's loaded
-      if (scrapeHistoryOrders.length > 0) {
-        await loadScrapeHistory();
-      }
+      // Remove from local state
+      setScrapeHistoryOrders((prev: VayneOrder[]) => prev.filter((o: VayneOrder) => o.id !== orderToDelete));
       
       setShowDeleteModal(false);
       setOrderToDelete(null);
@@ -409,10 +280,7 @@ export default function SalesNavScraperPage() {
     setJobName("");
     setSalesNavUrl("");
     setUrlValidation(null);
-    setExportFormat("simple");
-    setOnlyQualified(false);
-    setCurrentOrder(null);
-    setLinkedinCookie(""); // Clear cookie
+    setLinkedinCookie("");
   };
 
 
@@ -421,13 +289,8 @@ export default function SalesNavScraperPage() {
       // Confirm delete
       try {
         await apiClient.deleteVayneOrder(orderId);
-        await loadScrapeHistory();
+        setScrapeHistoryOrders((prev: VayneOrder[]) => prev.filter((o: VayneOrder) => o.id !== orderId));
         setDeleteConfirmOrderId(null);
-        
-        // If deleted order was the current order, clear it
-        if (currentOrder && currentOrder.id === orderId) {
-          setCurrentOrder(null);
-        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to delete order");
         setShowErrorModal(true);
@@ -436,6 +299,18 @@ export default function SalesNavScraperPage() {
     } else {
       // First click - show confirm
       setDeleteConfirmOrderId(orderId);
+    }
+  };
+
+  const handleDownloadCSV = async (orderId: string) => {
+    setDownloadingOrderId(orderId);
+    try {
+      await apiClient.downloadVayneOrderCSV(orderId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to download CSV");
+      setShowErrorModal(true);
+    } finally {
+      setDownloadingOrderId(null);
     }
   };
 
@@ -699,99 +574,22 @@ export default function SalesNavScraperPage() {
         </button>
       </div>
 
-      {/* Order Status & Results */}
-      {currentOrder && currentOrder.status !== "completed" && (
-        <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
-          <h3 className="text-lg font-semibold text-apple-text mb-4">Current Order</h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-apple-text-muted">Order ID</span>
-              <span className="text-sm font-mono text-apple-text">{currentOrder?.id || "N/A"}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-apple-text-muted">Status</span>
-              <span
-                className={`px-2 py-1 text-xs rounded-full ${
-                  currentOrder.scraping_status === "finished"
-                    ? "bg-green-500/20 text-green-400"
-                    : currentOrder.scraping_status === "failed" || currentOrder.status === "failed"
-                    ? "bg-red-500/20 text-red-400"
-                    : currentOrder.status === "queued"
-                    ? "bg-blue-500/20 text-blue-400"
-                    : "bg-yellow-500/20 text-yellow-400"
-                }`}
-              >
-                {currentOrder.scraping_status === "initialization" 
-                  ? "Initializing"
-                  : currentOrder.scraping_status === "scraping"
-                  ? "Scraping"
-                  : currentOrder.scraping_status === "finished"
-                  ? "Finished"
-                  : currentOrder.scraping_status === "failed"
-                  ? "Failed"
-                  : currentOrder.status}
-              </span>
-            </div>
-            {currentOrder && currentOrder.vayne_order_id && currentOrder.scraping_status && 
-             currentOrder.scraping_status !== "finished" && currentOrder.scraping_status !== "failed" && (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-apple-text-muted">Progress</span>
-                  <span className="text-sm text-apple-text">
-                    {currentOrder.progress_percentage?.toFixed(1) || 0}%
-                  </span>
-                </div>
-                <div className="w-full bg-apple-bg rounded-full h-2">
-                  <div
-                    className="h-2 bg-apple-accent rounded-full transition-all"
-                    style={{ width: `${currentOrder.progress_percentage || 0}%` }}
-                  ></div>
-                </div>
-                {currentOrder.estimated_completion && (
-                  <p className="text-xs text-apple-text-muted">
-                    Estimated completion: {currentOrder.estimated_completion}
-                  </p>
-                )}
-              </>
-            )}
-            {currentOrder?.leads_found !== undefined && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-apple-text-muted">Leads Found</span>
-                <span className="text-sm font-medium text-apple-text">
-                  {currentOrder.leads_found.toLocaleString()}
-                </span>
-              </div>
-            )}
-            {currentOrder?.only_qualified && currentOrder.leads_qualified !== undefined && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-apple-text-muted">Leads Qualified</span>
-                <span className="text-sm font-medium text-apple-text">
-                  {currentOrder.leads_qualified.toLocaleString()}
-                </span>
-              </div>
-            )}
-
-
-          </div>
-        </div>
-      )}
-
-      {/* Scrape History Section */}
+      {/* Scrape History Section - Shows all orders */}
       <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
-        <h3 className="text-lg font-semibold text-apple-text mb-4">Scrape History</h3>
-        {loadingScrapeHistory ? (
+        <h3 className="text-lg font-semibold text-apple-text mb-4">Scraping Orders</h3>
+        {loadingScrapeHistory && scrapeHistoryOrders.length === 0 ? (
           <div className="flex justify-center items-center py-8">
             <LoadingSpinner size="sm" />
           </div>
         ) : scrapeHistoryOrders.length === 0 ? (
-          <p className="text-apple-text-muted text-center py-8">No scrape history yet. Start a new scrape above.</p>
+          <p className="text-apple-text-muted text-center py-8">No scraping orders yet. Start a new scrape above.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-apple-border">
               <thead className="bg-apple-surface-hover">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
-                    Order ID
+                    Job Name
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
                     Created At
@@ -803,9 +601,6 @@ export default function SalesNavScraperPage() {
                     Leads Found
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
-                    Progress
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -814,7 +609,7 @@ export default function SalesNavScraperPage() {
                 {scrapeHistoryOrders.map((order) => (
                   <tr key={order.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-apple-text">
-                      {order.vayne_order_id || order.id.slice(0, 8)}
+                      {order.targeting || order.vayne_order_id || order.id.slice(0, 8)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
                       {formatDate(order.created_at)}
@@ -822,45 +617,45 @@ export default function SalesNavScraperPage() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
                         className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          order.status === "completed" ? "badge-success" :
-                          order.status === "processing" ? "badge-warning" :
-                          order.status === "failed" ? "badge-error" :
-                          "badge-info"
+                          order.status === "completed" ? "bg-green-500/20 text-green-400" :
+                          order.status === "processing" ? "bg-yellow-500/20 text-yellow-400" :
+                          order.status === "failed" ? "bg-red-500/20 text-red-400" :
+                          "bg-blue-500/20 text-blue-400"
                         }`}
                       >
-                        {order.status}
+                        {order.status === "processing" ? "Processing" : order.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
-                      {order.leads_found?.toLocaleString() || "N/A"}
+                      {order.status === "processing" ? "—" : (order.leads_found?.toLocaleString() || "N/A")}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
-                      <div className="w-full bg-apple-surface-hover rounded-full h-2">
-                        <div
-                          className="bg-apple-accent h-2 rounded-full transition-all"
-                          style={{ width: `${order.progress_percentage || 0}%` }}
-                        ></div>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex items-center gap-3">
+                        {order.status === "completed" && (
+                          <button
+                            onClick={() => handleDownloadCSV(order.id)}
+                            disabled={downloadingOrderId === order.id}
+                            className="px-3 py-1.5 bg-apple-accent text-white text-xs rounded-lg hover:bg-apple-accent/90 transition-colors disabled:opacity-50"
+                          >
+                            {downloadingOrderId === order.id ? "Downloading..." : "Download CSV"}
+                          </button>
+                        )}
+                        {deleteConfirmOrderId === order.id ? (
+                          <button
+                            onClick={() => handleDeleteOrder(order.id)}
+                            className="text-apple-error hover:text-apple-error/80 transition-colors text-xs"
+                          >
+                            Confirm Delete
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleDeleteOrder(order.id)}
+                            className="text-apple-text-muted hover:text-apple-error transition-colors text-xs"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
-                      <span className="text-xs text-apple-text-muted mt-1 block">
-                        {order.progress_percentage?.toFixed(1) || 0}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                      {deleteConfirmOrderId === order.id ? (
-                        <button
-                          onClick={() => handleDeleteOrder(order.id)}
-                          className="text-apple-error hover:text-apple-error/80 transition-colors"
-                        >
-                          Confirm
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleDeleteOrder(order.id)}
-                          className="text-apple-error hover:text-apple-error/80 transition-colors"
-                        >
-                          Delete
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ))}

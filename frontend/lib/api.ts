@@ -65,8 +65,10 @@ class ApiClient {
           }
         }
         
-        // Return a silent rejection instead of throwing error that logs to console
-        return Promise.reject({ silent: true, message: "Session expired" });
+        // Throw an Error with silent flag for proper error handling
+        const error = new Error("Session expired");
+        (error as Error & { silent?: boolean }).silent = true;
+        throw error;
       }
 
       if (!response.ok) {
@@ -529,29 +531,8 @@ class ApiClient {
     });
   }
 
-  async getVayneOrderStatus(orderId: string): Promise<{
-    success: boolean;
-    order_id: string;
-    status: string;
-    scraped: number;
-    total: number;
-    matching: number;
-    scraping_status: string;
-    progress_percentage: number;
-  }> {
-    try {
-      return await this.request(`/api/vayne/orders/${orderId}/status`);
-    } catch (error) {
-      // Improve error message for 404 to distinguish between order not found vs endpoint not found
-      if (error instanceof Error) {
-        if (error.message.includes("404") || error.message.includes("Not Found")) {
-          throw new Error(`Order not found. The order may not be ready yet. Order ID: ${orderId}`);
-        }
-      }
-      throw error;
-    }
-  }
-
+  // Note: Status polling removed - orders are tracked via database, not Vayne API polling
+  
   async getVayneOrder(orderId: string): Promise<VayneOrder> {
     return this.request(`/api/v1/vayne/orders/${orderId}`);
   }
@@ -607,14 +588,44 @@ class ApiClient {
     });
   }
 
-  async getVayneOrderFileUrl(orderId: string): Promise<{ file_url: string }> {
-    return this.request(`/api/v1/vayne/orders/${orderId}/file-url`);
-  }
+  async downloadVayneOrderCSV(orderId: string): Promise<void> {
+    const url = `${this.baseUrl}/api/v1/vayne/orders/${orderId}/download`;
+    const token = this.getToken();
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
-  async getVayneOrderDownloadStatus(orderId: string): Promise<{ status: "ready" | "pending"; file_url?: string }> {
-    // GET /api/v1/vayne/orders/{orderId}/download-status
-    // Checks download cache status
-    return this.request<{ status: "ready" | "pending"; file_url?: string }>(`/api/v1/vayne/orders/${orderId}/download-status`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        detail: response.statusText,
+      }));
+      throw new Error(error.detail || "Failed to download CSV");
+    }
+
+    // Get filename from Content-Disposition header or use default
+    const contentDisposition = response.headers.get("Content-Disposition");
+    let filename = "export.csv";
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (match) {
+        filename = match[1];
+      }
+    }
+
+    // Download the blob
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
   }
 }
 
