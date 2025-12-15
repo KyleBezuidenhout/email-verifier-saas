@@ -228,9 +228,13 @@ async def create_order(
         # Step 2: Create order with Vayne API
         logger.info(f"Creating Vayne order for URL: {payload.sales_nav_url}")
         try:
+            # Make order name unique by appending timestamp (Vayne requires unique names)
+            base_name = payload.targeting or "Untitled Order"
+            unique_name = f"{base_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+            
             vayne_response = vayne_client.create_order(
                 url=payload.sales_nav_url,
-                name=payload.targeting or "Untitled Order",
+                name=unique_name,
                 limit=None,  # No limit
                 email_enrichment=False,
                 saved_search=False,
