@@ -162,27 +162,28 @@ async def validate_url(
 
 @router.post("/url-check", response_model=UrlValidationResponse)
 async def url_check(payload: UrlCheckRequest):
-    """
-    Check/validate a LinkedIn Sales Navigator URL (no authentication required).
-    
-    Accepts: { "sales_nav_url": "https://www.linkedin.com/sales/search/..." }
-    
-    This endpoint validates a Sales Navigator search URL and returns:
-    - Whether the URL is valid
-    - The type of search (people, accounts, etc.)
-    - Estimated number of results
-    - Any filters detected in the URL
-    
-    Accessible at: POST /api/v1/vayne/url-check
-    """
     try:
         logger.info(f"URL check requested for: {payload.sales_nav_url}")
         result = vayne_client.validate_url(payload.sales_nav_url)
-        logger.info(f"URL check result: valid={result.get('valid')}, estimated_results={result.get('estimated_results')}")
-        return result
+        logger.info(f"URL check result: {result}")
+        is_valid = result.get('total') is not None and result.get('type') is not None
+        return {
+            "valid": is_valid,
+            "url": payload.sales_nav_url,
+            "search_type": result.get('type'),
+            "estimated_results": result.get('total'),
+            "filters_detected": result.get('filters'),
+            "error": None if is_valid else "Invalid URL or API error",
+            "suggestion": None
+        }
     except Exception as e:
         logger.error(f"URL check failed: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        return {
+            "valid": False,
+            "url": payload.sales_nav_url,
+            "error": str(e),
+            "suggestion": "Please check the URL and try again"
+        }
 
 
 def charge_credits(db: Session, user: User, amount: int):
