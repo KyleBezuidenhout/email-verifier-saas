@@ -213,10 +213,11 @@ async def create_order(
 ):
     """Create a new Vayne order"""
     try:
+        import uuid as uuid_module
         # Create order in database
         order = VayneOrder(
             user_id=current_user.id,
-            vayne_order_id=str(UUID(int=0)),  # Placeholder until Vayne returns real ID
+            vayne_order_id=str(uuid_module.uuid4()),  # Generate unique ID
             status="pending",
             url=payload.sales_nav_url,
         )
