@@ -16,8 +16,10 @@ import csv
 import os
 import sys
 import time
+import re
 import logging
-from typing import Optional
+import unicodedata
+from typing import Optional, Tuple
 from uuid import UUID
 
 import redis
@@ -40,6 +42,208 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# ============================================
+# DATA CLEANING FUNCTIONS FOR ENRICHMENT
+# ============================================
+
+# Characters considered "empty" or invalid for required fields
+INVALID_ONLY_CHARS = set('-–—_./\\|@#$%^&*()+=[]{}:;"\'<>?,!~`')
+
+# Zero-width and invisible characters to detect/remove
+INVISIBLE_CHARS = [
+    '\u200b',  # Zero-width space
+    '\u200c',  # Zero-width non-joiner
+    '\u200d',  # Zero-width joiner
+    '\u2060',  # Word joiner
+    '\ufeff',  # Zero-width no-break space (BOM)
+    '\u00a0',  # Non-breaking space
+    '\u2007',  # Figure space
+    '\u202f',  # Narrow no-break space
+    '\u00ad',  # Soft hyphen
+]
+
+# Regex pattern to match emojis
+EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # Emoticons
+    "\U0001F300-\U0001F5FF"  # Symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # Transport & map symbols
+    "\U0001F1E0-\U0001F1FF"  # Flags
+    "\U00002702-\U000027B0"  # Dingbats
+    "\U000024C2-\U0001F251"  # Enclosed characters
+    "\U0001F900-\U0001F9FF"  # Supplemental symbols
+    "\U0001FA00-\U0001FA6F"  # Chess symbols
+    "\U0001FA70-\U0001FAFF"  # Symbols and pictographs extended-A
+    "\U00002600-\U000026FF"  # Misc symbols
+    "]+",
+    flags=re.UNICODE
+)
+
+
+def contains_invisible_chars(value: str) -> bool:
+    """Check if string contains non-breaking spaces or zero-width characters."""
+    if not value:
+        return False
+    for char in INVISIBLE_CHARS:
+        if char in value:
+            return True
+    return False
+
+
+def remove_invisible_chars(value: str) -> str:
+    """Remove all invisible/zero-width characters from string."""
+    if not value:
+        return value
+    result = value
+    for char in INVISIBLE_CHARS:
+        result = result.replace(char, ' ')
+    # Collapse multiple spaces into one
+    result = ' '.join(result.split())
+    return result
+
+
+def remove_emojis(value: str) -> str:
+    """Remove all emojis from string."""
+    if not value:
+        return value
+    return EMOJI_PATTERN.sub('', value)
+
+
+def clean_name_field(value: str) -> str:
+    """
+    Clean a name field (first_name or last_name):
+    1. Remove invisible characters
+    2. Remove emojis
+    3. Remove leading special characters (@, ", etc.)
+    4. If contains comma, take only the part before the comma
+    5. Strip whitespace
+    """
+    if not value:
+        return ''
+    
+    # Remove invisible characters
+    cleaned = remove_invisible_chars(value)
+    
+    # Remove emojis
+    cleaned = remove_emojis(cleaned)
+    
+    # If contains comma, take only the part before the comma
+    if ',' in cleaned:
+        cleaned = cleaned.split(',')[0]
+    
+    # Remove leading special characters (but keep internal ones like O'Brien)
+    cleaned = cleaned.lstrip('@"\'#$%^&*()_+=[]{}|\\:;<>?/~`!')
+    
+    # Remove trailing special characters
+    cleaned = cleaned.rstrip('@"\'#$%^&*()_+=[]{}|\\:;<>?/~`!.')
+    
+    # Strip whitespace
+    cleaned = cleaned.strip()
+    
+    return cleaned
+
+
+def clean_website_field(value: str) -> str:
+    """
+    Clean a website/domain field:
+    1. Remove invisible characters
+    2. Remove emojis
+    3. Strip whitespace
+    4. Remove quotes
+    """
+    if not value:
+        return ''
+    
+    # Remove invisible characters
+    cleaned = remove_invisible_chars(value)
+    
+    # Remove emojis
+    cleaned = remove_emojis(cleaned)
+    
+    # Remove surrounding quotes
+    cleaned = cleaned.strip('"\'')
+    
+    # Strip whitespace
+    cleaned = cleaned.strip()
+    
+    return cleaned
+
+
+def is_only_special_chars(value: str) -> bool:
+    """
+    Check if a value contains ONLY special characters (no letters/numbers).
+    Returns True if the value should be considered empty/invalid.
+    """
+    if not value:
+        return True
+    
+    # Remove all special characters and whitespace
+    stripped = value.strip()
+    
+    # Check if it's just dashes, dots, or other special chars
+    if all(c in INVALID_ONLY_CHARS or c.isspace() for c in stripped):
+        return True
+    
+    # Check if there are any alphanumeric characters
+    if not any(c.isalnum() for c in stripped):
+        return True
+    
+    return False
+
+
+def is_linkedin_url(value: str) -> bool:
+    """Check if website value contains 'linkedin' (case-insensitive)."""
+    if not value:
+        return False
+    return 'linkedin' in value.lower()
+
+
+def validate_and_clean_row(first_name: str, last_name: str, website: str) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+    """
+    Validate and clean a row's critical fields.
+    
+    Returns:
+        Tuple of (cleaned_first_name, cleaned_last_name, cleaned_website, skip_reason)
+        If skip_reason is not empty, the row should be skipped.
+    """
+    # Step 1: Check for invisible characters (filter out these rows entirely)
+    if contains_invisible_chars(first_name) or contains_invisible_chars(last_name) or contains_invisible_chars(website):
+        # Try to clean them first
+        first_name = remove_invisible_chars(first_name)
+        last_name = remove_invisible_chars(last_name)
+        website = remove_invisible_chars(website)
+    
+    # Step 2: Clean the fields
+    cleaned_first = clean_name_field(first_name)
+    cleaned_last = clean_name_field(last_name)
+    cleaned_website = clean_website_field(website)
+    
+    # Step 3: Apply clean_first_name (removes trailing initials like "n.")
+    cleaned_first = clean_first_name(cleaned_first)
+    
+    # Step 4: Check if any required field is empty after cleaning
+    if not cleaned_first:
+        return None, None, None, "empty_first_name"
+    if not cleaned_last:
+        return None, None, None, "empty_last_name"
+    if not cleaned_website:
+        return None, None, None, "empty_website"
+    
+    # Step 5: Check if any field contains only special characters
+    if is_only_special_chars(cleaned_first):
+        return None, None, None, "first_name_only_special_chars"
+    if is_only_special_chars(cleaned_last):
+        return None, None, None, "last_name_only_special_chars"
+    if is_only_special_chars(cleaned_website):
+        return None, None, None, "website_only_special_chars"
+    
+    # Step 6: Check if website is a LinkedIn URL (skip these)
+    if is_linkedin_url(cleaned_website):
+        return None, None, None, "website_is_linkedin"
+    
+    return cleaned_first, cleaned_last, cleaned_website, ""
 
 # Redis connection
 redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
@@ -79,17 +283,32 @@ def parse_csv_from_r2(csv_data: bytes) -> list:
     """
     Parse CSV data and auto-detect columns.
     Returns list of remapped rows with standard column names.
+    
+    Applies comprehensive data cleaning:
+    1. Skips rows missing first_name, last_name, or website
+    2. Removes commas and text after comma from names
+    3. Skips rows where website contains "linkedin"
+    4. Cleans emojis and special characters from fields
+    5. Filters out rows with invisible/zero-width characters
+    6. Filters out rows where required fields contain only special chars
     """
-    csv_content = csv_data.decode('utf-8')
+    # Handle BOM in UTF-8 files
+    csv_content = csv_data.decode('utf-8-sig')
     csv_reader = csv.DictReader(io.StringIO(csv_content))
     rows = list(csv_reader)
     
     if not rows:
+        logger.warning("CSV file is empty (no data rows)")
         return []
+    
+    total_rows = len(rows)
+    logger.info(f"📊 CSV contains {total_rows} total rows")
     
     # Auto-detect column mappings
     actual_columns = list(rows[0].keys())
     normalized_headers = [normalize_header(h) for h in actual_columns]
+    
+    logger.info(f"📋 Detected columns: {actual_columns}")
     
     COLUMN_VARIATIONS = {
         'firstname': ['firstname', 'first', 'fname', 'givenname', 'first_name'],
@@ -103,14 +322,45 @@ def parse_csv_from_r2(csv_data: bytes) -> list:
     website_col = auto_detect_column(actual_columns, normalized_headers, 'website', COLUMN_VARIATIONS['website']) or 'website'
     company_size_col = auto_detect_column(actual_columns, normalized_headers, 'companysize', COLUMN_VARIATIONS['companysize'])
     
-    # Remap rows to standard format
+    logger.info(f"🔗 Column mapping: first_name='{first_name_col}', last_name='{last_name_col}', website='{website_col}', company_size='{company_size_col}'")
+    
+    # Track skip reasons for logging
+    skip_reasons = {
+        'empty_first_name': 0,
+        'empty_last_name': 0,
+        'empty_website': 0,
+        'first_name_only_special_chars': 0,
+        'last_name_only_special_chars': 0,
+        'website_only_special_chars': 0,
+        'website_is_linkedin': 0,
+    }
+    
+    # Remap rows to standard format with cleaning
     remapped_rows = []
-    for row in rows:
+    for row_num, row in enumerate(rows, start=2):  # Start at 2 because row 1 is header
+        # Get raw values
+        raw_first = row.get(first_name_col, '') or ''
+        raw_last = row.get(last_name_col, '') or ''
+        raw_website = row.get(website_col, '') or ''
+        
+        # Validate and clean the row
+        cleaned_first, cleaned_last, cleaned_website, skip_reason = validate_and_clean_row(
+            raw_first, raw_last, raw_website
+        )
+        
+        # If row should be skipped, track reason and continue
+        if skip_reason:
+            skip_reasons[skip_reason] = skip_reasons.get(skip_reason, 0) + 1
+            continue
+        
+        # Build the remapped row
         remapped_row = {
-            'first_name': clean_first_name(row.get(first_name_col, '').strip()),
-            'last_name': row.get(last_name_col, '').strip(),
-            'website': row.get(website_col, '').strip(),
+            'first_name': cleaned_first,
+            'last_name': cleaned_last,
+            'website': cleaned_website,
         }
+        
+        # Add company size if available
         if company_size_col and row.get(company_size_col):
             remapped_row['company_size'] = row.get(company_size_col, '').strip()
         
@@ -127,8 +377,15 @@ def parse_csv_from_r2(csv_data: bytes) -> list:
         
         remapped_rows.append(remapped_row)
     
-    # Filter out rows with missing required data
-    remapped_rows = [row for row in remapped_rows if row['first_name'] and row['last_name'] and row['website']]
+    # Log skip statistics
+    total_skipped = sum(skip_reasons.values())
+    if total_skipped > 0:
+        logger.warning(f"⚠️  Skipped {total_skipped}/{total_rows} rows due to data quality issues:")
+        for reason, count in skip_reasons.items():
+            if count > 0:
+                logger.warning(f"   - {reason}: {count} rows")
+    
+    logger.info(f"✅ {len(remapped_rows)}/{total_rows} rows passed validation and cleaning")
     
     return remapped_rows
 
