@@ -53,6 +53,7 @@ class CreateOrderRequest(BaseModel):
 class CreateOrderResponse(BaseModel):
     success: bool
     order_id: str
+    vayne_order_id: str  # The Vayne platform order ID for webhook matching
     status: str
     message: str
 

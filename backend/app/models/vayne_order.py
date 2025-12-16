@@ -11,7 +11,7 @@ class VayneOrder(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    vayne_order_id = Column(String(255), unique=True, nullable=False)
+    vayne_order_id = Column(String(255), unique=True, nullable=True, index=True)  # Vayne's order ID (e.g., "123")
     status = Column(String(50))
     url = Column(Text)
     export_format = Column(String(20))

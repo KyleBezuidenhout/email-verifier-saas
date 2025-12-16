@@ -250,14 +250,18 @@ async def create_order(
         
         # Extract the vayne_order_id from response
         # Vayne API returns: { "order": { "id": 123, ... } }
+        logger.info(f"📥 Full Vayne API response: {vayne_response}")
         vayne_order_data = vayne_response.get("order", {})
         vayne_order_id = str(vayne_order_data.get("id", ""))
         
+        logger.info(f"📋 Extracted vayne_order_id: '{vayne_order_id}' (type: {type(vayne_order_id).__name__})")
+        
         if not vayne_order_id:
-            logger.error(f"No order ID in Vayne response: {vayne_response}")
+            logger.error(f"❌ No order ID in Vayne response: {vayne_response}")
             raise HTTPException(status_code=400, detail="Failed to get order ID from Vayne")
         
-        # Step 3: Create order in our database
+        # Step 3: Create order in our database with vayne_order_id
+        logger.info(f"💾 Creating VayneOrder with vayne_order_id='{vayne_order_id}', status='processing'")
         order = VayneOrder(
             user_id=current_user.id,
             vayne_order_id=vayne_order_id,
@@ -270,11 +274,13 @@ async def create_order(
         db.commit()
         db.refresh(order)
         
-        logger.info(f"Order created successfully: {order.id} (Vayne ID: {vayne_order_id})")
+        # Verify the vayne_order_id was saved correctly
+        logger.info(f"✅ Order saved to DB - id: {order.id}, vayne_order_id: {order.vayne_order_id}, status: {order.status}")
         
         return {
             "success": True,
             "order_id": str(order.id),
+            "vayne_order_id": vayne_order_id,
             "status": order.status,
             "message": f"Order created successfully. Vayne order ID: {vayne_order_id}",
         }
