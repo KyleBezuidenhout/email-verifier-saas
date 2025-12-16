@@ -186,6 +186,7 @@ async def startup_tasks():
         from migrate_add_mx_provider import migrate as migrate_mx_provider
         from migrate_add_is_admin import run_migration as migrate_is_admin
         from migrate_add_job_source_and_vayne_orders import migrate as migrate_job_source_and_vayne_orders
+        from migrate_vayne_orders_columns import run_migration as migrate_vayne_orders_columns
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -195,6 +196,7 @@ async def startup_tasks():
         migrate_mx_provider()
         migrate_is_admin()
         migrate_job_source_and_vayne_orders()
+        migrate_vayne_orders_columns()  # Add missing columns to vayne_orders table
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
