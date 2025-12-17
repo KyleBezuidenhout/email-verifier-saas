@@ -432,8 +432,20 @@ async function flushPendingLeadUpdates() {
   // Process in chunks to avoid query size limits
   for (let i = 0; i < updates.length; i += BATCH_DB_WRITE_SIZE) {
     const chunk = updates.slice(i, i + BATCH_DB_WRITE_SIZE);
-    await executeBulkLeadUpdate(chunk);
-    totalFlushed += chunk.length;
+    try {
+      await executeBulkLeadUpdate(chunk);
+      totalFlushed += chunk.length;
+    } catch (error) {
+      // Put failed chunk back at the front of pending updates for retry
+      console.error(`Failed to flush ${chunk.length} lead updates:`, error.message);
+      pendingLeadUpdates.unshift(...chunk);
+      // Also put remaining unprocessed updates back
+      const remaining = updates.slice(i + BATCH_DB_WRITE_SIZE);
+      if (remaining.length > 0) {
+        pendingLeadUpdates.unshift(...remaining);
+      }
+      throw error; // Re-throw to signal failure
+    }
   }
   
   lastFlushTime = Date.now();
@@ -465,7 +477,7 @@ async function executeBulkLeadUpdate(updates) {
         mx_record = v.mx,
         mx_provider = v.provider
       FROM (VALUES ${valueClauses.join(', ')}) AS v(id, status, mx, provider)
-      WHERE l.id = v.id
+      WHERE l.id = v.id::uuid
     `;
     
     await client.query(query, params);
