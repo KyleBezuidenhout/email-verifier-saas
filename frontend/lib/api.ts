@@ -409,6 +409,21 @@ class ApiClient {
     return this.request(url);
   }
 
+  async adminDeleteJob(jobId: string): Promise<{
+    message: string;
+    deleted_job: {
+      id: string;
+      user_id: string;
+      status: string;
+      job_type: string;
+      total_leads: number;
+    };
+  }> {
+    return this.request(`/api/v1/admin/jobs/${jobId}`, {
+      method: "DELETE",
+    });
+  }
+
   async getAdminStats(): Promise<{
     clients: { total: number; active: number };
     jobs: { total: number; by_status: Record<string, number>; today: number };

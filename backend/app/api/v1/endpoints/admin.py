@@ -310,6 +310,42 @@ async def get_job_detail(
     }
 
 
+@router.delete("/jobs/{job_id}", status_code=status.HTTP_200_OK)
+async def admin_delete_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """
+    Admin endpoint to delete any job (from any user).
+    This permanently removes the job from the database.
+    The job will no longer appear in the client's dashboard.
+    """
+    # Find the job (admin can delete any job)
+    job = db.query(Job).filter(Job.id == job_id).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Get job info for response before deletion
+    job_info = {
+        "id": str(job.id),
+        "user_id": str(job.user_id),
+        "status": job.status,
+        "job_type": job.job_type,
+        "total_leads": job.total_leads
+    }
+    
+    # Delete the job (leads remain in database with null job_id reference)
+    db.delete(job)
+    db.commit()
+    
+    return {
+        "message": f"Job {job_id} deleted successfully",
+        "deleted_job": job_info
+    }
+
+
 # ============================================
 # STATISTICS ENDPOINTS
 # ============================================

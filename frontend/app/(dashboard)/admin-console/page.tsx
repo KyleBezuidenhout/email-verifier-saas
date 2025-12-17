@@ -119,6 +119,10 @@ export default function AdminConsolePage() {
   const [creditLoading, setCreditLoading] = useState(false);
   const [creditMessage, setCreditMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Job deletion state
+  const [deleteConfirmJobId, setDeleteConfirmJobId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   // Check if user is admin
   useEffect(() => {
     if (!authLoading && user && !user.is_admin) {
@@ -241,6 +245,29 @@ export default function AdminConsolePage() {
       setCreditMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to update credits" });
     } finally {
       setCreditLoading(false);
+    }
+  };
+
+  // Handle job deletion (admin can delete any job)
+  const handleDeleteJob = async (jobId: string) => {
+    if (deleteConfirmJobId !== jobId) {
+      // First click - show confirmation
+      setDeleteConfirmJobId(jobId);
+      return;
+    }
+
+    // Second click - delete the job
+    try {
+      setDeleteLoading(true);
+      await apiClient.adminDeleteJob(jobId);
+      // Remove job from local state
+      setJobs(prevJobs => prevJobs.filter(j => j.id !== jobId));
+      setDeleteConfirmJobId(null);
+    } catch (err) {
+      console.error("Failed to delete job:", err);
+      alert(err instanceof Error ? err.message : "Failed to delete job");
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -528,13 +555,44 @@ export default function AdminConsolePage() {
                       {new Date(job.created_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/results/${job.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-apple-accent hover:underline text-sm"
-                      >
-                        View Results
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/results/${job.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-apple-accent hover:underline text-sm"
+                        >
+                          View
+                        </Link>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteJob(job.id);
+                          }}
+                          disabled={deleteLoading}
+                          className={`text-sm px-2 py-1 rounded transition-colors ${
+                            deleteConfirmJobId === job.id
+                              ? "bg-red-500 text-white hover:bg-red-600"
+                              : "text-red-400 hover:bg-red-500/20"
+                          } disabled:opacity-50`}
+                        >
+                          {deleteLoading && deleteConfirmJobId === job.id
+                            ? "..."
+                            : deleteConfirmJobId === job.id
+                            ? "Confirm"
+                            : "Delete"}
+                        </button>
+                        {deleteConfirmJobId === job.id && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirmJobId(null);
+                            }}
+                            className="text-sm text-apple-text-muted hover:text-apple-text"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   );
