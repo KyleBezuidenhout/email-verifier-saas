@@ -35,6 +35,11 @@ redisClient.connect().then(() => {
 const pgPool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL.includes('railway') ? { rejectUnauthorized: false } : false,
+  max: 50,                        // Increase from default 10 to 50
+  min: 5,                         // Keep minimum connections warm
+  idleTimeoutMillis: 30000,       // Close idle connections after 30 seconds
+  connectionTimeoutMillis: 10000, // Fail fast if can't connect in 10 seconds
+  allowExitOnIdle: false,         // Keep pool alive for long-running worker
 });
 
 // MailTester API configuration
@@ -53,6 +58,32 @@ const DAILY_LIMIT_PER_KEY = 500000;
 
 // Error threshold for marking key unhealthy
 const ERROR_THRESHOLD = 5; // errors per minute before marking unhealthy
+
+// ==============================================
+// PERFORMANCE TUNING CONSTANTS
+// ==============================================
+
+// PostgreSQL batch write settings
+const BATCH_DB_WRITE_SIZE = 100;          // Max leads per bulk UPDATE
+const BATCH_FLUSH_INTERVAL_MS = 5000;     // Flush to DB every 5 seconds max
+
+// Adaptive thresholds based on job size
+const SMALL_JOB_THRESHOLD = 500;          // Jobs with <= 500 people use frequent updates
+
+// Progress update intervals (adaptive)
+const PROGRESS_INTERVAL_SMALL_MS = 10000;  // 10 seconds for small jobs
+const PROGRESS_INTERVAL_LARGE_MS = 120000; // 2 minutes for large jobs
+
+// Usage tracking (reduces Redis writes by 100x)
+const USAGE_TRACKING_INTERVAL = 100;      // Track every 100 API calls instead of every 1
+
+// Cancellation check frequency
+const CANCEL_CHECK_INTERVAL_SMALL = 2;    // Every 2 batches for small jobs
+const CANCEL_CHECK_INTERVAL_LARGE = 10;   // Every 10 batches for large jobs
+
+// Key health cache TTL
+const KEY_HEALTH_CACHE_TTL_MS = 5000;     // Cache health status for 5 seconds
+const KEY_REMAINING_CACHE_TTL_MS = 30000; // Cache remaining capacity for 30 seconds
 
 // ============================================
 // API USAGE TRACKING (for Admin Dashboard)
@@ -75,21 +106,95 @@ function getTodayDateGMT2() {
   return gmt2Date.toISOString().split('T')[0]; // YYYY-MM-DD
 }
 
-async function trackApiUsage(apiKey = MAILTESTER_API_KEY) {
+// Counter for batched usage tracking
+let usageTrackingCounters = new Map(); // apiKey -> pending count
+
+async function trackApiUsage(apiKey = MAILTESTER_API_KEY, forceFlush = false) {
   if (!redisClient.isReady || !apiKey) return;
+  
+  // Increment local counter
+  const currentCount = (usageTrackingCounters.get(apiKey) || 0) + 1;
+  usageTrackingCounters.set(apiKey, currentCount);
+  
+  // Only write to Redis every USAGE_TRACKING_INTERVAL calls (or if forced)
+  if (!forceFlush && currentCount < USAGE_TRACKING_INTERVAL) {
+    return;
+  }
   
   try {
     const keyHash = getKeyHash(apiKey);
     const today = getTodayDateGMT2();
     const usageKey = `mailtester:usage:${keyHash}:${today}`;
     
-    await redisClient.incr(usageKey);
-    // Expire after 48 hours
-    await redisClient.expire(usageKey, 48 * 60 * 60);
+    // Increment by the accumulated count
+    const countToAdd = usageTrackingCounters.get(apiKey) || 0;
+    if (countToAdd > 0) {
+      await redisClient.incrBy(usageKey, countToAdd);
+      await redisClient.expire(usageKey, 48 * 60 * 60);
+      usageTrackingCounters.set(apiKey, 0); // Reset counter
+    }
   } catch (err) {
-    // Don't fail verification if tracking fails
     console.error('Usage tracking error:', err.message);
   }
+}
+
+/**
+ * Flush all pending usage counters to Redis
+ * Call this at end of job or periodically
+ */
+async function flushAllUsageTracking() {
+  for (const [apiKey, count] of usageTrackingCounters.entries()) {
+    if (count > 0) {
+      await trackApiUsage(apiKey, true);
+    }
+  }
+}
+
+// ==============================================
+// KEY HEALTH CACHING SYSTEM
+// ==============================================
+// Caches API key health and remaining capacity to reduce Redis lookups
+
+const keyHealthCache = new Map();
+
+/**
+ * Get cached key health status (reduces Redis calls by ~90%)
+ */
+async function getCachedKeyHealth(apiKey) {
+  const cacheKey = `health_${apiKey}`;
+  const cached = keyHealthCache.get(cacheKey);
+  
+  if (cached && Date.now() - cached.timestamp < KEY_HEALTH_CACHE_TTL_MS) {
+    return cached.value;
+  }
+  
+  const healthy = await isKeyHealthy(apiKey);
+  keyHealthCache.set(cacheKey, { value: healthy, timestamp: Date.now() });
+  return healthy;
+}
+
+/**
+ * Get cached key remaining capacity (reduces Redis calls by ~95%)
+ */
+async function getCachedKeyRemaining(apiKey) {
+  const cacheKey = `remaining_${apiKey}`;
+  const cached = keyHealthCache.get(cacheKey);
+  
+  if (cached && Date.now() - cached.timestamp < KEY_REMAINING_CACHE_TTL_MS) {
+    return cached.value;
+  }
+  
+  const remaining = await getKeyRemaining(apiKey);
+  keyHealthCache.set(cacheKey, { value: remaining, timestamp: Date.now() });
+  return remaining;
+}
+
+/**
+ * Invalidate cache for a specific key (call when key becomes unhealthy)
+ */
+function invalidateKeyCache(apiKey) {
+  keyHealthCache.delete(`health_${apiKey}`);
+  keyHealthCache.delete(`remaining_${apiKey}`);
 }
 
 // ============================================
@@ -186,6 +291,8 @@ async function markKeyUnhealthy(apiKey) {
     await redisClient.expire(unhealthyKey, 300); // Auto-recover after 5 min
     
     console.log(`⚠️ Key ...${apiKey.slice(-4)} marked unhealthy (will recover in 5 min)`);
+    // Invalidate cache so we don't use stale health status
+    invalidateKeyCache(apiKey);
   } catch (err) {
     console.error('Error marking key unhealthy:', err.message);
   }
@@ -288,6 +395,100 @@ async function logVerificationError(userId, userEmail, jobId, errorType, errorMe
 
 // Current job context for error logging
 let currentJobContext = { userId: null, userEmail: null, jobId: null };
+
+// ==============================================
+// DEFERRED DATABASE WRITE SYSTEM
+// ==============================================
+// Collects verification results in memory and writes to DB in batches
+// This reduces 175,488 individual UPDATEs to ~1,755 batch UPDATEs
+
+const pendingLeadUpdates = [];
+let lastFlushTime = Date.now();
+
+/**
+ * Queue a lead status update for batch processing
+ * Does NOT write to database immediately
+ */
+function queueLeadUpdate(leadId, status, mx = '', provider = '') {
+  pendingLeadUpdates.push({ 
+    id: leadId, 
+    status, 
+    mx: mx || '', 
+    provider: provider || '' 
+  });
+}
+
+/**
+ * Flush all pending lead updates to database in a single transaction
+ * Uses bulk UPDATE for maximum efficiency
+ */
+async function flushPendingLeadUpdates() {
+  if (pendingLeadUpdates.length === 0) return 0;
+  
+  // Extract all pending updates and clear the buffer
+  const updates = pendingLeadUpdates.splice(0, pendingLeadUpdates.length);
+  let totalFlushed = 0;
+  
+  // Process in chunks to avoid query size limits
+  for (let i = 0; i < updates.length; i += BATCH_DB_WRITE_SIZE) {
+    const chunk = updates.slice(i, i + BATCH_DB_WRITE_SIZE);
+    await executeBulkLeadUpdate(chunk);
+    totalFlushed += chunk.length;
+  }
+  
+  lastFlushTime = Date.now();
+  return totalFlushed;
+}
+
+/**
+ * Execute a bulk UPDATE for a chunk of lead updates
+ * Uses PostgreSQL's UPDATE FROM VALUES pattern for efficiency
+ */
+async function executeBulkLeadUpdate(updates) {
+  if (updates.length === 0) return;
+  
+  const client = await pgPool.connect();
+  try {
+    // Build VALUES clause: ($1, $2, $3, $4), ($5, $6, $7, $8), ...
+    const valueClauses = [];
+    const params = [];
+    
+    updates.forEach((update, index) => {
+      const offset = index * 4;
+      valueClauses.push(`($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4})`);
+      params.push(update.id, update.status, update.mx, update.provider);
+    });
+    
+    const query = `
+      UPDATE leads AS l SET
+        verification_status = v.status,
+        mx_record = v.mx,
+        mx_provider = v.provider
+      FROM (VALUES ${valueClauses.join(', ')}) AS v(id, status, mx, provider)
+      WHERE l.id = v.id
+    `;
+    
+    await client.query(query, params);
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Check if we should flush based on buffer size or time elapsed
+ */
+function shouldFlushPendingUpdates() {
+  if (pendingLeadUpdates.length >= BATCH_DB_WRITE_SIZE) return true;
+  if (Date.now() - lastFlushTime >= BATCH_FLUSH_INTERVAL_MS) return true;
+  return false;
+}
+
+/**
+ * Get count of pending updates (for logging)
+ */
+function getPendingUpdateCount() {
+  return pendingLeadUpdates.length;
+}
 
 // Admin email constant - admin has infinite credits
 const ADMIN_EMAIL = 'ben@superwave.io';
@@ -508,8 +709,8 @@ async function getNextKeyRoundRobin() {
     const idx = (globalIndex + i) % MAILTESTER_API_KEYS.length;
     const key = MAILTESTER_API_KEYS[idx];
     
-    const healthy = await isKeyHealthy(key);
-    const remaining = await getKeyRemaining(key);
+    const healthy = await getCachedKeyHealth(key);
+    const remaining = await getCachedKeyRemaining(key);
     
     if (healthy && remaining > 0) {
       return key;
@@ -1127,7 +1328,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
       apiCalls++;
       permutationsVerified++;
       
-      await updateLeadStatus(lead.id, result.status, result.message, result.mx, result.provider);
+      queueLeadUpdate(lead.id, result.status, result.mx, result.provider);
       
       if (result.status === 'valid') {
         // *** EARLY EXIT: Found valid email! ***
@@ -1154,7 +1355,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
       
     } catch (error) {
       console.error(`Error processing lead ${lead.id}:`, error.message);
-      await updateLeadStatus(lead.id, 'error', error.message);
+      queueLeadUpdate(lead.id, 'error', '', '');
       apiCalls++;
       permutationsVerified++;
     }
@@ -1277,7 +1478,14 @@ async function processJobFromQueue(jobId) {
       let catchallCount = 0;
       const finalResultIds = [];
       let lastProgressUpdate = Date.now();
-      const PROGRESS_INTERVAL_MS = 3000; // Update progress every 3 seconds
+      
+      // Determine adaptive settings based on job size
+      const isSmallJob = totalLeads <= SMALL_JOB_THRESHOLD;
+      const progressIntervalMs = isSmallJob ? PROGRESS_INTERVAL_SMALL_MS : PROGRESS_INTERVAL_LARGE_MS;
+      const cancelCheckInterval = isSmallJob ? CANCEL_CHECK_INTERVAL_SMALL : CANCEL_CHECK_INTERVAL_LARGE;
+      let batchesSinceLastCancelCheck = 0;
+      
+      console.log(`Adaptive settings: ${isSmallJob ? 'SMALL JOB' : 'LARGE JOB'} mode`);
       
       // Batch size for parallel processing (uses all API keys simultaneously!)
       // Larger batch = better pipeline efficiency (rate limiter still controls actual speed)
@@ -1289,11 +1497,19 @@ async function processJobFromQueue(jobId) {
       
       // Process leads in parallel batches
       for (let i = 0; i < leads.length; i += BATCH_SIZE) {
-        // Check if job was cancelled before processing batch
-        if (await isJobCancelled(jobId)) {
-          console.log(`Job ${jobId} was cancelled, stopping processing...`);
-          await updateJobStatus(jobId, 'cancelled');
-          return { status: 'cancelled', message: 'Job was cancelled during processing' };
+        // Check if job was cancelled (adaptive frequency based on job size)
+        batchesSinceLastCancelCheck++;
+        if (batchesSinceLastCancelCheck >= cancelCheckInterval) {
+          batchesSinceLastCancelCheck = 0;
+          if (await isJobCancelled(jobId)) {
+            console.log(`Job ${jobId} was cancelled, stopping processing...`);
+            // Flush any pending updates before exiting
+            const flushed = await flushPendingLeadUpdates();
+            console.log(`Flushed ${flushed} pending lead updates before cancellation`);
+            await flushAllUsageTracking();
+            await updateJobStatus(jobId, 'cancelled');
+            return { status: 'cancelled', message: 'Job was cancelled during processing' };
+          }
         }
         
         const batch = leads.slice(i, i + BATCH_SIZE);
@@ -1303,19 +1519,19 @@ async function processJobFromQueue(jobId) {
           try {
             // Skip leads with empty or null emails
             if (!lead.email || lead.email.trim() === '') {
-              await updateLeadStatus(lead.id, 'error', 'Empty email address');
+              queueLeadUpdate(lead.id, 'error', '', '');
               return { lead, status: 'error', skipped: true };
             }
             
             // Verify email (uses per-key rate limiting with round-robin)
             const result = await verifyEmail(lead.email);
             
-            await updateLeadStatus(lead.id, result.status, result.message, result.mx, result.provider);
+            queueLeadUpdate(lead.id, result.status, result.mx, result.provider);
             
             return { lead, ...result };
           } catch (error) {
             console.error(`Error processing lead ${lead.id}:`, error.message);
-            await updateLeadStatus(lead.id, 'error', error.message);
+            queueLeadUpdate(lead.id, 'error', '', '');
             return { lead, status: 'error', message: error.message };
           }
         });
@@ -1338,8 +1554,16 @@ async function processJobFromQueue(jobId) {
           }
         }
         
-        // Update progress after each batch (or if 3 seconds have passed)
-        if (Date.now() - lastProgressUpdate >= PROGRESS_INTERVAL_MS || i + BATCH_SIZE >= leads.length) {
+        // Flush pending updates if buffer is full or timer expired
+        if (shouldFlushPendingUpdates()) {
+          const flushed = await flushPendingLeadUpdates();
+          if (flushed > 0) {
+            console.log(`  💾 Flushed ${flushed} lead updates to database`);
+          }
+        }
+        
+        // Update progress after each batch (or if adaptive interval has passed)
+        if (Date.now() - lastProgressUpdate >= progressIntervalMs || i + BATCH_SIZE >= leads.length) {
           const progressPercent = Math.round((processedCount / totalLeads) * 100);
           await updateJobStatus(jobId, 'processing', {
             processed_leads: processedCount,
@@ -1350,6 +1574,13 @@ async function processJobFromQueue(jobId) {
           console.log(`Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Valid: ${validCount} | Catchall: ${catchallCount}`);
         }
       }
+      
+      // Final flush of pending updates
+      const finalFlushed = await flushPendingLeadUpdates();
+      if (finalFlushed > 0) {
+        console.log(`💾 Final flush: ${finalFlushed} lead updates written to database`);
+      }
+      await flushAllUsageTracking();
       
       // Mark all processed leads as final results
       await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
@@ -1429,6 +1660,15 @@ async function processJobFromQueue(jobId) {
     // Get unique people count from job (not permutations)
     const uniquePeopleCount = jobData.total_leads;
     
+    // Determine adaptive settings based on job size
+    const isSmallJob = uniquePeopleCount <= SMALL_JOB_THRESHOLD;
+    const progressIntervalMs = isSmallJob ? PROGRESS_INTERVAL_SMALL_MS : PROGRESS_INTERVAL_LARGE_MS;
+    const cancelCheckInterval = isSmallJob ? CANCEL_CHECK_INTERVAL_SMALL : CANCEL_CHECK_INTERVAL_LARGE;
+    
+    console.log(`Adaptive settings: ${isSmallJob ? 'SMALL JOB' : 'LARGE JOB'} mode`);
+    console.log(`  - Progress updates: every ${progressIntervalMs / 1000}s`);
+    console.log(`  - Cancellation checks: every ${cancelCheckInterval} batches`);
+    
     console.log(`✅ Found ${totalPermutations} email permutations to verify for ${uniquePeopleCount} unique people`);
     
     if (totalPermutations === 0) {
@@ -1467,7 +1707,11 @@ async function processJobFromQueue(jobId) {
     // Convert to array for batch processing
     const peopleArray = Array.from(leadsByPerson.entries());
     
-    console.log(`Grouped into ${peopleArray.length} unique people - processing in parallel batches of 10`);
+    // Process people in parallel batches
+    // Larger batch = better pipeline efficiency (rate limiter still controls actual speed)
+    const BATCH_SIZE = Math.max(20, MAILTESTER_API_KEYS.length * 10);
+    
+    console.log(`Grouped into ${peopleArray.length} unique people - processing in parallel batches of ${BATCH_SIZE}`);
     
     let completedPeopleCount = 0;
     let validCount = 0;
@@ -1476,18 +1720,22 @@ async function processJobFromQueue(jobId) {
     let savedApiCalls = 0;
     const finalResultIds = [];
     let lastProgressUpdate = Date.now();
-    const PROGRESS_INTERVAL_MS = 3000; // Update progress every 3 seconds
-    
-    // Process people in parallel batches
-    // Larger batch = better pipeline efficiency (rate limiter still controls actual speed)
-    const BATCH_SIZE = Math.max(20, MAILTESTER_API_KEYS.length * 10);
+    let batchesSinceLastCancelCheck = 0;
     
     for (let i = 0; i < peopleArray.length; i += BATCH_SIZE) {
-      // Check if job was cancelled before processing batch
-      if (await isJobCancelled(jobId)) {
-        console.log(`Job ${jobId} was cancelled, stopping processing...`);
-        await updateJobStatus(jobId, 'cancelled');
-        return { status: 'cancelled', message: 'Job was cancelled during processing' };
+      // Check if job was cancelled (adaptive frequency based on job size)
+      batchesSinceLastCancelCheck++;
+      if (batchesSinceLastCancelCheck >= cancelCheckInterval) {
+        batchesSinceLastCancelCheck = 0;
+        if (await isJobCancelled(jobId)) {
+          console.log(`Job ${jobId} was cancelled, stopping processing...`);
+          // Flush any pending updates before exiting
+          const flushed = await flushPendingLeadUpdates();
+          console.log(`Flushed ${flushed} pending lead updates before cancellation`);
+          await flushAllUsageTracking();
+          await updateJobStatus(jobId, 'cancelled');
+          return { status: 'cancelled', message: 'Job was cancelled during processing' };
+        }
       }
       
       const batch = peopleArray.slice(i, i + BATCH_SIZE);
@@ -1525,15 +1773,16 @@ async function processJobFromQueue(jobId) {
         completedPeopleCount++;
       }
       
-      // Check if job was cancelled after batch completes
-      if (await isJobCancelled(jobId)) {
-        console.log(`Job ${jobId} was cancelled, stopping processing...`);
-        await updateJobStatus(jobId, 'cancelled');
-        return { status: 'cancelled', message: 'Job was cancelled during processing' };
+      // Flush pending lead updates to database (batched write)
+      if (shouldFlushPendingUpdates()) {
+        const flushed = await flushPendingLeadUpdates();
+        if (flushed > 0) {
+          console.log(`  💾 Flushed ${flushed} lead updates to database`);
+        }
       }
       
-      // Update progress after each batch (or if 3 seconds have passed)
-      if (Date.now() - lastProgressUpdate >= PROGRESS_INTERVAL_MS || i + BATCH_SIZE >= peopleArray.length) {
+      // Update progress after each batch (or if adaptive interval has passed)
+      if (Date.now() - lastProgressUpdate >= progressIntervalMs || i + BATCH_SIZE >= peopleArray.length) {
         const progressPercent = Math.round((completedPeopleCount / uniquePeopleCount) * 100);
         
         await updateJobStatus(jobId, 'processing', {
@@ -1547,6 +1796,16 @@ async function processJobFromQueue(jobId) {
         console.log(`Progress: ${completedPeopleCount}/${uniquePeopleCount} people (${progressPercent}%) | API calls: ${totalApiCalls} | Saved: ${savedApiCalls} | Tokens: ${rlStatus.availableTokens}/${rlStatus.maxTokens}`);
       }
     }
+    
+    // Final flush of any remaining pending updates
+    const finalFlushed = await flushPendingLeadUpdates();
+    if (finalFlushed > 0) {
+      console.log(`💾 Final flush: ${finalFlushed} lead updates written to database`);
+    }
+    
+    // Flush all usage tracking counters
+    await flushAllUsageTracking();
+    console.log(`📊 Usage tracking flushed to Redis`);
     
     // Unmark all leads first, then mark final results
     await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
@@ -1603,6 +1862,17 @@ async function processJobFromQueue(jobId) {
     console.error(`Error message: ${error.message}`);
     if (error.stack) {
       console.error(`Error stack:`, error.stack);
+    }
+    
+    // Attempt to flush any pending updates before marking as failed
+    try {
+      const emergencyFlushed = await flushPendingLeadUpdates();
+      if (emergencyFlushed > 0) {
+        console.log(`💾 Emergency flush: saved ${emergencyFlushed} lead updates before failure`);
+      }
+      await flushAllUsageTracking();
+    } catch (flushError) {
+      console.error(`Failed to flush pending updates:`, flushError.message);
     }
     
     // Try to update job status to failed
