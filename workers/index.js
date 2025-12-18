@@ -77,13 +77,21 @@ const PROGRESS_INTERVAL_LARGE_MS = 120000; // 2 minutes for large jobs
 // Usage tracking (reduces Redis writes by 100x)
 const USAGE_TRACKING_INTERVAL = 100;      // Track every 100 API calls instead of every 1
 
-// Cancellation check frequency
-const CANCEL_CHECK_INTERVAL_SMALL = 2;    // Every 2 batches for small jobs
-const CANCEL_CHECK_INTERVAL_LARGE = 10;   // Every 10 batches for large jobs
+// Cancellation check frequency (now based on completed items, not batches)
+const CANCEL_CHECK_INTERVAL_SMALL = 20;   // Check every 20 completed people for small jobs
+const CANCEL_CHECK_INTERVAL_LARGE = 100;  // Check every 100 completed people for large jobs
 
 // Key health cache TTL
 const KEY_HEALTH_CACHE_TTL_MS = 5000;     // Cache health status for 5 seconds
 const KEY_REMAINING_CACHE_TTL_MS = 30000; // Cache remaining capacity for 30 seconds
+
+// ==============================================
+// STREAMING PIPELINE CONSTANTS
+// ==============================================
+// Maximum concurrent people/leads being processed simultaneously
+// Higher = better rate limiter utilization, but more memory usage
+const MAX_CONCURRENT_PEOPLE = 50;         // For enrichment jobs (each person = up to 16 API calls)
+const MAX_CONCURRENT_LEADS = 100;         // For verification jobs (each lead = 1 API call)
 
 // ============================================
 // API USAGE TRACKING (for Admin Dashboard)
@@ -1495,96 +1503,135 @@ async function processJobFromQueue(jobId) {
       const isSmallJob = totalLeads <= SMALL_JOB_THRESHOLD;
       const progressIntervalMs = isSmallJob ? PROGRESS_INTERVAL_SMALL_MS : PROGRESS_INTERVAL_LARGE_MS;
       const cancelCheckInterval = isSmallJob ? CANCEL_CHECK_INTERVAL_SMALL : CANCEL_CHECK_INTERVAL_LARGE;
-      let batchesSinceLastCancelCheck = 0;
       
       console.log(`Adaptive settings: ${isSmallJob ? 'SMALL JOB' : 'LARGE JOB'} mode`);
       
-      // Batch size for parallel processing (uses all API keys simultaneously!)
-      // Larger batch = better pipeline efficiency (rate limiter still controls actual speed)
-      // Safe max: 20-30 concurrent requests waiting in queue
-      const BATCH_SIZE = Math.max(20, MAILTESTER_API_KEYS.length * 10);
+      // Track job timing for throughput calculation
+      const jobStartTime = Date.now();
       
-      console.log(`Starting verification with global rate limiter: ${totalLeads} leads (batch size: ${BATCH_SIZE})`);
+      console.log(`Starting verification with STREAMING PIPELINE: ${totalLeads} leads (${MAX_CONCURRENT_LEADS} concurrent)`);
       console.log(`Using ${MAILTESTER_API_KEYS.length} API keys = ${MAILTESTER_API_KEYS.length}x speed!`);
       
-      // Process leads in parallel batches
-      for (let i = 0; i < leads.length; i += BATCH_SIZE) {
-        // Check if job was cancelled (adaptive frequency based on job size)
-        batchesSinceLastCancelCheck++;
-        if (batchesSinceLastCancelCheck >= cancelCheckInterval) {
-          batchesSinceLastCancelCheck = 0;
-          if (await isJobCancelled(jobId)) {
-            console.log(`Job ${jobId} was cancelled, stopping processing...`);
-            // Flush any pending updates before exiting
-            const flushed = await flushPendingLeadUpdates();
-            console.log(`Flushed ${flushed} pending lead updates before cancellation`);
-            await flushAllUsageTracking();
-            await updateJobStatus(jobId, 'cancelled');
-            return { status: 'cancelled', message: 'Job was cancelled during processing' };
+      // ==============================================
+      // STREAMING PIPELINE MODEL FOR VERIFICATION
+      // ==============================================
+      // Maintains MAX_CONCURRENT_LEADS in flight at all times.
+      // As soon as one completes, the next starts immediately.
+      
+      let leadIndex = 0;
+      let activeCount = 0;
+      let isCancelled = false;
+      let itemsSinceLastCancelCheck = 0;
+      
+      // Promise that resolves when all leads are processed
+      let resolveAllDone;
+      const allDonePromise = new Promise((resolve) => {
+        resolveAllDone = resolve;
+      });
+      
+      // Process a single lead and handle the result
+      async function processNextLead() {
+        // Check if we should stop
+        if (isCancelled || leadIndex >= leads.length) {
+          activeCount--;
+          if (activeCount === 0) {
+            resolveAllDone();
           }
+          return;
         }
         
-        const batch = leads.slice(i, i + BATCH_SIZE);
+        // Get the next lead to process
+        const currentIndex = leadIndex++;
+        const lead = leads[currentIndex];
         
-        // Process entire batch in parallel (this uses all API keys via round-robin!)
-        const batchPromises = batch.map(async (lead) => {
-          try {
-            // Skip leads with empty or null emails
-            if (!lead.email || lead.email.trim() === '') {
-              queueLeadUpdate(lead.id, 'error', '', '');
-              return { lead, status: 'error', skipped: true };
-            }
-            
-            // Verify email (uses per-key rate limiting with round-robin)
+        try {
+          // Skip leads with empty or null emails
+          if (!lead.email || lead.email.trim() === '') {
+            queueLeadUpdate(lead.id, 'error', '', '');
+            processedCount++;
+          } else {
+            // Verify email (uses rate limiting with round-robin)
             const result = await verifyEmail(lead.email);
             
             queueLeadUpdate(lead.id, result.status, result.mx, result.provider);
+            processedCount++;
             
-            return { lead, ...result };
-          } catch (error) {
-            console.error(`Error processing lead ${lead.id}:`, error.message);
-            queueLeadUpdate(lead.id, 'error', '', '');
-            return { lead, status: 'error', message: error.message };
+            if (result.status === 'valid') {
+              validCount++;
+              finalResultIds.push(lead.id);
+            } else if (result.status === 'catchall') {
+              catchallCount++;
+              finalResultIds.push(lead.id);
+            } else if (result.status === 'invalid') {
+              finalResultIds.push(lead.id);
+            }
           }
-        });
-        
-        // Wait for all leads in batch to complete
-        const batchResults = await Promise.all(batchPromises);
-        
-        // Aggregate results from batch
-        for (const result of batchResults) {
-          processedCount++;
           
-          if (result.status === 'valid') {
-            validCount++;
-            finalResultIds.push(result.lead.id);
-          } else if (result.status === 'catchall') {
-            catchallCount++;
-            finalResultIds.push(result.lead.id);
-          } else if (result.status === 'invalid') {
-            finalResultIds.push(result.lead.id);
+          // Check for cancellation periodically
+          itemsSinceLastCancelCheck++;
+          if (itemsSinceLastCancelCheck >= cancelCheckInterval) {
+            itemsSinceLastCancelCheck = 0;
+            if (await isJobCancelled(jobId)) {
+              console.log(`Job ${jobId} was cancelled, stopping pipeline...`);
+              isCancelled = true;
+            }
           }
+          
+          // Flush pending updates if buffer is full or timer expired
+          if (shouldFlushPendingUpdates()) {
+            const flushed = await flushPendingLeadUpdates();
+            if (flushed > 0) {
+              console.log(`  💾 Flushed ${flushed} lead updates to database`);
+            }
+          }
+          
+          // Update progress periodically
+          if (Date.now() - lastProgressUpdate >= progressIntervalMs) {
+            const progressPercent = Math.round((processedCount / totalLeads) * 100);
+            await updateJobStatus(jobId, 'processing', {
+              processed_leads: processedCount,
+              valid_emails_found: validCount,
+              catchall_emails_found: catchallCount,
+            });
+            lastProgressUpdate = Date.now();
+            console.log(`🚀 Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Active: ${activeCount} | Valid: ${validCount} | Catchall: ${catchallCount}`);
+          }
+          
+        } catch (error) {
+          console.error(`Error processing lead ${lead.id}:`, error.message);
+          queueLeadUpdate(lead.id, 'error', '', '');
+          processedCount++;
         }
         
-        // Flush pending updates if buffer is full or timer expired
-        if (shouldFlushPendingUpdates()) {
-          const flushed = await flushPendingLeadUpdates();
-          if (flushed > 0) {
-            console.log(`  💾 Flushed ${flushed} lead updates to database`);
+        // IMMEDIATELY start processing the next lead (streaming!)
+        if (!isCancelled && leadIndex < leads.length) {
+          processNextLead(); // Fire without await
+        } else {
+          activeCount--;
+          if (activeCount === 0) {
+            resolveAllDone();
           }
         }
-        
-        // Update progress after each batch (or if adaptive interval has passed)
-        if (Date.now() - lastProgressUpdate >= progressIntervalMs || i + BATCH_SIZE >= leads.length) {
-          const progressPercent = Math.round((processedCount / totalLeads) * 100);
-          await updateJobStatus(jobId, 'processing', {
-            processed_leads: processedCount,
-            valid_emails_found: validCount,
-            catchall_emails_found: catchallCount,
-          });
-          lastProgressUpdate = Date.now();
-          console.log(`Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Valid: ${validCount} | Catchall: ${catchallCount}`);
-        }
+      }
+      
+      // Start the initial batch of concurrent workers
+      console.log(`\n🚀 Starting streaming pipeline with ${MAX_CONCURRENT_LEADS} concurrent leads...`);
+      const initialBatchSize = Math.min(MAX_CONCURRENT_LEADS, leads.length);
+      for (let i = 0; i < initialBatchSize; i++) {
+        activeCount++;
+        processNextLead(); // Fire without await to start all concurrently
+      }
+      
+      // Wait for all leads to be processed
+      await allDonePromise;
+      
+      // Handle cancellation
+      if (isCancelled) {
+        const flushed = await flushPendingLeadUpdates();
+        console.log(`Flushed ${flushed} pending lead updates before cancellation`);
+        await flushAllUsageTracking();
+        await updateJobStatus(jobId, 'cancelled');
+        return { status: 'cancelled', message: 'Job was cancelled during processing' };
       }
       
       // Final flush of pending updates
@@ -1634,10 +1681,23 @@ async function processJobFromQueue(jobId) {
         }
       }
       
+      // Calculate throughput statistics
+      const jobDurationMs = Date.now() - jobStartTime;
+      const jobDurationMin = jobDurationMs / 60000;
+      const leadsPerMinute = jobDurationMin > 0 ? Math.round(processedCount / jobDurationMin) : 0;
+      const leadsPerSecond = jobDurationMs > 0 ? Math.round((processedCount / jobDurationMs) * 1000 * 10) / 10 : 0;
+      
       console.log(`\n========================================`);
-      console.log(`Verification job ${jobId} completed successfully!`);
-      console.log(`Final results: ${validCount} valid, ${catchallCount} catchall, ${processedCount} total processed`);
-      console.log(`Credits charged: ${costInCredits} (1 per lead)`);
+      console.log(`✅ Verification job ${jobId} completed successfully!`);
+      console.log(`----------------------------------------`);
+      console.log(`📊 RESULTS:`);
+      console.log(`   Valid: ${validCount} | Catchall: ${catchallCount} | Total: ${processedCount}`);
+      console.log(`----------------------------------------`);
+      console.log(`⚡ PERFORMANCE (Streaming Pipeline):`);
+      console.log(`   Duration: ${Math.round(jobDurationMin * 10) / 10} minutes`);
+      console.log(`   Throughput: ${leadsPerMinute} leads/minute (${leadsPerSecond}/sec)`);
+      console.log(`----------------------------------------`);
+      console.log(`💰 Credits charged: ${costInCredits} (1 per lead)`);
       console.log(`========================================\n`);
       
       return {
@@ -1679,7 +1739,10 @@ async function processJobFromQueue(jobId) {
     
     console.log(`Adaptive settings: ${isSmallJob ? 'SMALL JOB' : 'LARGE JOB'} mode`);
     console.log(`  - Progress updates: every ${progressIntervalMs / 1000}s`);
-    console.log(`  - Cancellation checks: every ${cancelCheckInterval} batches`);
+    console.log(`  - Cancellation checks: every ${cancelCheckInterval} completed people`);
+    
+    // Track job timing for throughput calculation
+    const jobStartTime = Date.now();
     
     console.log(`✅ Found ${totalPermutations} email permutations to verify for ${uniquePeopleCount} unique people`);
     
@@ -1716,14 +1779,17 @@ async function processJobFromQueue(jobId) {
       personLeads.sort((a, b) => (b.prevalence_score || 0) - (a.prevalence_score || 0));
     }
     
-    // Convert to array for batch processing
+    // Convert to array for streaming processing
     const peopleArray = Array.from(leadsByPerson.entries());
     
-    // Process people in parallel batches
-    // Larger batch = better pipeline efficiency (rate limiter still controls actual speed)
-    const BATCH_SIZE = Math.max(20, MAILTESTER_API_KEYS.length * 10);
+    console.log(`Grouped into ${peopleArray.length} unique people - using STREAMING PIPELINE (${MAX_CONCURRENT_PEOPLE} concurrent)`);
     
-    console.log(`Grouped into ${peopleArray.length} unique people - processing in parallel batches of ${BATCH_SIZE}`);
+    // ==============================================
+    // STREAMING PIPELINE MODEL
+    // ==============================================
+    // Instead of fixed batches with Promise.all(), we maintain a constant
+    // number of people being processed. As soon as one finishes, the next starts.
+    // This keeps the rate limiter at ~100% utilization!
     
     let completedPeopleCount = 0;
     let validCount = 0;
@@ -1732,41 +1798,40 @@ async function processJobFromQueue(jobId) {
     let savedApiCalls = 0;
     const finalResultIds = [];
     let lastProgressUpdate = Date.now();
-    let batchesSinceLastCancelCheck = 0;
+    let itemsSinceLastCancelCheck = 0;
+    let personIndex = 0;
+    let activeCount = 0;
+    let isCancelled = false;
+    let pipelineError = null;
     
-    for (let i = 0; i < peopleArray.length; i += BATCH_SIZE) {
-      // Check if job was cancelled (adaptive frequency based on job size)
-      batchesSinceLastCancelCheck++;
-      if (batchesSinceLastCancelCheck >= cancelCheckInterval) {
-        batchesSinceLastCancelCheck = 0;
-        if (await isJobCancelled(jobId)) {
-          console.log(`Job ${jobId} was cancelled, stopping processing...`);
-          // Flush any pending updates before exiting
-          const flushed = await flushPendingLeadUpdates();
-          console.log(`Flushed ${flushed} pending lead updates before cancellation`);
-          await flushAllUsageTracking();
-          await updateJobStatus(jobId, 'cancelled');
-          return { status: 'cancelled', message: 'Job was cancelled during processing' };
+    // Promise that resolves when all people are processed
+    let resolveAllDone;
+    let rejectAllDone;
+    const allDonePromise = new Promise((resolve, reject) => {
+      resolveAllDone = resolve;
+      rejectAllDone = reject;
+    });
+    
+    // Process a single person and handle the result
+    async function processNextPerson() {
+      // Check if we should stop
+      if (isCancelled || pipelineError || personIndex >= peopleArray.length) {
+        activeCount--;
+        if (activeCount === 0) {
+          resolveAllDone();
         }
+        return;
       }
       
-      const batch = peopleArray.slice(i, i + BATCH_SIZE);
-      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(peopleArray.length / BATCH_SIZE);
+      // Get the next person to process
+      const currentIndex = personIndex++;
+      const [personKey, personLeads] = peopleArray[currentIndex];
       
-      console.log(`\n--- Batch ${batchNumber}/${totalBatches}: Processing ${batch.length} people in parallel ---`);
-      
-      // Process all people in this batch simultaneously
-      // Each person still does early-exit internally, but multiple people run in parallel
-      const batchPromises = batch.map(([personKey, personLeads]) => 
-        processPersonWithEarlyExit(personKey, personLeads)
-      );
-      
-      // Wait for all people in batch to complete
-      const batchResults = await Promise.all(batchPromises);
-      
-      // Aggregate results from batch
-      for (const result of batchResults) {
+      try {
+        // Process this person (with early exit optimization)
+        const result = await processPersonWithEarlyExit(personKey, personLeads);
+        
+        // Handle the result
         if (result.finalLeadId) {
           finalResultIds.push(result.finalLeadId);
           
@@ -1783,30 +1848,77 @@ async function processJobFromQueue(jobId) {
         totalApiCalls += result.apiCalls;
         savedApiCalls += result.savedCalls;
         completedPeopleCount++;
+        
+        // Check for cancellation periodically
+        itemsSinceLastCancelCheck++;
+        if (itemsSinceLastCancelCheck >= cancelCheckInterval) {
+          itemsSinceLastCancelCheck = 0;
+          if (await isJobCancelled(jobId)) {
+            console.log(`Job ${jobId} was cancelled, stopping pipeline...`);
+            isCancelled = true;
+          }
+        }
+        
+        // Flush pending lead updates if needed
+        if (shouldFlushPendingUpdates()) {
+          const flushed = await flushPendingLeadUpdates();
+          if (flushed > 0) {
+            console.log(`  💾 Flushed ${flushed} lead updates to database`);
+          }
+        }
+        
+        // Update progress periodically
+        if (Date.now() - lastProgressUpdate >= progressIntervalMs) {
+          const progressPercent = Math.round((completedPeopleCount / uniquePeopleCount) * 100);
+          
+          await updateJobStatus(jobId, 'processing', {
+            processed_leads: completedPeopleCount,
+            valid_emails_found: validCount,
+            catchall_emails_found: catchallCount,
+          });
+          
+          const rlStatus = await rateLimiter.getStatus();
+          console.log(`🚀 Progress: ${completedPeopleCount}/${uniquePeopleCount} (${progressPercent}%) | Active: ${activeCount} | API: ${totalApiCalls} | Saved: ${savedApiCalls} | Tokens: ${rlStatus.availableTokens}/${rlStatus.maxTokens}`);
+          
+          lastProgressUpdate = Date.now();
+        }
+        
+      } catch (error) {
+        console.error(`Error processing person ${personKey}:`, error.message);
+        // Continue processing other people even if one fails
+        completedPeopleCount++;
       }
       
-      // Flush pending lead updates to database (batched write)
-      if (shouldFlushPendingUpdates()) {
-        const flushed = await flushPendingLeadUpdates();
-        if (flushed > 0) {
-          console.log(`  💾 Flushed ${flushed} lead updates to database`);
+      // IMMEDIATELY start processing the next person (this is the key to streaming!)
+      if (!isCancelled && !pipelineError && personIndex < peopleArray.length) {
+        // Don't await - fire and forget to keep pipeline full
+        processNextPerson();
+      } else {
+        activeCount--;
+        if (activeCount === 0) {
+          resolveAllDone();
         }
       }
-      
-      // Update progress after each batch (or if adaptive interval has passed)
-      if (Date.now() - lastProgressUpdate >= progressIntervalMs || i + BATCH_SIZE >= peopleArray.length) {
-        const progressPercent = Math.round((completedPeopleCount / uniquePeopleCount) * 100);
-        
-        await updateJobStatus(jobId, 'processing', {
-          processed_leads: completedPeopleCount,
-          valid_emails_found: validCount,
-          catchall_emails_found: catchallCount,
-        });
-        lastProgressUpdate = Date.now();
-        
-        const rlStatus = await rateLimiter.getStatus();
-        console.log(`Progress: ${completedPeopleCount}/${uniquePeopleCount} people (${progressPercent}%) | API calls: ${totalApiCalls} | Saved: ${savedApiCalls} | Tokens: ${rlStatus.availableTokens}/${rlStatus.maxTokens}`);
-      }
+    }
+    
+    // Start the initial batch of concurrent workers
+    console.log(`\n🚀 Starting streaming pipeline with ${MAX_CONCURRENT_PEOPLE} concurrent people...`);
+    const initialBatchSize = Math.min(MAX_CONCURRENT_PEOPLE, peopleArray.length);
+    for (let i = 0; i < initialBatchSize; i++) {
+      activeCount++;
+      processNextPerson(); // Fire without await to start all concurrently
+    }
+    
+    // Wait for all people to be processed
+    await allDonePromise;
+    
+    // Handle cancellation
+    if (isCancelled) {
+      const flushed = await flushPendingLeadUpdates();
+      console.log(`Flushed ${flushed} pending lead updates before cancellation`);
+      await flushAllUsageTracking();
+      await updateJobStatus(jobId, 'cancelled');
+      return { status: 'cancelled', message: 'Job was cancelled during processing' };
     }
     
     // Final flush of any remaining pending updates
@@ -1859,14 +1971,25 @@ async function processJobFromQueue(jobId) {
       }
     }
     
+    // Calculate throughput statistics
+    const jobDurationMs = Date.now() - jobStartTime;
+    const jobDurationMin = jobDurationMs / 60000;
+    const peoplePerMinute = jobDurationMin > 0 ? Math.round(uniquePeopleCount / jobDurationMin) : 0;
+    const apiCallsPerSecond = jobDurationMs > 0 ? Math.round((totalApiCalls / jobDurationMs) * 1000 * 10) / 10 : 0;
+    
     console.log(`\n========================================`);
-    console.log(`Job ${jobId} completed successfully!`);
-    console.log(`Final results: ${validCount} valid, ${catchallCount} catchall`);
-    console.log(`Credits charged: ${costInCredits} (1 per lead)`);
-    console.log(`Total API calls: ${totalApiCalls} (saved ${savedApiCalls} calls with early exit)`);
-    if (totalApiCalls + savedApiCalls > 0) {
-      console.log(`Efficiency: ${Math.round((savedApiCalls / (totalApiCalls + savedApiCalls)) * 100)}% reduction in API calls`);
-    }
+    console.log(`✅ Job ${jobId} completed successfully!`);
+    console.log(`----------------------------------------`);
+    console.log(`📊 RESULTS:`);
+    console.log(`   Valid: ${validCount} | Catchall: ${catchallCount} | Total: ${uniquePeopleCount}`);
+    console.log(`----------------------------------------`);
+    console.log(`⚡ PERFORMANCE (Streaming Pipeline):`);
+    console.log(`   Duration: ${Math.round(jobDurationMin * 10) / 10} minutes`);
+    console.log(`   Throughput: ${peoplePerMinute} people/minute`);
+    console.log(`   API calls: ${totalApiCalls} total (${apiCallsPerSecond}/sec)`);
+    console.log(`   Early exit savings: ${savedApiCalls} calls saved (${totalApiCalls + savedApiCalls > 0 ? Math.round((savedApiCalls / (totalApiCalls + savedApiCalls)) * 100) : 0}%)`);
+    console.log(`----------------------------------------`);
+    console.log(`💰 Credits charged: ${costInCredits} (1 per lead)`);
     console.log(`========================================\n`);
     
   } catch (error) {
