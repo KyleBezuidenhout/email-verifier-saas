@@ -467,7 +467,7 @@ async function executeBulkLeadUpdate(updates) {
     
     updates.forEach((update, index) => {
       const offset = index * 4;
-      valueClauses.push(`($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4})`);
+      valueClauses.push(`($${offset + 1}::bigint, $${offset + 2}, $${offset + 3}, $${offset + 4})`);
       params.push(update.id, update.status, update.mx, update.provider);
     });
     
@@ -477,7 +477,7 @@ async function executeBulkLeadUpdate(updates) {
         mx_record = v.mx,
         mx_provider = v.provider
       FROM (VALUES ${valueClauses.join(', ')}) AS v(id, status, mx, provider)
-      WHERE l.id = v.id::uuid
+      WHERE l.id = v.id
     `;
     
     await client.query(query, params);
