@@ -19,16 +19,20 @@ const redisClient = redis.createClient({
 });
 redisClient.on('error', (err) => console.error('Redis Client Error', err));
 redisClient.connect().then(() => {
-  // Initialize GLOBAL rate limiter (combines all keys for maximum throughput)
+  // Initialize rate limiter with per-key 250ms spacing
   globalRateLimiter = new GlobalRateLimiter(redisClient, 165, 30000, MAILTESTER_API_KEYS.length);
   rateLimiter = globalRateLimiter; // Backwards compatibility alias
   
   const totalRate = MAILTESTER_API_KEYS.length * 165;
-  const spacing = globalRateLimiter.minSpacingMs;
-  console.log(`✅ Global rate limiter initialized:`);
+  const perKeySpacing = globalRateLimiter.perKeySpacingMs;
+  const perKeyRate = Math.round(1000 / perKeySpacing);
+  const totalRatePerSec = perKeyRate * MAILTESTER_API_KEYS.length;
+  
+  console.log(`✅ Rate limiter initialized with per-key spacing:`);
   console.log(`   - ${MAILTESTER_API_KEYS.length} API keys × 165/30s = ${totalRate} requests/30s total`);
-  console.log(`   - Global spacing: ${spacing}ms (${MAILTESTER_API_KEYS.length}x faster than per-key!)`);
-  console.log(`   - Effective rate: ~${Math.round(1000/spacing)} requests/second`);
+  console.log(`   - Per-key spacing: ${perKeySpacing}ms (${perKeyRate} req/sec per key)`);
+  console.log(`   - Total effective rate: ~${totalRatePerSec} requests/second`);
+  console.log(`   - Max concurrent workers: 20 (prevents burst)`);
 }).catch(console.error);
 
 // PostgreSQL connection pool
@@ -89,10 +93,10 @@ const KEY_REMAINING_CACHE_TTL_MS = 30000; // Cache remaining capacity for 30 sec
 // STREAMING PIPELINE CONSTANTS
 // ==============================================
 // Maximum concurrent people/leads being processed simultaneously
-// Set to match rate limiter capacity (~11 req/sec with 2 keys)
-// Too high = burst of 429 errors; too low = underutilized rate limiter
-const MAX_CONCURRENT_PEOPLE = 25;         // For enrichment jobs (each person = up to 16 API calls)
-const MAX_CONCURRENT_LEADS = 30;          // For verification jobs (each lead = 1 API call)
+// Limited to 20 to prevent burst of 429 errors
+// Each key has 250ms spacing between calls (4 req/sec per key = 8 req/sec total with 2 keys)
+const MAX_CONCURRENT_PEOPLE = 20;         // For enrichment jobs (each person = up to 16 API calls)
+const MAX_CONCURRENT_LEADS = 20;          // For verification jobs (each lead = 1 API call)
 
 // ============================================
 // API USAGE TRACKING (for Admin Dashboard)
@@ -556,10 +560,10 @@ class GlobalRateLimiter {
     // Total capacity across all keys combined
     this.totalRequestsPerWindow = requestsPerKeyPerWindow * numKeys; // 165 * 2 = 330
     
-    // Global min spacing based on TOTAL capacity
-    // With 2 keys: 30000ms / 330 requests ≈ 91ms (vs 192ms per-key)
-    // This allows true 2x throughput!
-    this.minSpacingMs = Math.ceil(windowMs / this.totalRequestsPerWindow) + 5;
+    // Per-key spacing: 250ms between each API call for the same key
+    // This ensures smooth distribution: 1000ms / 250ms = 4 req/sec per key
+    // With 2 keys: 8 req/sec total
+    this.perKeySpacingMs = 250;
     
     this.keyPrefix = 'mailtester:global_rate';
   }
@@ -569,9 +573,10 @@ class GlobalRateLimiter {
     return `${this.keyPrefix}:window:${windowStart}`;
   }
 
-  // Get Redis key for tracking last request time globally
-  _getLastRequestKey() {
-    return `${this.keyPrefix}:last_request`;
+  // Get Redis key for tracking last request time per key
+  _getKeyLastRequestKey(apiKey) {
+    const keyHash = getKeyHash(apiKey);
+    return `${this.keyPrefix}:last_request:${keyHash}`;
   }
 
   // Get Redis key for a specific API key's window (for per-key safety limits)
@@ -580,7 +585,7 @@ class GlobalRateLimiter {
     return `${this.keyPrefix}:key:${keyHash}:${windowStart}`;
   }
 
-  // Acquire a global rate limit slot
+  // Acquire a global rate limit slot (no spacing enforcement - spacing is per-key)
   async acquire() {
     const now = Date.now();
     const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
@@ -620,29 +625,16 @@ class GlobalRateLimiter {
       }
     }
     
-    // Enforce global minimum spacing (~91ms with 2 keys)
-    // This is much faster than per-key 192ms spacing!
-    const lastRequestKey = this._getLastRequestKey();
-    const lastRequestTimeStr = await this.redis.get(lastRequestKey);
-    
-    if (lastRequestTimeStr) {
-      const lastRequestTime = parseInt(lastRequestTimeStr);
-      if (!isNaN(lastRequestTime)) {
-        const timeSinceLastRequest = Date.now() - lastRequestTime;
-        if (timeSinceLastRequest < this.minSpacingMs) {
-          await new Promise(resolve => setTimeout(resolve, this.minSpacingMs - timeSinceLastRequest));
-        }
-      }
-    }
-    
-    await this.redis.set(lastRequestKey, Date.now().toString(), 'EX', Math.ceil(this.windowMs / 1000));
+    // No global spacing - spacing is enforced per-key in acquireForKey()
   }
 
-  // Also track per-key usage (for safety - ensures no single key exceeds its limit)
+  // Acquire rate limit slot for a specific key with 250ms spacing enforcement
+  // Returns true if acquired, false if key is at limit
   async acquireForKey(apiKey) {
     const now = Date.now();
     const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
     const keyWindowKey = this._getKeyWindowKey(apiKey, windowStart);
+    const keyLastRequestKey = this._getKeyLastRequestKey(apiKey);
     
     // Check this specific key's count
     const currentCountStr = await this.redis.get(keyWindowKey);
@@ -651,6 +643,19 @@ class GlobalRateLimiter {
     // If this key is at its individual limit, return false (caller should try another key)
     if (currentCount >= this.requestsPerKeyPerWindow) {
       return false;
+    }
+    
+    // Enforce 250ms spacing between requests for this key
+    const lastRequestTimeStr = await this.redis.get(keyLastRequestKey);
+    if (lastRequestTimeStr) {
+      const lastRequestTime = parseInt(lastRequestTimeStr);
+      if (!isNaN(lastRequestTime)) {
+        const timeSinceLastRequest = Date.now() - lastRequestTime;
+        if (timeSinceLastRequest < this.perKeySpacingMs) {
+          const waitTime = this.perKeySpacingMs - timeSinceLastRequest;
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
     }
     
     // Increment key-specific counter
@@ -664,6 +669,9 @@ class GlobalRateLimiter {
       await this.redis.decr(keyWindowKey);
       return false;
     }
+    
+    // Update last request time for this key
+    await this.redis.set(keyLastRequestKey, Date.now().toString(), 'EX', Math.ceil(this.windowMs / 1000));
     
     return true;
   }
@@ -681,7 +689,7 @@ class GlobalRateLimiter {
       maxTokens: this.totalRequestsPerWindow,
       currentCount: count,
       numKeys: this.numKeys,
-      minSpacingMs: this.minSpacingMs,
+      perKeySpacingMs: this.perKeySpacingMs,
     };
   }
 }
@@ -762,26 +770,34 @@ async function rateLimitForKey(apiKey) {
 }
 
 // Verify email using MailTester API with multi-key support and failover
-// Uses GLOBAL rate limiting for maximum throughput (2x speed with 2 keys!)
+// Uses per-key rate limiting with 250ms spacing between calls per key
 async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts = 0) {
   const MAX_RETRIES = 3;
   const MAX_KEY_ATTEMPTS = MAILTESTER_API_KEYS.length;
   
-  // GLOBAL rate limit first - this is the fast path (~91ms with 2 keys vs 192ms per-key)
-  // This coordinates across ALL workers and jobs via Redis
-  await rateLimit();
+  // Try to acquire a rate limit slot for a key (with 250ms spacing per key)
+  let apiKey = forceKey || await getNextKeyRoundRobin();
+  let acquired = false;
+  let attempts = 0;
   
-  // Get next key via round-robin (or use forced key for retries)
-  // Round-robin distributes load across all keys evenly
-  const apiKey = forceKey || await getNextKeyRoundRobin();
-  
-  if (!apiKey) {
-    console.error('No API keys available!');
-    return { status: 'error', message: 'No API keys configured' };
+  // Try keys until we find one that can accept the request
+  while (!acquired && attempts < MAX_KEY_ATTEMPTS && apiKey) {
+    // Acquire rate limit slot for this key (enforces 250ms spacing)
+    acquired = await globalRateLimiter.acquireForKey(apiKey);
+    
+    if (!acquired) {
+      // This key is at limit, try next key
+      attempts++;
+      if (attempts < MAX_KEY_ATTEMPTS) {
+        apiKey = await getNextKeyRoundRobin();
+      }
+    }
   }
   
-  // Track per-key usage for safety (no additional delay)
-  await globalRateLimiter.acquireForKey(apiKey);
+  if (!apiKey || !acquired) {
+    console.error('No API keys available or all keys at rate limit!');
+    return { status: 'error', message: 'All API keys at rate limit' };
+  }
   
   try {
     const response = await axios.get(MAILTESTER_BASE_URL, {
