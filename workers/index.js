@@ -629,51 +629,77 @@ class GlobalRateLimiter {
   }
 
   // Acquire rate limit slot for a specific key with 250ms spacing enforcement
-  // Returns true if acquired, false if key is at limit
+  // Waits for available slots instead of returning false (ensures no leads are skipped)
   async acquireForKey(apiKey) {
-    const now = Date.now();
-    const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
-    const keyWindowKey = this._getKeyWindowKey(apiKey, windowStart);
-    const keyLastRequestKey = this._getKeyLastRequestKey(apiKey);
+    const MAX_RETRIES = 200; // Max retries to prevent infinite loops (~50 seconds max wait)
+    let retries = 0;
     
-    // Check this specific key's count
-    const currentCountStr = await this.redis.get(keyWindowKey);
-    const currentCount = currentCountStr ? parseInt(currentCountStr) : 0;
-    
-    // If this key is at its individual limit, return false (caller should try another key)
-    if (currentCount >= this.requestsPerKeyPerWindow) {
-      return false;
-    }
-    
-    // Enforce 250ms spacing between requests for this key
-    const lastRequestTimeStr = await this.redis.get(keyLastRequestKey);
-    if (lastRequestTimeStr) {
-      const lastRequestTime = parseInt(lastRequestTimeStr);
-      if (!isNaN(lastRequestTime)) {
-        const timeSinceLastRequest = Date.now() - lastRequestTime;
-        if (timeSinceLastRequest < this.perKeySpacingMs) {
-          const waitTime = this.perKeySpacingMs - timeSinceLastRequest;
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+    while (retries < MAX_RETRIES) {
+      const now = Date.now();
+      const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
+      const keyWindowKey = this._getKeyWindowKey(apiKey, windowStart);
+      const keyLastRequestKey = this._getKeyLastRequestKey(apiKey);
+      
+      // STEP 1: Enforce 250ms spacing first (primary constraint)
+      // This is the real rate limit - 250ms spacing = 4 req/sec per key
+      const lastRequestTimeStr = await this.redis.get(keyLastRequestKey);
+      if (lastRequestTimeStr) {
+        const lastRequestTime = parseInt(lastRequestTimeStr);
+        if (!isNaN(lastRequestTime)) {
+          const timeSinceLastRequest = Date.now() - lastRequestTime;
+          if (timeSinceLastRequest < this.perKeySpacingMs) {
+            const waitTime = this.perKeySpacingMs - timeSinceLastRequest;
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            // After waiting, re-check the window (it may have rolled over)
+            continue;
+          }
         }
       }
+      
+      // STEP 2: Check if we're at the 165/30s limit (safety check)
+      const currentCountStr = await this.redis.get(keyWindowKey);
+      const currentCount = currentCountStr ? parseInt(currentCountStr) : 0;
+      
+      if (currentCount >= this.requestsPerKeyPerWindow) {
+        // At limit - wait for window to roll over
+        const nextWindow = windowStart + this.windowMs;
+        const waitTime = nextWindow - Date.now() + 50; // Add 50ms buffer
+        
+        if (waitTime > 0 && waitTime < this.windowMs) {
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          retries++;
+          continue; // Retry with new window
+        }
+      }
+      
+      // STEP 3: Increment counter atomically
+      const count = await this.redis.incr(keyWindowKey);
+      if (count === 1) {
+        await this.redis.expire(keyWindowKey, Math.ceil(this.windowMs / 1000) + 1);
+      }
+      
+      // STEP 4: If we exceeded after increment, decrement and wait for next window
+      if (count > this.requestsPerKeyPerWindow) {
+        await this.redis.decr(keyWindowKey);
+        const nextWindow = windowStart + this.windowMs;
+        const waitTime = nextWindow - Date.now() + 50;
+        
+        if (waitTime > 0 && waitTime < this.windowMs) {
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          retries++;
+          continue;
+        }
+      }
+      
+      // STEP 5: Success! Update last request time and return
+      await this.redis.set(keyLastRequestKey, Date.now().toString(), 'EX', Math.ceil(this.windowMs / 1000));
+      return true;
     }
     
-    // Increment key-specific counter
-    const count = await this.redis.incr(keyWindowKey);
-    if (count === 1) {
-      await this.redis.expire(keyWindowKey, Math.ceil(this.windowMs / 1000) + 1);
-    }
-    
-    // If we exceeded, decrement and return false
-    if (count > this.requestsPerKeyPerWindow) {
-      await this.redis.decr(keyWindowKey);
-      return false;
-    }
-    
-    // Update last request time for this key
-    await this.redis.set(keyLastRequestKey, Date.now().toString(), 'EX', Math.ceil(this.windowMs / 1000));
-    
-    return true;
+    // If we've exhausted retries, something is wrong - but don't skip the lead
+    // Return false only as last resort (shouldn't happen with proper spacing)
+    console.error(`acquireForKey exhausted ${MAX_RETRIES} retries for key ...${apiKey.slice(-4)}`);
+    return false;
   }
 
   // Get global status
@@ -775,28 +801,44 @@ async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts =
   const MAX_RETRIES = 3;
   const MAX_KEY_ATTEMPTS = MAILTESTER_API_KEYS.length;
   
-  // Try to acquire a rate limit slot for a key (with 250ms spacing per key)
+  // Acquire a rate limit slot - acquireForKey now waits internally, so we just need to retry if it fails
+  // (which should be rare, but we handle it gracefully)
   let apiKey = forceKey || await getNextKeyRoundRobin();
   let acquired = false;
-  let attempts = 0;
+  const MAX_ACQUIRE_ATTEMPTS = 10; // Safety limit (shouldn't be needed since acquireForKey waits)
+  let acquireAttempts = 0;
   
-  // Try keys until we find one that can accept the request
-  while (!acquired && attempts < MAX_KEY_ATTEMPTS && apiKey) {
-    // Acquire rate limit slot for this key (enforces 250ms spacing)
+  // Try to acquire a slot - acquireForKey will wait internally for available slots
+  while (!acquired && acquireAttempts < MAX_ACQUIRE_ATTEMPTS) {
+    if (!apiKey) {
+      apiKey = await getNextKeyRoundRobin();
+    }
+    
+    if (!apiKey) {
+      console.error('No API keys configured!');
+      return { status: 'error', message: 'No API keys configured' };
+    }
+    
+    // Acquire rate limit slot for this key (enforces 250ms spacing and waits if needed)
     acquired = await globalRateLimiter.acquireForKey(apiKey);
     
     if (!acquired) {
-      // This key is at limit, try next key
-      attempts++;
-      if (attempts < MAX_KEY_ATTEMPTS) {
+      // This should be rare now (acquireForKey waits internally)
+      // But if it happens, try next key with a small delay
+      acquireAttempts++;
+      if (acquireAttempts < MAX_ACQUIRE_ATTEMPTS) {
+        // Wait a bit before trying next key (slots free up every 250ms)
+        await new Promise(resolve => setTimeout(resolve, 100));
         apiKey = await getNextKeyRoundRobin();
       }
     }
   }
   
+  // If we still don't have a slot after retries, something is seriously wrong
+  // But we should never get here with the new acquireForKey implementation
   if (!apiKey || !acquired) {
-    console.error('No API keys available or all keys at rate limit!');
-    return { status: 'error', message: 'All API keys at rate limit' };
+    console.error(`Failed to acquire rate limit slot after ${acquireAttempts} attempts for ${email}`);
+    return { status: 'error', message: 'Failed to acquire rate limit slot' };
   }
   
   try {
@@ -1425,7 +1467,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
   };
 }
 
-// Helper function to check if job is cancelled
+// Helper function to check if job is cancelled or deleted
 // Check if job is cancelled OR deleted (both should stop processing)
 async function isJobCancelled(jobId) {
   const result = await pgPool.query(
@@ -1435,7 +1477,12 @@ async function isJobCancelled(jobId) {
   // Return true if:
   // 1. Job doesn't exist (was deleted) - rows.length === 0
   // 2. Job exists but status is 'cancelled'
-  return result.rows.length === 0 || result.rows[0].status === 'cancelled';
+  // 3. Job exists but status is 'deleted' (explicit deleted status)
+  if (result.rows.length === 0) {
+    return true; // Job was deleted from database
+  }
+  const status = result.rows[0].status;
+  return status === 'cancelled' || status === 'deleted';
 }
 
 // Process job from simple queue with EARLY EXIT + PARALLEL PEOPLE optimization
