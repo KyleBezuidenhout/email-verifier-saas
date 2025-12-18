@@ -89,9 +89,10 @@ const KEY_REMAINING_CACHE_TTL_MS = 30000; // Cache remaining capacity for 30 sec
 // STREAMING PIPELINE CONSTANTS
 // ==============================================
 // Maximum concurrent people/leads being processed simultaneously
-// Higher = better rate limiter utilization, but more memory usage
-const MAX_CONCURRENT_PEOPLE = 50;         // For enrichment jobs (each person = up to 16 API calls)
-const MAX_CONCURRENT_LEADS = 100;         // For verification jobs (each lead = 1 API call)
+// Set to match rate limiter capacity (~11 req/sec with 2 keys)
+// Too high = burst of 429 errors; too low = underutilized rate limiter
+const MAX_CONCURRENT_PEOPLE = 25;         // For enrichment jobs (each person = up to 16 API calls)
+const MAX_CONCURRENT_LEADS = 30;          // For verification jobs (each lead = 1 API call)
 
 // ============================================
 // API USAGE TRACKING (for Admin Dashboard)
@@ -1614,12 +1615,16 @@ async function processJobFromQueue(jobId) {
         }
       }
       
-      // Start the initial batch of concurrent workers
+      // Start the initial batch of concurrent workers with slight stagger
+      // This prevents all workers from hitting the rate limiter simultaneously
       console.log(`\n🚀 Starting streaming pipeline with ${MAX_CONCURRENT_LEADS} concurrent leads...`);
       const initialBatchSize = Math.min(MAX_CONCURRENT_LEADS, leads.length);
       for (let i = 0; i < initialBatchSize; i++) {
         activeCount++;
-        processNextLead(); // Fire without await to start all concurrently
+        // Stagger start times by 10ms each to prevent burst
+        setTimeout(() => {
+          processNextLead(); // Fire without await to start all concurrently
+        }, i * 10);
       }
       
       // Wait for all leads to be processed
@@ -1901,12 +1906,16 @@ async function processJobFromQueue(jobId) {
       }
     }
     
-    // Start the initial batch of concurrent workers
+    // Start the initial batch of concurrent workers with slight stagger
+    // This prevents all workers from hitting the rate limiter simultaneously
     console.log(`\n🚀 Starting streaming pipeline with ${MAX_CONCURRENT_PEOPLE} concurrent people...`);
     const initialBatchSize = Math.min(MAX_CONCURRENT_PEOPLE, peopleArray.length);
     for (let i = 0; i < initialBatchSize; i++) {
       activeCount++;
-      processNextPerson(); // Fire without await to start all concurrently
+      // Stagger start times by 10ms each to prevent burst
+      setTimeout(() => {
+        processNextPerson(); // Fire without await to start all concurrently
+      }, i * 10);
     }
     
     // Wait for all people to be processed
