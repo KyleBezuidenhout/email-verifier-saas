@@ -149,6 +149,11 @@ export default function ResultsPage() {
     ? Math.round((new Date(job.completed_at).getTime() - new Date(job.created_at).getTime()) / 1000 / 60)
     : 0;
 
+  // Limit preview to 25 rows for performance
+  const PREVIEW_LIMIT = 25;
+  const previewLeads = filteredLeads.slice(0, PREVIEW_LIMIT);
+  const hasMoreLeads = filteredLeads.length > PREVIEW_LIMIT;
+
   const downloadCSV = () => {
     // Build headers: standard columns + extra columns from CSV
     const standardHeaders = ["First Name", "Last Name", "Website", "Email", "Status", "MX Type"];
@@ -304,7 +309,8 @@ export default function ResultsPage() {
           {/* Current Filter Info & MX Provider Filter */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
             <div className="text-sm text-apple-text-muted">
-              Showing <span className="font-medium text-apple-text">{filteredLeads.length}</span> {filter === "all" ? "leads" : filter === "valid" ? "valid emails" : filter === "catchall" ? "catchall emails" : "not found"}
+              Showing <span className="font-medium text-apple-text">{previewLeads.length}</span> of <span className="font-medium text-apple-text">{filteredLeads.length}</span> {filter === "all" ? "leads" : filter === "valid" ? "valid emails" : filter === "catchall" ? "catchall emails" : "not found"}
+              {hasMoreLeads && <span className="text-apple-warning"> (preview limited to {PREVIEW_LIMIT} rows)</span>}
               {mxFilters.length > 0 && <span> • Filtered by: {mxFilters.join(", ")}</span>}
             </div>
           </div>
@@ -420,7 +426,7 @@ export default function ResultsPage() {
               </tr>
             </thead>
             <tbody className="bg-apple-surface divide-y divide-apple-border">
-              {filteredLeads.map((lead) => (
+              {previewLeads.map((lead) => (
                 <tr key={lead.id} className="hover:bg-apple-surface transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
                     {lead.first_name}
@@ -476,6 +482,22 @@ export default function ResultsPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Show message when there are more leads than the preview limit */}
+        {hasMoreLeads && (
+          <div className="mt-4 p-4 bg-apple-surface-hover border border-apple-border rounded-lg text-center">
+            <p className="text-apple-text-muted text-sm">
+              Showing {PREVIEW_LIMIT} of {filteredLeads.length} results. 
+              <button
+                onClick={downloadCSV}
+                className="ml-2 text-apple-accent hover:underline font-medium"
+              >
+                Download CSV
+              </button>
+              {" "}to view all results.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
