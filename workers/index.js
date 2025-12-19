@@ -1389,6 +1389,10 @@ async function markLeadAsNotFound(leadId) {
 }
 
 // Process a single person's permutations with early exit (returns result object)
+// Early exit triggers:
+// 1. VALID: First valid email found = best result, skip remaining permutations
+// 2. CATCHALL: First catchall found = highest prevalence (leads sorted by prevalence), 
+//    all remaining permutations for this domain will also be catchalls with lower prevalence
 async function processPersonWithEarlyExit(personKey, personLeads) {
   let foundValid = false;
   let bestCatchall = null;
@@ -1424,11 +1428,20 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
         break; // Stop verifying this person's remaining permutations
         
       } else if (result.status === 'catchall') {
-        // Track best catchall by prevalence score (higher score = better)
-        if (!bestCatchall || (lead.prevalence_score || 0) > (bestCatchall.prevalence_score || 0)) {
-          bestCatchall = lead;
-        }
-        catchallFound++;
+        // *** EARLY EXIT FOR CATCHALLS ***
+        // Since leads are ordered by prevalence (highest first), the first catchall
+        // we encounter is the best one. All remaining permutations for this catchall
+        // domain will also be catchalls with lower prevalence scores.
+        bestCatchall = lead;
+        finalLeadId = lead.id;
+        resultType = 'catchall';
+        catchallFound = 1;
+        
+        const remainingPermutations = personLeads.length - permutationsVerified;
+        savedCalls = remainingPermutations;
+        
+        console.log(`  ~ CATCHALL found for ${personKey} on permutation ${permutationsVerified}/16 - skipping ${remainingPermutations} remaining (highest prevalence)`);
+        break; // Stop verifying this person's remaining permutations
       }
       // If invalid or error, continue to next permutation
       
@@ -1440,18 +1453,12 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
     }
   }
   
-  // If no valid found, use best catchall or mark as not_found
-  if (!foundValid) {
-    if (bestCatchall) {
-      finalLeadId = bestCatchall.id;
-      resultType = 'catchall';
-      console.log(`  ~ CATCHALL selected for ${personKey} (verified all 16 permutations)`);
-    } else {
-      // No valid or catchall found - mark first lead as not_found
-      finalLeadId = personLeads[0].id;
-      resultType = 'not_found';
-      console.log(`  ✗ NOT_FOUND for ${personKey} (verified all 16 permutations)`);
-    }
+  // If no valid or catchall found, mark as not_found
+  // Note: Valid and catchall both early-exit in the loop above, so this only handles not_found
+  if (!foundValid && !bestCatchall) {
+    finalLeadId = personLeads[0].id;
+    resultType = 'not_found';
+    console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${permutationsVerified} permutations)`);
   }
   
   // Return 1 for valid/catchall only if that's the final result type for this person
