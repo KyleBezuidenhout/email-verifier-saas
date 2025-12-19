@@ -107,6 +107,202 @@ PREVALENCE_MAP = {
     },
 }
 
+# Extended prevalence scores for patterns 17-32 (fallback set)
+# These are only used when all 16 primary patterns return invalid
+# Scores are frequency_percent * 100 for integer precision
+EXTENDED_PREVALENCE_MAP = {
+    # 17. {last}{first} = lastnamefirstname@domain
+    "lastnamefirstname": {
+        "1-50": 45, "51-200": 35, "201-500": 35, "500+": 40,
+        "default": 39,  # 0.39%
+    },
+    
+    # 18. {first}.{l} = firstname.l@domain (e.g., adam.s)
+    "firstname.l": {
+        "1-50": 40, "51-200": 40, "201-500": 40, "500+": 45,
+        "default": 41,  # 0.41%
+    },
+    
+    # 19. {l}.{first} = l.firstname@domain (e.g., s.adam)
+    "l.firstname": {
+        "1-50": 35, "51-200": 30, "201-500": 30, "500+": 35,
+        "default": 33,  # 0.33%
+    },
+    
+    # 20. {f}-{last} = f-lastname@domain (e.g., a-smith)
+    "f-lastname": {
+        "1-50": 30, "51-200": 25, "201-500": 25, "500+": 30,
+        "default": 28,  # 0.28%
+    },
+    
+    # 21. {l}-{first} = l-firstname@domain (e.g., s-adam)
+    "l-firstname": {
+        "1-50": 25, "51-200": 22, "201-500": 22, "500+": 25,
+        "default": 24,  # 0.24%
+    },
+    
+    # 22. {first}{f} = firstnamef@domain (e.g., adama) - unusual pattern
+    "firstnamef": {
+        "1-50": 22, "51-200": 20, "201-500": 20, "500+": 22,
+        "default": 21,  # 0.21%
+    },
+    
+    # 23. {last}{l} = lastnamel@domain (e.g., smiths) - unusual pattern
+    "lastnamel": {
+        "1-50": 20, "51-200": 18, "201-500": 18, "500+": 20,
+        "default": 19,  # 0.19%
+    },
+    
+    # 24. {f}.{l} = f.l@domain (e.g., a.s)
+    "f.l": {
+        "1-50": 18, "51-200": 15, "201-500": 15, "500+": 18,
+        "default": 17,  # 0.17%
+    },
+    
+    # 25. {f}_{l} = f_l@domain (e.g., a_s)
+    "f_l": {
+        "1-50": 15, "51-200": 12, "201-500": 12, "500+": 15,
+        "default": 14,  # 0.14%
+    },
+    
+    # 26. {first}-{l} = firstname-l@domain (e.g., adam-s)
+    "firstname-l": {
+        "1-50": 12, "51-200": 10, "201-500": 10, "500+": 12,
+        "default": 11,  # 0.11%
+    },
+    
+    # 27. {last}-{l} = lastname-l@domain (e.g., smith-s) - unusual pattern
+    "lastname-l": {
+        "1-50": 10, "51-200": 8, "201-500": 8, "500+": 10,
+        "default": 9,  # 0.09%
+    },
+    
+    # 28. {l}{f} = lf@domain (e.g., sa)
+    "lf": {
+        "1-50": 8, "51-200": 6, "201-500": 6, "500+": 8,
+        "default": 7,  # 0.07%
+    },
+    
+    # 29. {l}_{f} = l_f@domain (e.g., s_a)
+    "l_f": {
+        "1-50": 6, "51-200": 4, "201-500": 4, "500+": 6,
+        "default": 5,  # 0.05%
+    },
+    
+    # 30. {l}-{f} = l-f@domain (e.g., s-a)
+    "l-f": {
+        "1-50": 4, "51-200": 2, "201-500": 2, "500+": 4,
+        "default": 3,  # 0.03%
+    },
+    
+    # 31. {l}.{f} = l.f@domain (e.g., s.a)
+    "l.f": {
+        "1-50": 2, "51-200": 1, "201-500": 1, "500+": 2,
+        "default": 2,  # 0.02%
+    },
+    
+    # 32. {f}{last}_{l} = flastname_l@domain (e.g., asmith_s)
+    "flastname_l": {
+        "1-50": 1, "51-200": 1, "201-500": 1, "500+": 1,
+        "default": 1,  # 0.01%
+    },
+}
+
+# Extended pattern order by company size (17-32)
+# Order differs slightly between company sizes based on prevalence data
+EXTENDED_PATTERN_ORDER = {
+    "1-50": [
+        "lastnamefirstname",  # 17
+        "firstname.l",        # 18
+        "l.firstname",        # 19
+        "f-lastname",         # 20
+        "l-firstname",        # 21
+        "firstnamef",         # 22
+        "lastnamel",          # 23
+        "f.l",                # 24
+        "f_l",                # 25
+        "firstname-l",        # 26
+        "lastname-l",         # 27
+        "lf",                 # 28
+        "l_f",                # 29
+        "l-f",                # 30
+        "l.f",                # 31
+        "flastname_l",        # 32
+    ],
+    "51-200": [
+        "firstname.l",        # 17
+        "lastnamefirstname",  # 18
+        "l.firstname",        # 19
+        "f-lastname",         # 20
+        "l-firstname",        # 21
+        "firstnamef",         # 22
+        "lastnamel",          # 23
+        "f.l",                # 24
+        "f_l",                # 25
+        "firstname-l",        # 26
+        "lastname-l",         # 27
+        "lf",                 # 28
+        "l_f",                # 29
+        "l-f",                # 30
+        "l.f",                # 31
+        "flastname_l",        # 32
+    ],
+    "201-500": [
+        "firstname.l",        # 17
+        "lastnamefirstname",  # 18
+        "l.firstname",        # 19
+        "f-lastname",         # 20
+        "l-firstname",        # 21
+        "firstnamef",         # 22
+        "lastnamel",          # 23
+        "f.l",                # 24
+        "f_l",                # 25
+        "firstname-l",        # 26
+        "lastname-l",         # 27
+        "lf",                 # 28
+        "l_f",                # 29
+        "l-f",                # 30
+        "l.f",                # 31
+        "flastname_l",        # 32
+    ],
+    "500+": [
+        "firstname.l",        # 17
+        "lastnamefirstname",  # 18
+        "l.firstname",        # 19
+        "f-lastname",         # 20
+        "l-firstname",        # 21
+        "firstnamef",         # 22
+        "lastnamel",          # 23
+        "f.l",                # 24
+        "f_l",                # 25
+        "firstname-l",        # 26
+        "lastname-l",         # 27
+        "lf",                 # 28
+        "l_f",                # 29
+        "l-f",                # 30
+        "l.f",                # 31
+        "flastname_l",        # 32
+    ],
+    "default": [
+        "firstname.l",        # 17
+        "lastnamefirstname",  # 18
+        "l.firstname",        # 19
+        "f-lastname",         # 20
+        "l-firstname",        # 21
+        "firstnamef",         # 22
+        "lastnamel",          # 23
+        "f.l",                # 24
+        "f_l",                # 25
+        "firstname-l",        # 26
+        "lastname-l",         # 27
+        "lf",                 # 28
+        "l_f",                # 29
+        "l-f",                # 30
+        "l.f",                # 31
+        "flastname_l",        # 32
+    ],
+}
+
 
 def clean_first_name(first_name: str) -> str:
     """
@@ -252,5 +448,77 @@ def generate_email_permutations(
 
     # Sort by prevalence score (highest first) - this determines verification order
     permutations.sort(key=lambda x: x["prevalence_score"], reverse=True)
+
+    return permutations
+
+
+def get_extended_prevalence_score(pattern: str, company_size_key: str) -> int:
+    """Get extended prevalence score for a pattern and company size."""
+    pattern_data = EXTENDED_PREVALENCE_MAP.get(pattern, {})
+    
+    # Try company-specific score first, fall back to default
+    if company_size_key != "default" and company_size_key in pattern_data:
+        return pattern_data[company_size_key]
+    
+    return pattern_data.get("default", 0)
+
+
+def generate_extended_email_permutations(
+    first_name: str,
+    last_name: str,
+    domain: str,
+    company_size: Optional[str] = None
+) -> List[Dict[str, any]]:
+    """
+    Generate extended email permutations (17-32) with prevalence scores.
+    These are only used as a fallback when all 16 primary patterns return invalid.
+    Permutations are returned in company-size-specific order (highest prevalence first).
+    """
+    first = normalize_name(first_name)
+    last = normalize_name(last_name)
+    domain = normalize_domain(domain)
+    company_size_key = get_company_size_key(company_size)
+
+    if not first or not last or not domain:
+        return []
+
+    # First initial and last initial
+    f = first[0]
+    l = last[0]
+
+    # Extended patterns (17-32) - all possible patterns
+    extended_patterns = {
+        "lastnamefirstname": f"{last}{first}@{domain}",          # 17. {last}{first}
+        "firstname.l": f"{first}.{l}@{domain}",                  # 18. {first}.{l}
+        "l.firstname": f"{l}.{first}@{domain}",                  # 19. {l}.{first}
+        "f-lastname": f"{f}-{last}@{domain}",                    # 20. {f}-{last}
+        "l-firstname": f"{l}-{first}@{domain}",                  # 21. {l}-{first}
+        "firstnamef": f"{first}{f}@{domain}",                    # 22. {first}{f}
+        "lastnamel": f"{last}{l}@{domain}",                      # 23. {last}{l}
+        "f.l": f"{f}.{l}@{domain}",                              # 24. {f}.{l}
+        "f_l": f"{f}_{l}@{domain}",                              # 25. {f}_{l}
+        "firstname-l": f"{first}-{l}@{domain}",                  # 26. {first}-{l}
+        "lastname-l": f"{last}-{l}@{domain}",                    # 27. {last}-{l}
+        "lf": f"{l}{f}@{domain}",                                # 28. {l}{f}
+        "l_f": f"{l}_{f}@{domain}",                              # 29. {l}_{f}
+        "l-f": f"{l}-{f}@{domain}",                              # 30. {l}-{f}
+        "l.f": f"{l}.{f}@{domain}",                              # 31. {l}.{f}
+        "flastname_l": f"{f}{last}_{l}@{domain}",                # 32. {f}{last}_{l}
+    }
+
+    # Get the pattern order for this company size
+    pattern_order = EXTENDED_PATTERN_ORDER.get(company_size_key, EXTENDED_PATTERN_ORDER["default"])
+
+    # Build permutations in the correct order for this company size
+    permutations = []
+    for pattern_name in pattern_order:
+        email = extended_patterns.get(pattern_name)
+        if email:
+            score = get_extended_prevalence_score(pattern_name, company_size_key)
+            permutations.append({
+                "email": email,
+                "pattern": pattern_name,
+                "prevalence_score": score,
+            })
 
     return permutations

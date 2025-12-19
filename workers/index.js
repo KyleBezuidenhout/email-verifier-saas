@@ -519,6 +519,182 @@ function getPendingUpdateCount() {
 const ADMIN_EMAIL = 'ben@superwave.io';
 
 // ============================================
+// EXTENDED PERMUTATIONS (17-32) - FALLBACK SET
+// ============================================
+// Used when all 16 primary permutations return invalid (no valid, no catchall)
+// Order differs by company size based on prevalence data
+
+const EXTENDED_PATTERNS_BY_SIZE = {
+  "1-50": [
+    { name: "lastnamefirstname", template: (f, l, first, last) => `${last}${first}` },   // 17. {last}{first}
+    { name: "firstname.l", template: (f, l, first, last) => `${first}.${l}` },           // 18. {first}.{l}
+    { name: "l.firstname", template: (f, l, first, last) => `${l}.${first}` },           // 19. {l}.{first}
+    { name: "f-lastname", template: (f, l, first, last) => `${f}-${last}` },             // 20. {f}-{last}
+    { name: "l-firstname", template: (f, l, first, last) => `${l}-${first}` },           // 21. {l}-{first}
+    { name: "firstnamef", template: (f, l, first, last) => `${first}${f}` },             // 22. {first}{f}
+    { name: "lastnamel", template: (f, l, first, last) => `${last}${l}` },               // 23. {last}{l}
+    { name: "f.l", template: (f, l, first, last) => `${f}.${l}` },                       // 24. {f}.{l}
+    { name: "f_l", template: (f, l, first, last) => `${f}_${l}` },                       // 25. {f}_{l}
+    { name: "firstname-l", template: (f, l, first, last) => `${first}-${l}` },           // 26. {first}-{l}
+    { name: "lastname-l", template: (f, l, first, last) => `${last}-${l}` },             // 27. {last}-{l}
+    { name: "lf", template: (f, l, first, last) => `${l}${f}` },                         // 28. {l}{f}
+    { name: "l_f", template: (f, l, first, last) => `${l}_${f}` },                       // 29. {l}_{f}
+    { name: "l-f", template: (f, l, first, last) => `${l}-${f}` },                       // 30. {l}-{f}
+    { name: "l.f", template: (f, l, first, last) => `${l}.${f}` },                       // 31. {l}.{f}
+    { name: "flastname_l", template: (f, l, first, last) => `${f}${last}_${l}` },        // 32. {f}{last}_{l}
+  ],
+  "51-200": [
+    { name: "firstname.l", template: (f, l, first, last) => `${first}.${l}` },           // 17. {first}.{l}
+    { name: "lastnamefirstname", template: (f, l, first, last) => `${last}${first}` },   // 18. {last}{first}
+    { name: "l.firstname", template: (f, l, first, last) => `${l}.${first}` },           // 19. {l}.{first}
+    { name: "f-lastname", template: (f, l, first, last) => `${f}-${last}` },             // 20. {f}-{last}
+    { name: "l-firstname", template: (f, l, first, last) => `${l}-${first}` },           // 21. {l}-{first}
+    { name: "firstnamef", template: (f, l, first, last) => `${first}${f}` },             // 22. {first}{f}
+    { name: "lastnamel", template: (f, l, first, last) => `${last}${l}` },               // 23. {last}{l}
+    { name: "f.l", template: (f, l, first, last) => `${f}.${l}` },                       // 24. {f}.{l}
+    { name: "f_l", template: (f, l, first, last) => `${f}_${l}` },                       // 25. {f}_{l}
+    { name: "firstname-l", template: (f, l, first, last) => `${first}-${l}` },           // 26. {first}-{l}
+    { name: "lastname-l", template: (f, l, first, last) => `${last}-${l}` },             // 27. {last}-{l}
+    { name: "lf", template: (f, l, first, last) => `${l}${f}` },                         // 28. {l}{f}
+    { name: "l_f", template: (f, l, first, last) => `${l}_${f}` },                       // 29. {l}_{f}
+    { name: "l-f", template: (f, l, first, last) => `${l}-${f}` },                       // 30. {l}-{f}
+    { name: "l.f", template: (f, l, first, last) => `${l}.${f}` },                       // 31. {l}.{f}
+    { name: "flastname_l", template: (f, l, first, last) => `${f}${last}_${l}` },        // 32. {f}{last}_{l}
+  ],
+  "201-500": [
+    { name: "firstname.l", template: (f, l, first, last) => `${first}.${l}` },           // 17. {first}.{l}
+    { name: "lastnamefirstname", template: (f, l, first, last) => `${last}${first}` },   // 18. {last}{first}
+    { name: "l.firstname", template: (f, l, first, last) => `${l}.${first}` },           // 19. {l}.{first}
+    { name: "f-lastname", template: (f, l, first, last) => `${f}-${last}` },             // 20. {f}-{last}
+    { name: "l-firstname", template: (f, l, first, last) => `${l}-${first}` },           // 21. {l}-{first}
+    { name: "firstnamef", template: (f, l, first, last) => `${first}${f}` },             // 22. {first}{f}
+    { name: "lastnamel", template: (f, l, first, last) => `${last}${l}` },               // 23. {last}{l}
+    { name: "f.l", template: (f, l, first, last) => `${f}.${l}` },                       // 24. {f}.{l}
+    { name: "f_l", template: (f, l, first, last) => `${f}_${l}` },                       // 25. {f}_{l}
+    { name: "firstname-l", template: (f, l, first, last) => `${first}-${l}` },           // 26. {first}-{l}
+    { name: "lastname-l", template: (f, l, first, last) => `${last}-${l}` },             // 27. {last}-{l}
+    { name: "lf", template: (f, l, first, last) => `${l}${f}` },                         // 28. {l}{f}
+    { name: "l_f", template: (f, l, first, last) => `${l}_${f}` },                       // 29. {l}_{f}
+    { name: "l-f", template: (f, l, first, last) => `${l}-${f}` },                       // 30. {l}-{f}
+    { name: "l.f", template: (f, l, first, last) => `${l}.${f}` },                       // 31. {l}.{f}
+    { name: "flastname_l", template: (f, l, first, last) => `${f}${last}_${l}` },        // 32. {f}{last}_{l}
+  ],
+  "500+": [
+    { name: "firstname.l", template: (f, l, first, last) => `${first}.${l}` },           // 17. {first}.{l}
+    { name: "lastnamefirstname", template: (f, l, first, last) => `${last}${first}` },   // 18. {last}{first}
+    { name: "l.firstname", template: (f, l, first, last) => `${l}.${first}` },           // 19. {l}.{first}
+    { name: "f-lastname", template: (f, l, first, last) => `${f}-${last}` },             // 20. {f}-{last}
+    { name: "l-firstname", template: (f, l, first, last) => `${l}-${first}` },           // 21. {l}-{first}
+    { name: "firstnamef", template: (f, l, first, last) => `${first}${f}` },             // 22. {first}{f}
+    { name: "lastnamel", template: (f, l, first, last) => `${last}${l}` },               // 23. {last}{l}
+    { name: "f.l", template: (f, l, first, last) => `${f}.${l}` },                       // 24. {f}.{l}
+    { name: "f_l", template: (f, l, first, last) => `${f}_${l}` },                       // 25. {f}_{l}
+    { name: "firstname-l", template: (f, l, first, last) => `${first}-${l}` },           // 26. {first}-{l}
+    { name: "lastname-l", template: (f, l, first, last) => `${last}-${l}` },             // 27. {last}-{l}
+    { name: "lf", template: (f, l, first, last) => `${l}${f}` },                         // 28. {l}{f}
+    { name: "l_f", template: (f, l, first, last) => `${l}_${f}` },                       // 29. {l}_{f}
+    { name: "l-f", template: (f, l, first, last) => `${l}-${f}` },                       // 30. {l}-{f}
+    { name: "l.f", template: (f, l, first, last) => `${l}.${f}` },                       // 31. {l}.{f}
+    { name: "flastname_l", template: (f, l, first, last) => `${f}${last}_${l}` },        // 32. {f}{last}_{l}
+  ],
+  "default": [
+    { name: "firstname.l", template: (f, l, first, last) => `${first}.${l}` },           // 17. {first}.{l}
+    { name: "lastnamefirstname", template: (f, l, first, last) => `${last}${first}` },   // 18. {last}{first}
+    { name: "l.firstname", template: (f, l, first, last) => `${l}.${first}` },           // 19. {l}.{first}
+    { name: "f-lastname", template: (f, l, first, last) => `${f}-${last}` },             // 20. {f}-{last}
+    { name: "l-firstname", template: (f, l, first, last) => `${l}-${first}` },           // 21. {l}-{first}
+    { name: "firstnamef", template: (f, l, first, last) => `${first}${f}` },             // 22. {first}{f}
+    { name: "lastnamel", template: (f, l, first, last) => `${last}${l}` },               // 23. {last}{l}
+    { name: "f.l", template: (f, l, first, last) => `${f}.${l}` },                       // 24. {f}.{l}
+    { name: "f_l", template: (f, l, first, last) => `${f}_${l}` },                       // 25. {f}_{l}
+    { name: "firstname-l", template: (f, l, first, last) => `${first}-${l}` },           // 26. {first}-{l}
+    { name: "lastname-l", template: (f, l, first, last) => `${last}-${l}` },             // 27. {last}-{l}
+    { name: "lf", template: (f, l, first, last) => `${l}${f}` },                         // 28. {l}{f}
+    { name: "l_f", template: (f, l, first, last) => `${l}_${f}` },                       // 29. {l}_{f}
+    { name: "l-f", template: (f, l, first, last) => `${l}-${f}` },                       // 30. {l}-{f}
+    { name: "l.f", template: (f, l, first, last) => `${l}.${f}` },                       // 31. {l}.{f}
+    { name: "flastname_l", template: (f, l, first, last) => `${f}${last}_${l}` },        // 32. {f}{last}_{l}
+  ],
+};
+
+/**
+ * Normalize a name by removing accents and converting to lowercase ASCII
+ */
+function normalizeName(name) {
+  if (!name) return '';
+  // Remove accents using normalize + replace
+  return name.normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')  // Remove diacritics
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Map company size string to a standardized key
+ */
+function getCompanySizeKey(companySize) {
+  if (!companySize) return 'default';
+  
+  const sizeStr = String(companySize).trim().toLowerCase();
+  
+  // Direct matches
+  if (sizeStr.includes('1-50') || sizeStr.includes('1-10') || sizeStr.includes('2-10') || sizeStr.includes('11-50')) {
+    return '1-50';
+  } else if (sizeStr.includes('51-200') || sizeStr.includes('51-100') || sizeStr.includes('101-200')) {
+    return '51-200';
+  } else if (sizeStr.includes('201-500') || sizeStr.includes('201-300') || sizeStr.includes('301-500')) {
+    return '201-500';
+  } else if (sizeStr.includes('500+') || sizeStr.includes('501+') || sizeStr.includes('501-1000') || 
+             sizeStr.includes('1001-') || sizeStr.includes('1000+') || sizeStr.includes('5000+') || 
+             sizeStr.includes('10000+')) {
+    return '500+';
+  }
+  
+  // Try numeric parsing
+  const numbers = sizeStr.match(/\d+/);
+  if (numbers) {
+    const sizeNum = parseInt(numbers[0], 10);
+    if (sizeNum >= 1 && sizeNum <= 50) return '1-50';
+    if (sizeNum >= 51 && sizeNum <= 200) return '51-200';
+    if (sizeNum >= 201 && sizeNum <= 500) return '201-500';
+    if (sizeNum > 500) return '500+';
+  }
+  
+  return 'default';
+}
+
+/**
+ * Generate extended email permutations (17-32) for a person
+ * Used as fallback when all 16 primary permutations return invalid
+ * @param {string} firstName - Person's first name
+ * @param {string} lastName - Person's last name
+ * @param {string} domain - Email domain
+ * @param {string} companySize - Company size string (e.g., "1-50", "51-200")
+ * @returns {Array} Array of {email, pattern} objects in prevalence order
+ */
+function generateExtendedPermutations(firstName, lastName, domain, companySize) {
+  const first = normalizeName(firstName);
+  const last = normalizeName(lastName);
+  
+  if (!first || !last || !domain) {
+    return [];
+  }
+  
+  const f = first[0];  // First initial
+  const l = last[0];   // Last initial
+  
+  // Get pattern order for this company size
+  const sizeKey = getCompanySizeKey(companySize);
+  const patterns = EXTENDED_PATTERNS_BY_SIZE[sizeKey] || EXTENDED_PATTERNS_BY_SIZE['default'];
+  
+  // Generate emails in the correct order
+  return patterns.map(pattern => ({
+    email: `${pattern.template(f, l, first, last)}@${domain}`,
+    pattern: pattern.name,
+  }));
+}
+
+// ============================================
 // MX PROVIDER PARSING
 // ============================================
 // Extract provider category from MX hostname
@@ -1388,6 +1564,37 @@ async function markLeadAsNotFound(leadId) {
   );
 }
 
+// Update a lead with a valid email found in extended permutations (17-32)
+async function updateLeadWithExtendedValid(leadId, email, pattern, mx = '', provider = '') {
+  await pgPool.query(
+    `UPDATE leads SET 
+      email = $1, 
+      pattern_used = $2, 
+      verification_status = 'valid', 
+      mx_record = $3,
+      mx_provider = $4,
+      is_final_result = true 
+    WHERE id = $5`,
+    [email, pattern, mx, provider, leadId]
+  );
+}
+
+// Update a lead with catchall found in extended permutations (17-32)
+// Uses the original permutation 1 email (highest prevalence) as the result
+async function updateLeadWithExtendedCatchall(leadId, originalEmail, originalPattern, mx = '', provider = '') {
+  await pgPool.query(
+    `UPDATE leads SET 
+      email = $1, 
+      pattern_used = $2, 
+      verification_status = 'catchall', 
+      mx_record = $3,
+      mx_provider = $4,
+      is_final_result = true 
+    WHERE id = $5`,
+    [originalEmail, originalPattern, mx, provider, leadId]
+  );
+}
+
 // Process a single person's permutations with early exit (returns result object)
 // Early exit triggers:
 // 1. VALID: First valid email found = best result, skip remaining permutations
@@ -1453,14 +1660,111 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
     }
   }
   
-  // If no valid or catchall found, mark as not_found
-  // Note: Valid and catchall both early-exit in the loop above, so this only handles not_found
+  // If no valid or catchall found in primary 16, try extended permutations (17-32)
+  // Note: Valid and catchall both early-exit in the loop above
   if (!foundValid && !bestCatchall) {
-    finalLeadId = personLeads[0].id;
-    resultType = 'not_found';
-    console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${permutationsVerified} permutations)`);
+    // Get the first lead's info for extended permutation generation
+    const firstLead = personLeads[0];
+    const companySize = firstLead.company_size || 'default';
+    
+    // Generate extended permutations (17-32) in company-size-specific order
+    const extendedEmails = generateExtendedPermutations(
+      firstLead.first_name,
+      firstLead.last_name,
+      firstLead.domain,
+      companySize
+    );
+    
+    console.log(`  🔄 All 16 primary permutations invalid for ${personKey} - trying extended permutations (17-32)...`);
+    
+    let extendedPermutationIndex = 0;
+    let extendedValidEmail = null;
+    let extendedValidPattern = null;
+    let extendedValidMx = '';
+    let extendedValidProvider = '';
+    let extendedCatchallEmail = null;
+    let extendedCatchallPattern = null;
+    let extendedCatchallMx = '';
+    let extendedCatchallProvider = '';
+    
+    // Verify extended permutations one-by-one
+    for (const extended of extendedEmails) {
+      try {
+        const result = await verifyEmail(extended.email);
+        apiCalls++;
+        extendedPermutationIndex++;
+        
+        if (result.status === 'valid') {
+          // *** EARLY EXIT: Found valid in extended set! ***
+          extendedValidEmail = extended.email;
+          extendedValidPattern = extended.pattern;
+          extendedValidMx = result.mx || '';
+          extendedValidProvider = result.provider || '';
+          foundValid = true;
+          resultType = 'valid';
+          validFound = 1;
+          finalLeadId = firstLead.id;
+          
+          const remainingExtended = extendedEmails.length - extendedPermutationIndex;
+          savedCalls += remainingExtended;
+          
+          console.log(`  ✓ VALID found for ${personKey} in EXTENDED permutation ${extendedPermutationIndex + 16}/32 (${extended.pattern}) - skipping ${remainingExtended} remaining`);
+          break;
+          
+        } else if (result.status === 'catchall') {
+          // *** EARLY EXIT: Catchall found in extended set ***
+          // Use the original permutation 1's email (highest prevalence) as the result
+          extendedCatchallEmail = firstLead.email;  // Original perm 1 email
+          extendedCatchallPattern = firstLead.pattern_used;  // Original perm 1 pattern
+          extendedCatchallMx = result.mx || '';
+          extendedCatchallProvider = result.provider || '';
+          bestCatchall = firstLead;
+          resultType = 'catchall';
+          catchallFound = 1;
+          finalLeadId = firstLead.id;
+          
+          const remainingExtended = extendedEmails.length - extendedPermutationIndex;
+          savedCalls += remainingExtended;
+          
+          console.log(`  ~ CATCHALL found for ${personKey} in EXTENDED permutation ${extendedPermutationIndex + 16}/32 - using perm 1 email (${firstLead.email})`);
+          break;
+        }
+        // If invalid, continue to next extended permutation
+        
+      } catch (error) {
+        console.error(`Error processing extended permutation ${extended.email}:`, error.message);
+        apiCalls++;
+        extendedPermutationIndex++;
+      }
+    }
+    
+    // After extended permutations: update the lead record based on result
+    if (foundValid && extendedValidEmail) {
+      // Valid found in extended set - update lead with the valid email
+      await updateLeadWithExtendedValid(
+        firstLead.id, 
+        extendedValidEmail, 
+        extendedValidPattern,
+        extendedValidMx,
+        extendedValidProvider
+      );
+    } else if (bestCatchall && extendedCatchallEmail) {
+      // Catchall found in extended set - update lead with original perm 1 email
+      await updateLeadWithExtendedCatchall(
+        firstLead.id,
+        extendedCatchallEmail,
+        extendedCatchallPattern,
+        extendedCatchallMx,
+        extendedCatchallProvider
+      );
+    } else {
+      // All 32 permutations exhausted - mark as not_found
+      finalLeadId = firstLead.id;
+      resultType = 'not_found';
+      console.log(`  ✗ NOT_FOUND for ${personKey} (verified all 32 permutations including extended)`);
+    }
   }
-  
+
   // Return 1 for valid/catchall only if that's the final result type for this person
   // (not counting all permutations that were catchall)
   return {
