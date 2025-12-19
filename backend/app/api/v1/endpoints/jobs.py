@@ -410,6 +410,7 @@ async def upload_file(
         catchall_emails_found=0,
         cost_in_credits=0,
         source=source,  # Tag job with source (e.g., "Sales Nav")
+        company_size=company_size,  # Store dropdown selection for enrichment worker
     )
     db.add(job)
     db.commit()

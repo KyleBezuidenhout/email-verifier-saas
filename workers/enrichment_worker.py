@@ -428,6 +428,11 @@ def process_enrichment_job(job_id: str) -> bool:
         
         logger.info(f"🔄 Processing enrichment job {job_id} (status: {job.status})")
         
+        # Get default company size from job (user's dropdown selection)
+        default_company_size = getattr(job, 'company_size', None)
+        if default_company_size:
+            logger.info(f"📊 Using default company size from job: {default_company_size}")
+        
         # Skip vayne orders - users upload CSV manually now
         if job.input_file_path and job.input_file_path.startswith("vayne-order:"):
             logger.warning(f"⚠️ Job {job_id} references vayne order - users should upload CSV manually. Skipping.")
@@ -485,7 +490,7 @@ def process_enrichment_job(job_id: str) -> bool:
             last_name = row['last_name']
             website = row['website']
             domain = normalize_domain(website)
-            company_size = row.get('company_size')
+            company_size = row.get('company_size') or default_company_size
             
             # Generate email permutations
             permutations = generate_email_permutations(

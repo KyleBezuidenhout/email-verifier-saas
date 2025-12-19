@@ -14,6 +14,7 @@ class Job(Base):
     status = Column(String(50), default="pending", index=True)  # pending, processing, completed, failed, cancelled
     job_type = Column(String(50), default="enrichment", index=True)  # enrichment or verification
     source = Column(String(50))  # e.g., "Sales Nav"
+    company_size = Column(String(50))  # Default company size for permutation ranking
     original_filename = Column(Text)
     total_leads = Column(Integer, nullable=False)
     processed_leads = Column(Integer, default=0)
@@ -24,5 +25,10 @@ class Job(Base):
     output_file_path = Column(Text)  # Path in Cloudflare R2
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     completed_at = Column(DateTime(timezone=True))
+
+
+
+
+
 
 
