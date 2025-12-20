@@ -19,20 +19,30 @@ const redisClient = redis.createClient({
 });
 redisClient.on('error', (err) => console.error('Redis Client Error', err));
 redisClient.connect().then(() => {
-  // Initialize rate limiter with per-key 250ms spacing
-  globalRateLimiter = new GlobalRateLimiter(redisClient, 165, 30000, MAILTESTER_API_KEYS.length);
+  // Initialize rate limiter with PER-KEY configurations
+  globalRateLimiter = new GlobalRateLimiter(redisClient, 30000, KEY_CONFIGS);
   rateLimiter = globalRateLimiter; // Backwards compatibility alias
   
-  const totalRate = MAILTESTER_API_KEYS.length * 165;
-  const perKeySpacing = globalRateLimiter.perKeySpacingMs;
-  const perKeyRate = Math.round(1000 / perKeySpacing);
-  const totalRatePerSec = perKeyRate * MAILTESTER_API_KEYS.length;
+  // Calculate total throughput from all keys
+  let totalRequestsPer30s = 0;
+  let totalReqPerSec = 0;
   
-  console.log(`✅ Rate limiter initialized with per-key spacing:`);
-  console.log(`   - ${MAILTESTER_API_KEYS.length} API keys × 165/30s = ${totalRate} requests/30s total`);
-  console.log(`   - Per-key spacing: ${perKeySpacing}ms (${perKeyRate} req/sec per key)`);
-  console.log(`   - Total effective rate: ~${totalRatePerSec} requests/second`);
-  console.log(`   - Max concurrent workers: 20 (prevents burst)`);
+  console.log(`\n✅ Rate limiter initialized with PER-KEY configurations:`);
+  console.log(`   ┌─────────────────────────────────────────────────────────────┐`);
+  
+  for (const [apiKey, config] of KEY_CONFIGS) {
+    const reqPerSec = Math.round(1000 / config.spacingMs);
+    totalRequestsPer30s += config.requestsPer30s;
+    totalReqPerSec += reqPerSec;
+    
+    const keyType = config.spacingMs < 250 ? '⚡' : '  ';
+    console.log(`   │ ${keyType} Key ...${apiKey.slice(-4)}: ${config.spacingMs}ms spacing = ${reqPerSec} req/sec | ${config.dailyLimit.toLocaleString()}/day`);
+  }
+  
+  console.log(`   ├─────────────────────────────────────────────────────────────┤`);
+  console.log(`   │ TOTAL: ${totalReqPerSec} requests/second | ${totalRequestsPer30s}/30s`);
+  console.log(`   └─────────────────────────────────────────────────────────────┘`);
+  console.log(`   Max concurrent workers: 20 (prevents burst)\n`);
 }).catch(console.error);
 
 // PostgreSQL connection pool
@@ -57,8 +67,42 @@ const MAILTESTER_API_KEYS = process.env.MAILTESTER_API_KEYS
 // Legacy single key for backwards compatibility
 const MAILTESTER_API_KEY = MAILTESTER_API_KEYS[0] || process.env.MAILTESTER_API_KEY;
 
-// Daily limit per key
+// Daily limit per key (default, can be overridden per-key)
 const DAILY_LIMIT_PER_KEY = 500000;
+
+// ==============================================
+// PER-KEY CONFIGURATION
+// ==============================================
+// Supports different rate limits per API key (e.g., upgraded keys with 2x speed)
+
+// Parse per-key configurations from environment variables
+// Format: parallel arrays matching MAILTESTER_API_KEYS order
+const MAILTESTER_KEY_SPACINGS = process.env.MAILTESTER_KEY_SPACINGS
+  ? process.env.MAILTESTER_KEY_SPACINGS.split(',').map(s => parseInt(s.trim()))
+  : MAILTESTER_API_KEYS.map(() => 250); // Default: 250ms for all
+
+const MAILTESTER_KEY_DAILY_LIMITS = process.env.MAILTESTER_KEY_DAILY_LIMITS
+  ? process.env.MAILTESTER_KEY_DAILY_LIMITS.split(',').map(s => parseInt(s.trim()))
+  : MAILTESTER_API_KEYS.map(() => 500000); // Default: 500k for all
+
+const MAILTESTER_KEY_REQUESTS_PER_30S = process.env.MAILTESTER_KEY_REQUESTS_PER_30S
+  ? process.env.MAILTESTER_KEY_REQUESTS_PER_30S.split(',').map(s => parseInt(s.trim()))
+  : MAILTESTER_API_KEYS.map(() => 165); // Default: 165 for all
+
+// Build a configuration map: apiKey -> { spacingMs, dailyLimit, requestsPer30s }
+const KEY_CONFIGS = new Map();
+MAILTESTER_API_KEYS.forEach((key, index) => {
+  KEY_CONFIGS.set(key, {
+    spacingMs: MAILTESTER_KEY_SPACINGS[index] || 250,
+    dailyLimit: MAILTESTER_KEY_DAILY_LIMITS[index] || 500000,
+    requestsPer30s: MAILTESTER_KEY_REQUESTS_PER_30S[index] || 165,
+  });
+});
+
+// Helper function to get config for a specific key
+function getKeyConfig(apiKey) {
+  return KEY_CONFIGS.get(apiKey) || { spacingMs: 250, dailyLimit: 500000, requestsPer30s: 165 };
+}
 
 // Error threshold for marking key unhealthy
 const ERROR_THRESHOLD = 5; // errors per minute before marking unhealthy
@@ -230,10 +274,11 @@ async function getKeyUsage(apiKey) {
   }
 }
 
-// Get remaining capacity for a key today
+// Get remaining capacity for a key today (uses per-key daily limit)
 async function getKeyRemaining(apiKey) {
   const usage = await getKeyUsage(apiKey);
-  return Math.max(0, DAILY_LIMIT_PER_KEY - usage);
+  const config = getKeyConfig(apiKey);
+  return Math.max(0, config.dailyLimit - usage);
 }
 
 // ============================================
@@ -727,21 +772,31 @@ function extractProviderFromMX(mxHostname) {
 // This enables TRUE parallel processing - 2x speed with 2 keys!
 
 class GlobalRateLimiter {
-  constructor(redisClient, requestsPerKeyPerWindow, windowMs, numKeys) {
+  constructor(redisClient, windowMs, keyConfigsMap) {
     this.redis = redisClient;
-    this.numKeys = numKeys;
-    this.requestsPerKeyPerWindow = requestsPerKeyPerWindow; // 165 per key
     this.windowMs = windowMs; // 30000
+    this.keyConfigs = keyConfigsMap; // Map of apiKey -> { spacingMs, dailyLimit, requestsPer30s }
     
-    // Total capacity across all keys combined
-    this.totalRequestsPerWindow = requestsPerKeyPerWindow * numKeys; // 165 * 2 = 330
+    // Calculate total capacity across all keys (sum of each key's requestsPer30s)
+    this.totalRequestsPerWindow = 0;
+    for (const [key, config] of keyConfigsMap) {
+      this.totalRequestsPerWindow += config.requestsPer30s;
+    }
     
-    // Per-key spacing: 250ms between each API call for the same key
-    // This ensures smooth distribution: 1000ms / 250ms = 4 req/sec per key
-    // With 2 keys: 8 req/sec total
-    this.perKeySpacingMs = 250;
-    
+    this.numKeys = keyConfigsMap.size;
     this.keyPrefix = 'mailtester:global_rate';
+  }
+
+  // Get spacing for a specific key
+  getKeySpacing(apiKey) {
+    const config = this.keyConfigs.get(apiKey);
+    return config ? config.spacingMs : 250; // Default fallback
+  }
+
+  // Get requests per 30s limit for a specific key
+  getKeyRequestsPer30s(apiKey) {
+    const config = this.keyConfigs.get(apiKey);
+    return config ? config.requestsPer30s : 165; // Default fallback
   }
 
   // Get Redis key for the global rate limit window
@@ -804,11 +859,15 @@ class GlobalRateLimiter {
     // No global spacing - spacing is enforced per-key in acquireForKey()
   }
 
-  // Acquire rate limit slot for a specific key with 250ms spacing enforcement
+  // Acquire rate limit slot for a specific key with PER-KEY spacing enforcement
   // Waits for available slots instead of returning false (ensures no leads are skipped)
   async acquireForKey(apiKey) {
     const MAX_RETRIES = 200; // Max retries to prevent infinite loops (~50 seconds max wait)
     let retries = 0;
+    
+    // Get this key's specific configuration
+    const keySpacingMs = this.getKeySpacing(apiKey);
+    const keyRequestsPer30s = this.getKeyRequestsPer30s(apiKey);
     
     while (retries < MAX_RETRIES) {
       const now = Date.now();
@@ -816,15 +875,15 @@ class GlobalRateLimiter {
       const keyWindowKey = this._getKeyWindowKey(apiKey, windowStart);
       const keyLastRequestKey = this._getKeyLastRequestKey(apiKey);
       
-      // STEP 1: Enforce 250ms spacing first (primary constraint)
-      // This is the real rate limit - 250ms spacing = 4 req/sec per key
+      // STEP 1: Enforce PER-KEY spacing (primary constraint)
+      // This is the real rate limit - keySpacingMs determines req/sec for THIS key
       const lastRequestTimeStr = await this.redis.get(keyLastRequestKey);
       if (lastRequestTimeStr) {
         const lastRequestTime = parseInt(lastRequestTimeStr);
         if (!isNaN(lastRequestTime)) {
           const timeSinceLastRequest = Date.now() - lastRequestTime;
-          if (timeSinceLastRequest < this.perKeySpacingMs) {
-            const waitTime = this.perKeySpacingMs - timeSinceLastRequest;
+          if (timeSinceLastRequest < keySpacingMs) {
+            const waitTime = keySpacingMs - timeSinceLastRequest;
             await new Promise(resolve => setTimeout(resolve, waitTime));
             // After waiting, re-check the window (it may have rolled over)
             continue;
@@ -832,11 +891,11 @@ class GlobalRateLimiter {
         }
       }
       
-      // STEP 2: Check if we're at the 165/30s limit (safety check)
+      // STEP 2: Check if we're at this key's per-30s limit (safety check)
       const currentCountStr = await this.redis.get(keyWindowKey);
       const currentCount = currentCountStr ? parseInt(currentCountStr) : 0;
       
-      if (currentCount >= this.requestsPerKeyPerWindow) {
+      if (currentCount >= keyRequestsPer30s) {
         // At limit - wait for window to roll over
         const nextWindow = windowStart + this.windowMs;
         const waitTime = nextWindow - Date.now() + 50; // Add 50ms buffer
@@ -855,7 +914,7 @@ class GlobalRateLimiter {
       }
       
       // STEP 4: If we exceeded after increment, decrement and wait for next window
-      if (count > this.requestsPerKeyPerWindow) {
+      if (count > keyRequestsPer30s) {
         await this.redis.decr(keyWindowKey);
         const nextWindow = windowStart + this.windowMs;
         const waitTime = nextWindow - Date.now() + 50;
@@ -878,7 +937,7 @@ class GlobalRateLimiter {
     return false;
   }
 
-  // Get global status
+  // Get global status with per-key details
   async getStatus() {
     const now = Date.now();
     const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
@@ -886,12 +945,23 @@ class GlobalRateLimiter {
     const countStr = await this.redis.get(windowKey);
     const count = countStr ? parseInt(countStr) : 0;
     
+    // Build per-key status
+    const perKeyStatus = {};
+    for (const [apiKey, config] of this.keyConfigs) {
+      perKeyStatus[`...${apiKey.slice(-4)}`] = {
+        spacingMs: config.spacingMs,
+        requestsPer30s: config.requestsPer30s,
+        dailyLimit: config.dailyLimit,
+        reqPerSec: Math.round(1000 / config.spacingMs),
+      };
+    }
+    
     return {
       availableTokens: this.totalRequestsPerWindow - count,
       maxTokens: this.totalRequestsPerWindow,
       currentCount: count,
       numKeys: this.numKeys,
-      perKeySpacingMs: this.perKeySpacingMs,
+      perKeyStatus: perKeyStatus,
     };
   }
 }
@@ -1484,20 +1554,39 @@ async function processJob(jobId) {
 console.log('Worker started, waiting for jobs...');
 console.log(`MailTester API: ${MAILTESTER_BASE_URL}`);
 console.log(`API Keys configured: ${MAILTESTER_API_KEYS.length}`);
+
 if (MAILTESTER_API_KEYS.length > 0) {
+  let totalReqPerSec = 0;
+  let totalDailyCapacity = 0;
+  let totalRequestsPer30s = 0;
+  
+  console.log(`\n🔑 PER-KEY CONFIGURATIONS:`);
+  console.log(`   ┌──────────────────────────────────────────────────────────────────────┐`);
+  
   MAILTESTER_API_KEYS.forEach((key, i) => {
-    console.log(`  Key ${i + 1}: ...${key.slice(-4)} (${DAILY_LIMIT_PER_KEY.toLocaleString()}/day)`);
+    const config = getKeyConfig(key);
+    const reqPerSec = Math.round(1000 / config.spacingMs);
+    totalReqPerSec += reqPerSec;
+    totalDailyCapacity += config.dailyLimit;
+    totalRequestsPer30s += config.requestsPer30s;
+    
+    const keyType = config.spacingMs < 250 ? '⚡ UPGRADED' : '   Standard';
+    console.log(`   │ ${keyType} Key ${i + 1}: ...${key.slice(-4)}`);
+    console.log(`   │    Spacing: ${config.spacingMs}ms (${reqPerSec} req/sec)`);
+    console.log(`   │    Limits: ${config.requestsPer30s}/30s | ${config.dailyLimit.toLocaleString()}/day`);
+    if (i < MAILTESTER_API_KEYS.length - 1) {
+      console.log(`   │ ─────────────────────────────────────────────────────────────────── │`);
+    }
   });
-  const totalRate = MAILTESTER_API_KEYS.length * 165;
-  const globalSpacing = Math.ceil(30000 / totalRate) + 5;
-  console.log(`\n🚀 GLOBAL RATE LIMITER (Maximum Speed Mode):`);
-  console.log(`   Combined rate: ${totalRate} requests per 30 seconds`);
-  console.log(`   Global spacing: ~${globalSpacing}ms between requests`);
-  console.log(`   Effective speed: ~${Math.round(1000/globalSpacing)} requests/second`);
-  console.log(`   Speed multiplier: ${MAILTESTER_API_KEYS.length}x (vs single key)`);
-  console.log(`   Total daily capacity: ${(MAILTESTER_API_KEYS.length * DAILY_LIMIT_PER_KEY).toLocaleString()} verifications\n`);
+  
+  console.log(`   ├──────────────────────────────────────────────────────────────────────┤`);
+  console.log(`   │ 🚀 COMBINED TOTALS:`);
+  console.log(`   │    Total speed: ${totalReqPerSec} requests/second`);
+  console.log(`   │    Total per 30s: ${totalRequestsPer30s} requests`);
+  console.log(`   │    Total daily capacity: ${totalDailyCapacity.toLocaleString()} verifications`);
+  console.log(`   └──────────────────────────────────────────────────────────────────────┘\n`);
 } else {
-  console.log(`Rate limit: 165 requests per 30 seconds`);
+  console.log(`Rate limit: 165 requests per 30 seconds (no keys configured)`);
 }
 console.log(`Using GLOBAL rate limiter with Redis-coordinated round-robin`);
 console.log(`All workers share the same key rotation via Redis (even distribution!)`);
