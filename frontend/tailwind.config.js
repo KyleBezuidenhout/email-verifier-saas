@@ -9,6 +9,16 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Premium B2B Landing Page Design System
+        'landing': {
+          'bg': '#111317',            // Dark Charcoal - Primary background
+          'surface': '#1C2536',       // Muted Navy - Secondary background
+          'accent': '#00FF85',        // Vibrant Green - CTAs and highlights
+          'text': '#F0F4F8',          // Off-White - Body text
+          'heading': '#FFFFFF',       // Pure White - Main headings
+          'border': '#2A3142',        // Subtle border color
+          'muted': '#6B7280',         // Muted text for secondary content
+        },
         // Apple-Inspired Enterprise Design System
         'apple': {
           'bg': '#1C1C1E',           // Graphite - Main background

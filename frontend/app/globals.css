@@ -86,6 +86,119 @@
   .gradient-accent {
     background: linear-gradient(135deg, rgba(0, 122, 255, 0.1) 0%, rgba(0, 122, 255, 0.05) 100%);
   }
+
+  /* Landing Page Animations */
+  .animate-fade-in {
+    animation: fadeIn 0.8s ease-out forwards;
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.8s ease-out forwards;
+  }
+
+  .animate-fade-in-delay-1 {
+    animation: fadeIn 0.8s ease-out 0.1s forwards;
+    opacity: 0;
+  }
+
+  .animate-fade-in-delay-2 {
+    animation: fadeIn 0.8s ease-out 0.2s forwards;
+    opacity: 0;
+  }
+
+  .animate-fade-in-delay-3 {
+    animation: fadeIn 0.8s ease-out 0.3s forwards;
+    opacity: 0;
+  }
+
+  .animate-fade-in-delay-4 {
+    animation: fadeIn 0.8s ease-out 0.4s forwards;
+    opacity: 0;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Pulse glow effect for CTAs */
+  .glow-accent {
+    box-shadow: 0 0 20px rgba(0, 255, 133, 0.3), 0 0 40px rgba(0, 255, 133, 0.1);
+  }
+
+  .hover-glow-accent {
+    transition: box-shadow 0.3s ease;
+  }
+
+  .hover-glow-accent:hover {
+    box-shadow: 0 0 30px rgba(0, 255, 133, 0.4), 0 0 60px rgba(0, 255, 133, 0.2);
+  }
+
+  /* Flowing line animation */
+  .animate-flow {
+    animation: flowLine 3s linear infinite;
+  }
+
+  @keyframes flowLine {
+    0% {
+      stroke-dashoffset: 1000;
+    }
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* Node pulse animation */
+  .animate-pulse-node {
+    animation: pulseNode 2s ease-in-out infinite;
+  }
+
+  @keyframes pulseNode {
+    0%, 100% {
+      opacity: 0.4;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+  }
+
+  /* Blueprint grid background */
+  .bg-blueprint-grid {
+    background-image: 
+      linear-gradient(rgba(0, 255, 133, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 255, 133, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* Gradient mesh background */
+  .bg-gradient-mesh {
+    background: 
+      radial-gradient(at 20% 30%, rgba(0, 255, 133, 0.08) 0%, transparent 50%),
+      radial-gradient(at 80% 70%, rgba(28, 37, 54, 0.8) 0%, transparent 50%);
+  }
+
+  /* Staggered animation delays for cards */
+  .stagger-1 { animation-delay: 0.1s; }
+  .stagger-2 { animation-delay: 0.2s; }
+  .stagger-3 { animation-delay: 0.3s; }
+  .stagger-4 { animation-delay: 0.4s; }
 }
 
 
