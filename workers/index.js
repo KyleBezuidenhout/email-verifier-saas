@@ -5,6 +5,30 @@ const { Pool } = require('pg');
 const http = require('http');
 require('dotenv').config();
 
+// ==============================================
+// WORKER MODE CONFIGURATION
+// ==============================================
+// WORKER_MODE: 'dedicated' or 'shared' (default: 'shared')
+// - dedicated: Worker only processes jobs from a specific client's queue
+//              Uses simple local key rotation (no cross-worker coordination)
+// - shared: Worker processes jobs from the shared queue
+//           Uses Redis-based coordination with other workers
+const WORKER_MODE = process.env.WORKER_MODE || 'shared';
+const DEDICATED_CLIENT_ID = process.env.DEDICATED_CLIENT_ID || null;
+const VERIFICATION_QUEUE = process.env.VERIFICATION_QUEUE || 'simple-email-verification-queue';
+
+// Log worker mode at startup
+if (WORKER_MODE === 'dedicated') {
+  console.log(`\n🔒 DEDICATED WORKER MODE`);
+  console.log(`   Client ID: ${DEDICATED_CLIENT_ID || 'NOT SET'}`);
+  console.log(`   Queue: ${VERIFICATION_QUEUE}`);
+  console.log(`   Rate limiting: Local only (no cross-worker coordination)\n`);
+} else {
+  console.log(`\n🌐 SHARED WORKER MODE`);
+  console.log(`   Queue: ${VERIFICATION_QUEUE}`);
+  console.log(`   Rate limiting: Redis-coordinated across all workers\n`);
+}
+
 // Parse Redis connection
 const redisUrl = new URL(process.env.REDIS_URL);
 const redisConnection = {
@@ -126,8 +150,10 @@ const PROGRESS_INTERVAL_LARGE_MS = 120000; // 2 minutes for large jobs
 const USAGE_TRACKING_INTERVAL = 100;      // Track every 100 API calls instead of every 1
 
 // Cancellation check frequency (now based on completed items, not batches)
-const CANCEL_CHECK_INTERVAL_SMALL = 20;   // Check every 20 completed people for small jobs
-const CANCEL_CHECK_INTERVAL_LARGE = 100;  // Check every 100 completed people for large jobs
+// Redis checks are fast, so we check more frequently for immediate response
+const CANCEL_CHECK_INTERVAL_SMALL = 5;    // Check every 5 completed people for small jobs
+const CANCEL_CHECK_INTERVAL_LARGE = 10;   // Check every 10 completed people for large jobs (Redis is fast)
+const CANCEL_CHECK_REDIS_INTERVAL = 3;    // Check Redis every 3 completed people (very fast)
 
 // Key health cache TTL
 const KEY_HEALTH_CACHE_TTL_MS = 5000;     // Cache health status for 5 seconds
@@ -860,6 +886,7 @@ class GlobalRateLimiter {
   }
 
   // Acquire rate limit slot for a specific key with PER-KEY spacing enforcement
+  // Uses ATOMIC Redis operations to prevent race conditions across multiple workers
   // Waits for available slots instead of returning false (ensures no leads are skipped)
   async acquireForKey(apiKey) {
     const MAX_RETRIES = 200; // Max retries to prevent infinite loops (~50 seconds max wait)
@@ -869,66 +896,97 @@ class GlobalRateLimiter {
     const keySpacingMs = this.getKeySpacing(apiKey);
     const keyRequestsPer30s = this.getKeyRequestsPer30s(apiKey);
     
+    // Lock key for atomic reservation across all workers
+    const lockKey = `${this.keyPrefix}:lock:${getKeyHash(apiKey)}`;
+    
     while (retries < MAX_RETRIES) {
       const now = Date.now();
       const windowStart = Math.floor(now / this.windowMs) * this.windowMs;
       const keyWindowKey = this._getKeyWindowKey(apiKey, windowStart);
       const keyLastRequestKey = this._getKeyLastRequestKey(apiKey);
       
-      // STEP 1: Enforce PER-KEY spacing (primary constraint)
-      // This is the real rate limit - keySpacingMs determines req/sec for THIS key
-      const lastRequestTimeStr = await this.redis.get(keyLastRequestKey);
-      if (lastRequestTimeStr) {
-        const lastRequestTime = parseInt(lastRequestTimeStr);
-        if (!isNaN(lastRequestTime)) {
-          const timeSinceLastRequest = Date.now() - lastRequestTime;
-          if (timeSinceLastRequest < keySpacingMs) {
-            const waitTime = keySpacingMs - timeSinceLastRequest;
+      // STEP 1: Try to acquire distributed lock using SETNX (atomic across all workers)
+      // This prevents multiple workers from checking/updating lastRequestTime simultaneously
+      const lockAcquired = await this.redis.set(lockKey, now.toString(), {
+        NX: true,  // Only set if not exists (atomic)
+        PX: keySpacingMs + 50  // Lock expires after spacing + buffer (auto-release)
+      });
+      
+      if (!lockAcquired) {
+        // Another worker has the lock - wait a fraction of spacing time and retry
+        const waitTime = Math.max(20, Math.floor(keySpacingMs / 4));
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        retries++;
+        continue;
+      }
+      
+      try {
+        // STEP 2: We have the lock - check spacing constraint
+        const lastRequestTimeStr = await this.redis.get(keyLastRequestKey);
+        if (lastRequestTimeStr) {
+          const lastRequestTime = parseInt(lastRequestTimeStr);
+          if (!isNaN(lastRequestTime)) {
+            const timeSinceLastRequest = Date.now() - lastRequestTime;
+            if (timeSinceLastRequest < keySpacingMs) {
+              // Need to wait - release lock and retry after wait
+              await this.redis.del(lockKey);
+              const waitTime = keySpacingMs - timeSinceLastRequest + 10;
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+              retries++;
+              continue;
+            }
+          }
+        }
+        
+        // STEP 3: Check if we're at this key's per-30s limit (safety check)
+        const currentCountStr = await this.redis.get(keyWindowKey);
+        const currentCount = currentCountStr ? parseInt(currentCountStr) : 0;
+        
+        if (currentCount >= keyRequestsPer30s) {
+          // At limit - release lock and wait for window to roll over
+          await this.redis.del(lockKey);
+          const nextWindow = windowStart + this.windowMs;
+          const waitTime = nextWindow - Date.now() + 50;
+          
+          if (waitTime > 0 && waitTime < this.windowMs) {
             await new Promise(resolve => setTimeout(resolve, waitTime));
-            // After waiting, re-check the window (it may have rolled over)
+            retries++;
             continue;
           }
         }
-      }
-      
-      // STEP 2: Check if we're at this key's per-30s limit (safety check)
-      const currentCountStr = await this.redis.get(keyWindowKey);
-      const currentCount = currentCountStr ? parseInt(currentCountStr) : 0;
-      
-      if (currentCount >= keyRequestsPer30s) {
-        // At limit - wait for window to roll over
-        const nextWindow = windowStart + this.windowMs;
-        const waitTime = nextWindow - Date.now() + 50; // Add 50ms buffer
         
-        if (waitTime > 0 && waitTime < this.windowMs) {
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          retries++;
-          continue; // Retry with new window
+        // STEP 4: Increment counter atomically
+        const count = await this.redis.incr(keyWindowKey);
+        if (count === 1) {
+          await this.redis.expire(keyWindowKey, Math.ceil(this.windowMs / 1000) + 1);
         }
-      }
-      
-      // STEP 3: Increment counter atomically
-      const count = await this.redis.incr(keyWindowKey);
-      if (count === 1) {
-        await this.redis.expire(keyWindowKey, Math.ceil(this.windowMs / 1000) + 1);
-      }
-      
-      // STEP 4: If we exceeded after increment, decrement and wait for next window
-      if (count > keyRequestsPer30s) {
-        await this.redis.decr(keyWindowKey);
-        const nextWindow = windowStart + this.windowMs;
-        const waitTime = nextWindow - Date.now() + 50;
         
-        if (waitTime > 0 && waitTime < this.windowMs) {
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          retries++;
-          continue;
+        // STEP 5: If we exceeded after increment, decrement and wait for next window
+        if (count > keyRequestsPer30s) {
+          await this.redis.decr(keyWindowKey);
+          await this.redis.del(lockKey);
+          const nextWindow = windowStart + this.windowMs;
+          const waitTime = nextWindow - Date.now() + 50;
+          
+          if (waitTime > 0 && waitTime < this.windowMs) {
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            retries++;
+            continue;
+          }
         }
+        
+        // STEP 6: Success! Update last request time atomically
+        await this.redis.set(keyLastRequestKey, Date.now().toString(), 'EX', Math.ceil(this.windowMs / 1000));
+        
+        // Lock will auto-expire via PX, but we can delete it now since we're done
+        await this.redis.del(lockKey);
+        return true;
+        
+      } catch (err) {
+        // Make sure to release lock on error
+        await this.redis.del(lockKey).catch(() => {});
+        throw err;
       }
-      
-      // STEP 5: Success! Update last request time and return
-      await this.redis.set(keyLastRequestKey, Date.now().toString(), 'EX', Math.ceil(this.windowMs / 1000));
-      return true;
     }
     
     // If we've exhausted retries, something is wrong - but don't skip the lead
@@ -973,11 +1031,44 @@ let globalRateLimiter;
 let rateLimiter;
 
 // ============================================
-// GLOBAL ROUND-ROBIN VIA REDIS
+// KEY SELECTION STRATEGIES
 // ============================================
+
+// LOCAL ROUND-ROBIN (for dedicated mode)
+// Simple in-memory counter - no Redis coordination needed
+// Each dedicated worker manages its own keys independently
+let localRoundRobinIndex = 0;
+
+// Sort keys by speed (fastest first) for dedicated mode
+const MAILTESTER_API_KEYS_BY_SPEED = [...MAILTESTER_API_KEYS].sort((a, b) => {
+  const configA = KEY_CONFIGS.get(a);
+  const configB = KEY_CONFIGS.get(b);
+  return (configA?.spacingMs || 250) - (configB?.spacingMs || 250);
+});
+
+// Get next key using LOCAL counter (for dedicated workers)
+// Prioritizes faster keys - they unlock sooner so they get more requests naturally
+async function getNextKeyLocal() {
+  if (MAILTESTER_API_KEYS.length === 0) return null;
+  if (MAILTESTER_API_KEYS.length === 1) return MAILTESTER_API_KEYS[0];
+  
+  // Try fastest keys first
+  for (const key of MAILTESTER_API_KEYS_BY_SPEED) {
+    const healthy = await getCachedKeyHealth(key);
+    const remaining = await getCachedKeyRemaining(key);
+    
+    if (healthy && remaining > 0) {
+      return key;
+    }
+  }
+  
+  // Fallback to fastest key even if "unhealthy"
+  return MAILTESTER_API_KEYS_BY_SPEED[0];
+}
+
+// GLOBAL ROUND-ROBIN VIA REDIS (for shared mode)
 // All workers share the same round-robin counter via Redis
 // This ensures even distribution across all API keys
-
 const ROUND_ROBIN_KEY = 'mailtester:round_robin_index';
 
 // Get next key in round-robin fashion using GLOBAL Redis counter
@@ -1022,6 +1113,14 @@ async function getNextKeyRoundRobin() {
   return MAILTESTER_API_KEYS[globalIndex];
 }
 
+// Get next key - uses local selection for dedicated mode, global for shared
+async function getNextKey() {
+  if (WORKER_MODE === 'dedicated') {
+    return getNextKeyLocal();
+  }
+  return getNextKeyRoundRobin();
+}
+
 // Global rate limit function - acquires a slot from the combined pool
 async function rateLimit() {
   while (!globalRateLimiter) {
@@ -1049,7 +1148,8 @@ async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts =
   
   // Acquire a rate limit slot - acquireForKey now waits internally, so we just need to retry if it fails
   // (which should be rare, but we handle it gracefully)
-  let apiKey = forceKey || await getNextKeyRoundRobin();
+  // Uses getNextKey() which automatically selects local vs global strategy based on WORKER_MODE
+  let apiKey = forceKey || await getNextKey();
   let acquired = false;
   const MAX_ACQUIRE_ATTEMPTS = 10; // Safety limit (shouldn't be needed since acquireForKey waits)
   let acquireAttempts = 0;
@@ -1057,7 +1157,7 @@ async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts =
   // Try to acquire a slot - acquireForKey will wait internally for available slots
   while (!acquired && acquireAttempts < MAX_ACQUIRE_ATTEMPTS) {
     if (!apiKey) {
-      apiKey = await getNextKeyRoundRobin();
+      apiKey = await getNextKey();
     }
     
     if (!apiKey) {
@@ -1075,7 +1175,7 @@ async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts =
       if (acquireAttempts < MAX_ACQUIRE_ATTEMPTS) {
         // Wait a bit before trying next key (slots free up every 250ms)
         await new Promise(resolve => setTimeout(resolve, 100));
-        apiKey = await getNextKeyRoundRobin();
+        apiKey = await getNextKey();
       }
     }
   }
@@ -1588,16 +1688,25 @@ if (MAILTESTER_API_KEYS.length > 0) {
 } else {
   console.log(`Rate limit: 165 requests per 30 seconds (no keys configured)`);
 }
-console.log(`Using GLOBAL rate limiter with Redis-coordinated round-robin`);
-console.log(`All workers share the same key rotation via Redis (even distribution!)`);
+if (WORKER_MODE === 'dedicated') {
+  console.log(`Using LOCAL rate limiter (dedicated mode - no cross-worker coordination needed)`);
+  console.log(`This worker only processes jobs for client: ${DEDICATED_CLIENT_ID || 'N/A'}`);
+} else {
+  console.log(`Using GLOBAL rate limiter with Redis-coordinated round-robin`);
+  console.log(`All workers share the same key rotation via Redis (even distribution!)`);
+}
 console.log(`Error failover: Auto-switch to healthy key after ${ERROR_THRESHOLD} errors/min`);
 
 // Simple Redis list poller
 async function pollSimpleQueue() {
-  const queueName = 'simple-email-verification-queue';
+  // Use configurable queue name (from env var or default)
+  const queueName = VERIFICATION_QUEUE;
   let lastQueuePollLog = 0; // Track last time we logged "waiting for jobs"
   
-  console.log(`\n[${new Date().toISOString()}] 🚀 Starting simple queue poller for: ${queueName}`);
+  console.log(`\n[${new Date().toISOString()}] 🚀 Starting queue poller for: ${queueName}`);
+  if (WORKER_MODE === 'dedicated') {
+    console.log(`[${new Date().toISOString()}] 🔒 Dedicated mode - processing only jobs from this queue`);
+  }
   
   while (true) {
     try {
@@ -1867,9 +1976,74 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
   };
 }
 
+// ============================================
+// REDIS-BASED IMMEDIATE JOB CANCELLATION
+// ============================================
+// Workers check Redis for cancellation signal (instant) before falling back to DB (slow)
+// Backend writes to Redis when job is cancelled/deleted for immediate notification
+
+const JOB_CANCEL_KEY_PREFIX = 'job:cancelled:';
+const JOB_CANCEL_TTL = 3600; // 1 hour TTL for cancellation keys
+
+/**
+ * Check Redis for immediate cancellation signal
+ * This is checked very frequently during processing
+ */
+async function isJobCancelledInRedis(jobId) {
+  if (!redisClient.isReady) return false;
+  
+  try {
+    const cancelKey = `${JOB_CANCEL_KEY_PREFIX}${jobId}`;
+    const isCancelled = await redisClient.get(cancelKey);
+    return isCancelled === 'true' || isCancelled === '1';
+  } catch (err) {
+    // If Redis fails, don't block - fall through to DB check
+    return false;
+  }
+}
+
+/**
+ * Mark a job as cancelled in Redis (for immediate notification)
+ * Called by backend when job is cancelled/deleted
+ */
+async function markJobCancelledInRedis(jobId) {
+  if (!redisClient.isReady) return;
+  
+  try {
+    const cancelKey = `${JOB_CANCEL_KEY_PREFIX}${jobId}`;
+    await redisClient.set(cancelKey, 'true', 'EX', JOB_CANCEL_TTL);
+    console.log(`🚫 Job ${jobId} marked as cancelled in Redis for immediate notification`);
+  } catch (err) {
+    console.error('Error marking job cancelled in Redis:', err.message);
+  }
+}
+
+/**
+ * Clear cancellation signal from Redis (cleanup)
+ */
+async function clearJobCancelledInRedis(jobId) {
+  if (!redisClient.isReady) return;
+  
+  try {
+    const cancelKey = `${JOB_CANCEL_KEY_PREFIX}${jobId}`;
+    await redisClient.del(cancelKey);
+  } catch (err) {
+    // Ignore errors during cleanup
+  }
+}
+
 // Helper function to check if job is cancelled or deleted
+// First checks Redis (instant) then falls back to DB if needed
 // Check if job is cancelled OR deleted (both should stop processing)
 async function isJobCancelled(jobId) {
+  // FAST PATH: Check Redis first (instant notification from backend)
+  const cancelledInRedis = await isJobCancelledInRedis(jobId);
+  if (cancelledInRedis) {
+    console.log(`⚡ Job ${jobId} cancellation detected via Redis (instant)`);
+    return true;
+  }
+  
+  // SLOW PATH: Fall back to database check
   const result = await pgPool.query(
     'SELECT status FROM jobs WHERE id = $1',
     [jobId]
@@ -2031,8 +2205,16 @@ async function processJobFromQueue(jobId) {
             }
           }
           
-          // Check for cancellation periodically
+          // Check for cancellation - fast Redis check every few items, full check less often
           itemsSinceLastCancelCheck++;
+          // FAST: Check Redis every CANCEL_CHECK_REDIS_INTERVAL items (very fast, instant notification)
+          if (itemsSinceLastCancelCheck % CANCEL_CHECK_REDIS_INTERVAL === 0) {
+            if (await isJobCancelledInRedis(jobId)) {
+              console.log(`⚡ Job ${jobId} was cancelled (detected via Redis), stopping pipeline...`);
+              isCancelled = true;
+            }
+          }
+          // FULL: Check DB periodically as fallback (in case Redis missed the update)
           if (itemsSinceLastCancelCheck >= cancelCheckInterval) {
             itemsSinceLastCancelCheck = 0;
             if (await isJobCancelled(jobId)) {
@@ -2317,8 +2499,16 @@ async function processJobFromQueue(jobId) {
         savedApiCalls += result.savedCalls;
         completedPeopleCount++;
         
-        // Check for cancellation periodically
+        // Check for cancellation - fast Redis check every few items, full check less often
         itemsSinceLastCancelCheck++;
+        // FAST: Check Redis every CANCEL_CHECK_REDIS_INTERVAL items (very fast, instant notification)
+        if (itemsSinceLastCancelCheck % CANCEL_CHECK_REDIS_INTERVAL === 0) {
+          if (await isJobCancelledInRedis(jobId)) {
+            console.log(`⚡ Job ${jobId} was cancelled (detected via Redis), stopping pipeline...`);
+            isCancelled = true;
+          }
+        }
+        // FULL: Check DB periodically as fallback (in case Redis missed the update)
         if (itemsSinceLastCancelCheck >= cancelCheckInterval) {
           itemsSinceLastCancelCheck = 0;
           if (await isJobCancelled(jobId)) {

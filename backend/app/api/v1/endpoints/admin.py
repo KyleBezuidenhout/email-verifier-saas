@@ -16,6 +16,8 @@ from typing import List, Optional
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+import redis
+
 from app.db.session import get_db
 from app.models.user import User
 from app.models.job import Job
@@ -26,8 +28,12 @@ from app.services.error_logger import get_error_logger
 from app.services.omniverifier_client import OmniVerifierClient
 from app.services.vayne_usage_tracker import get_vayne_usage_tracker
 from app.services.vayne_client import get_vayne_client
+from app.core.config import settings
 
 router = APIRouter()
+
+# Redis client for job cancellation notifications
+redis_client = redis.from_url(settings.REDIS_URL)
 
 # GMT+2 timezone
 GMT_PLUS_2 = ZoneInfo("Africa/Johannesburg")
@@ -335,6 +341,15 @@ async def admin_delete_job(
         "job_type": job.job_type,
         "total_leads": job.total_leads
     }
+    
+    # IMMEDIATELY notify workers via Redis before deleting from DB
+    # This allows workers to stop processing this job ASAP
+    try:
+        cancel_key = f"job:cancelled:{job_id}"
+        redis_client.set(cancel_key, "true", ex=3600)  # 1 hour TTL
+    except Exception as e:
+        # Don't fail the delete if Redis is unavailable - just log
+        print(f"Warning: Could not notify workers via Redis: {e}")
     
     # Delete the job (leads remain in database with null job_id reference)
     db.delete(job)

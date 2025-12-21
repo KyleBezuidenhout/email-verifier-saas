@@ -34,6 +34,7 @@ from app.core.config import settings, ADMIN_EMAIL
 from app.models.job import Job
 from app.models.lead import Lead
 from app.models.user import User
+from app.models.worker_config import WorkerConfig
 from app.services.permutation import generate_email_permutations, normalize_domain, clean_first_name
 
 # Configure logging
@@ -261,9 +262,38 @@ s3_client = boto3.client(
     region_name='auto'
 )
 
-# Queue name
+# Queue names (defaults - can be overridden by worker_configs table)
 ENRICHMENT_QUEUE = "enrichment-job-creation"
-VERIFICATION_QUEUE = "simple-email-verification-queue"
+DEFAULT_VERIFICATION_QUEUE = "simple-email-verification-queue"
+
+
+def get_verification_queue_for_user(db, user_id) -> str:
+    """
+    Get the verification queue name for a user.
+    
+    Looks up the user's worker_config in the database.
+    If they have a dedicated config, returns their custom queue.
+    Otherwise, returns the default shared queue.
+    
+    This enables routing enrichment jobs to client-specific verification workers.
+    """
+    try:
+        config = db.query(WorkerConfig).filter(
+            WorkerConfig.user_id == user_id,
+            WorkerConfig.is_active == True
+        ).first()
+        
+        if config and config.verification_queue:
+            logger.info(f"🎯 User {user_id} has dedicated queue: {config.verification_queue}")
+            return config.verification_queue
+        
+        # No dedicated config - use shared queue
+        return DEFAULT_VERIFICATION_QUEUE
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Error looking up worker config for user {user_id}: {e}")
+        # Fall back to shared queue on error
+        return DEFAULT_VERIFICATION_QUEUE
 
 
 def normalize_header(h: str) -> str:
@@ -534,12 +564,14 @@ def process_enrichment_job(job_id: str) -> bool:
         
         logger.info(f"✅ Updated job {job_id}: status='{job.status}', total_leads={job.total_leads}")
         
-        # Queue job for verification
+        # Queue job for verification - route to client-specific queue if configured
         try:
             job_id_str = str(job.id)
-            redis_client.lpush(VERIFICATION_QUEUE, job_id_str)
-            queue_length = redis_client.llen(VERIFICATION_QUEUE)
-            logger.info(f"📤 QUEUED job {job_id} to verification queue '{VERIFICATION_QUEUE}' (queue length: {queue_length})")
+            # Look up user's dedicated queue (or use shared queue)
+            verification_queue = get_verification_queue_for_user(db, user.id)
+            redis_client.lpush(verification_queue, job_id_str)
+            queue_length = redis_client.llen(verification_queue)
+            logger.info(f"📤 QUEUED job {job_id} to verification queue '{verification_queue}' (queue length: {queue_length})")
         except Exception as e:
             logger.error(f"❌ Failed to queue job {job_id} for verification: {e}")
             # Don't fail the job - it can be manually queued later

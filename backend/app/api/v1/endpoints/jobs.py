@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
+from app.models.worker_config import WorkerConfig
 from app.api.dependencies import get_current_user, ADMIN_EMAIL
 from app.schemas.job import JobResponse, JobUploadResponse, JobProgressResponse
 from app.services.permutation import generate_email_permutations, normalize_domain, clean_first_name
@@ -25,6 +26,58 @@ import asyncio
 import json
 import time
 from urllib.parse import urlparse
+
+
+# ============================================
+# QUEUE ROUTING HELPERS
+# ============================================
+
+# Default queue names (can be overridden by worker_configs table)
+DEFAULT_ENRICHMENT_QUEUE = "enrichment-job-creation"
+DEFAULT_VERIFICATION_QUEUE = "simple-email-verification-queue"
+
+
+def get_verification_queue_for_user(db: Session, user_id) -> str:
+    """
+    Get the verification queue name for a user.
+    
+    Looks up the user's worker_config in the database.
+    If they have a dedicated config, returns their custom queue.
+    Otherwise, returns the default shared queue.
+    """
+    try:
+        config = db.query(WorkerConfig).filter(
+            WorkerConfig.user_id == user_id,
+            WorkerConfig.is_active == True
+        ).first()
+        
+        if config and config.verification_queue:
+            return config.verification_queue
+        
+        return DEFAULT_VERIFICATION_QUEUE
+    except Exception:
+        return DEFAULT_VERIFICATION_QUEUE
+
+
+def get_enrichment_queue_for_user(db: Session, user_id) -> str:
+    """
+    Get the enrichment queue name for a user.
+    
+    Most users use the shared enrichment queue, but this allows
+    for custom enrichment queues if needed.
+    """
+    try:
+        config = db.query(WorkerConfig).filter(
+            WorkerConfig.user_id == user_id,
+            WorkerConfig.is_active == True
+        ).first()
+        
+        if config and config.enrichment_queue:
+            return config.enrichment_queue
+        
+        return DEFAULT_ENRICHMENT_QUEUE
+    except Exception:
+        return DEFAULT_ENRICHMENT_QUEUE
 
 
 # ============================================
@@ -435,9 +488,10 @@ async def upload_file(
         )
     
     # Queue job for enrichment - enrichment worker will parse CSV, generate permutations, and create leads
+    # Note: Enrichment queue is typically shared - the enrichment worker routes to client-specific verification queues
     try:
         job_id_str = str(job.id)
-        queue_name = "enrichment-job-creation"
+        queue_name = get_enrichment_queue_for_user(db, current_user.id)
         redis_client.lpush(queue_name, job_id_str)
         queue_length = redis_client.llen(queue_name)
         print(f"📤 QUEUED job {job.id} to enrichment queue '{queue_name}' (queue length: {queue_length})")
@@ -598,10 +652,10 @@ async def upload_verify_file(
     db.bulk_save_objects(leads_to_create)
     db.commit()
     
-    # Queue job for processing
+    # Queue job for processing - route to client-specific queue if configured
     try:
         job_id_str = str(job.id)
-        queue_name = "simple-email-verification-queue"
+        queue_name = get_verification_queue_for_user(db, current_user.id)
         redis_client.lpush(queue_name, job_id_str)
         queue_length = redis_client.llen(queue_name)
         print(f"📤 QUEUED verification job {job.id} to Redis queue '{queue_name}' (queue length: {queue_length})")
@@ -1056,6 +1110,15 @@ async def delete_job(
             detail="Job not found"
         )
     
+    # IMMEDIATELY notify workers via Redis before deleting from DB
+    # This allows workers to stop processing this job ASAP
+    try:
+        cancel_key = f"job:cancelled:{job_id}"
+        redis_client.set(cancel_key, "true", ex=3600)  # 1 hour TTL
+    except Exception as e:
+        # Don't fail the delete if Redis is unavailable - just log
+        print(f"Warning: Could not notify workers via Redis: {e}")
+    
     # Only delete the job record, NOT the leads (keep leads forever)
     # Leads will remain in database but job reference will be removed
     db.delete(job)
@@ -1094,6 +1157,15 @@ async def cancel_job(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot cancel job with status: {job.status}"
         )
+    
+    # IMMEDIATELY notify workers via Redis BEFORE updating DB
+    # This allows workers to stop processing this job ASAP
+    try:
+        cancel_key = f"job:cancelled:{job_id}"
+        redis_client.set(cancel_key, "true", ex=3600)  # 1 hour TTL
+    except Exception as e:
+        # Don't fail the cancel if Redis is unavailable - just log
+        print(f"Warning: Could not notify workers via Redis: {e}")
     
     # Update job status to cancelled
     job.status = 'cancelled'
