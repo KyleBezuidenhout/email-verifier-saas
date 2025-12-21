@@ -25,10 +25,3 @@ class Job(Base):
     output_file_path = Column(Text)  # Path in Cloudflare R2
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     completed_at = Column(DateTime(timezone=True))
-
-
-
-
-
-
-

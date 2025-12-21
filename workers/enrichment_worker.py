@@ -520,6 +520,7 @@ def process_enrichment_job(job_id: str) -> bool:
             last_name = row['last_name']
             website = row['website']
             domain = normalize_domain(website)
+            # Use row's company_size if present, otherwise fall back to job's manual selection
             company_size = row.get('company_size') or default_company_size
             
             # Generate email permutations
