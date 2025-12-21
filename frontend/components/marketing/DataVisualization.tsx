@@ -76,7 +76,7 @@ export function DataVisualization() {
             y="100"
             width="80"
             height="100"
-            fill="#1C2536"
+            fill="#161A1F"
             stroke="#00FF85"
             strokeWidth="1.5"
           />
@@ -172,7 +172,7 @@ export function DataVisualization() {
             y="60"
             width="100"
             height="40"
-            fill="#1C2536"
+            fill="#161A1F"
             stroke="#00FF85"
             strokeWidth="1"
           />
@@ -185,7 +185,7 @@ export function DataVisualization() {
             y="110"
             width="100"
             height="40"
-            fill="#1C2536"
+            fill="#161A1F"
             stroke="#00FF85"
             strokeWidth="1"
           />
@@ -198,7 +198,7 @@ export function DataVisualization() {
             y="160"
             width="100"
             height="40"
-            fill="#1C2536"
+            fill="#161A1F"
             stroke="#00FF85"
             strokeWidth="1"
           />
@@ -211,7 +211,7 @@ export function DataVisualization() {
             y="210"
             width="100"
             height="40"
-            fill="#1C2536"
+            fill="#161A1F"
             stroke="#00FF85"
             strokeWidth="1"
           />

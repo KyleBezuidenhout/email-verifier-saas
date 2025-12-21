@@ -21,12 +21,12 @@ import {
 
 export function MarketingPage() {
   return (
-    <div className="flex flex-col min-h-screen bg-landing-bg">
+    <div className="flex flex-col min-h-screen bg-[#0D0F12]">
       <LandingHeader />
 
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="relative min-h-screen flex items-center bg-landing-bg bg-blueprint-grid pt-20">
+        <section className="relative min-h-screen flex items-center bg-[#0D0F12] bg-blueprint-grid pt-20">
           {/* Gradient overlay */}
           <div className="absolute inset-0 bg-gradient-mesh pointer-events-none" />
 
@@ -78,7 +78,7 @@ export function MarketingPage() {
         </section>
 
         {/* Problem Section - The "Old Way" */}
-        <section className="bg-landing-surface py-24 lg:py-32">
+        <section className="bg-[#121418] py-24 lg:py-32">
           <div className="max-w-7xl mx-auto px-6 lg:px-8">
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-bold text-landing-heading mb-4">
@@ -91,7 +91,7 @@ export function MarketingPage() {
 
             <div className="grid md:grid-cols-3 gap-8 lg:gap-12">
               {/* Problem Card 1 */}
-              <div className="group p-8 border border-landing-border bg-landing-bg/50 hover:border-landing-accent/30 transition-all duration-300">
+              <div className="group p-8 border border-landing-border bg-[#1A1E24] hover:border-landing-accent/30 transition-all duration-300">
                 <div className="w-14 h-14 border border-landing-muted/30 flex items-center justify-center mb-6 group-hover:border-landing-accent/50 transition-colors">
                   <RefreshCw className="w-7 h-7 text-landing-muted group-hover:text-landing-accent transition-colors" />
                 </div>
@@ -106,7 +106,7 @@ export function MarketingPage() {
               </div>
 
               {/* Problem Card 2 */}
-              <div className="group p-8 border border-landing-border bg-landing-bg/50 hover:border-landing-accent/30 transition-all duration-300">
+              <div className="group p-8 border border-landing-border bg-[#1A1E24] hover:border-landing-accent/30 transition-all duration-300">
                 <div className="w-14 h-14 border border-landing-muted/30 flex items-center justify-center mb-6 group-hover:border-landing-accent/50 transition-colors">
                   <Users className="w-7 h-7 text-landing-muted group-hover:text-landing-accent transition-colors" />
                 </div>
@@ -121,7 +121,7 @@ export function MarketingPage() {
               </div>
 
               {/* Problem Card 3 */}
-              <div className="group p-8 border border-landing-border bg-landing-bg/50 hover:border-landing-accent/30 transition-all duration-300">
+              <div className="group p-8 border border-landing-border bg-[#1A1E24] hover:border-landing-accent/30 transition-all duration-300">
                 <div className="w-14 h-14 border border-landing-muted/30 flex items-center justify-center mb-6 group-hover:border-landing-accent/50 transition-colors">
                   <TrendingUp className="w-7 h-7 text-landing-muted group-hover:text-landing-accent transition-colors" />
                 </div>
@@ -139,8 +139,8 @@ export function MarketingPage() {
         </section>
 
         {/* Solution Section - The "New Way" */}
-        <section className="bg-landing-bg bg-blueprint-grid py-24 lg:py-32 relative">
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-landing-bg/50 to-transparent pointer-events-none" />
+        <section className="bg-[#0D0F12] bg-blueprint-grid py-24 lg:py-32 relative">
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0D0F12]/50 to-transparent pointer-events-none" />
 
           <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
             <div className="text-center mb-16">
@@ -155,7 +155,7 @@ export function MarketingPage() {
 
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
               {/* Solution Card 1 */}
-              <div className="group p-8 border border-landing-border bg-landing-surface/50 hover:border-landing-accent/50 transition-all duration-300 hover:bg-landing-surface">
+              <div className="group p-8 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300 hover:bg-[#1A1E24]">
                 <div className="w-12 h-12 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
                   <Hammer className="w-6 h-6 text-landing-accent" />
                 </div>
@@ -169,7 +169,7 @@ export function MarketingPage() {
               </div>
 
               {/* Solution Card 2 */}
-              <div className="group p-8 border border-landing-border bg-landing-surface/50 hover:border-landing-accent/50 transition-all duration-300 hover:bg-landing-surface">
+              <div className="group p-8 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300 hover:bg-[#1A1E24]">
                 <div className="w-12 h-12 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
                   <Network className="w-6 h-6 text-landing-accent" />
                 </div>
@@ -183,7 +183,7 @@ export function MarketingPage() {
               </div>
 
               {/* Solution Card 3 */}
-              <div className="group p-8 border border-landing-border bg-landing-surface/50 hover:border-landing-accent/50 transition-all duration-300 hover:bg-landing-surface">
+              <div className="group p-8 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300 hover:bg-[#1A1E24]">
                 <div className="w-12 h-12 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
                   <Target className="w-6 h-6 text-landing-accent" />
                 </div>
@@ -197,7 +197,7 @@ export function MarketingPage() {
               </div>
 
               {/* Solution Card 4 */}
-              <div className="group p-8 border border-landing-border bg-landing-surface/50 hover:border-landing-accent/50 transition-all duration-300 hover:bg-landing-surface">
+              <div className="group p-8 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300 hover:bg-[#1A1E24]">
                 <div className="w-12 h-12 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
                   <Key className="w-6 h-6 text-landing-accent" />
                 </div>
@@ -213,7 +213,7 @@ export function MarketingPage() {
         </section>
 
         {/* How It Works Section */}
-        <section className="bg-landing-surface py-24 lg:py-32">
+        <section className="bg-[#121418] py-24 lg:py-32">
           <div className="max-w-7xl mx-auto px-6 lg:px-8">
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-bold text-landing-heading mb-4">
@@ -232,7 +232,7 @@ export function MarketingPage() {
               <div className="grid md:grid-cols-3 gap-8 lg:gap-16">
                 {/* Step 1 */}
                 <div className="relative text-center">
-                  <div className="relative z-10 w-20 h-20 mx-auto mb-8 bg-landing-bg border-2 border-landing-accent flex items-center justify-center">
+                  <div className="relative z-10 w-20 h-20 mx-auto mb-8 bg-[#0D0F12] border-2 border-landing-accent flex items-center justify-center">
                     <User className="w-8 h-8 text-landing-accent" />
                   </div>
                   <div className="text-landing-accent font-mono text-sm mb-2">
@@ -250,7 +250,7 @@ export function MarketingPage() {
 
                 {/* Step 2 */}
                 <div className="relative text-center">
-                  <div className="relative z-10 w-20 h-20 mx-auto mb-8 bg-landing-bg border-2 border-landing-accent flex items-center justify-center">
+                  <div className="relative z-10 w-20 h-20 mx-auto mb-8 bg-[#0D0F12] border-2 border-landing-accent flex items-center justify-center">
                     <Rocket className="w-8 h-8 text-landing-accent" />
                   </div>
                   <div className="text-landing-accent font-mono text-sm mb-2">
@@ -268,7 +268,7 @@ export function MarketingPage() {
 
                 {/* Step 3 */}
                 <div className="relative text-center">
-                  <div className="relative z-10 w-20 h-20 mx-auto mb-8 bg-landing-bg border-2 border-landing-accent flex items-center justify-center">
+                  <div className="relative z-10 w-20 h-20 mx-auto mb-8 bg-[#0D0F12] border-2 border-landing-accent flex items-center justify-center">
                     <div className="relative">
                       <Database className="w-8 h-8 text-landing-accent" />
                       <Crown className="w-4 h-4 text-landing-accent absolute -top-2 -right-2" />
@@ -291,7 +291,7 @@ export function MarketingPage() {
         </section>
 
         {/* Trust/Compliance Section */}
-        <section className="bg-landing-bg py-24 lg:py-32">
+        <section className="bg-[#0D0F12] py-24 lg:py-32">
           <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
             <div className="w-16 h-16 mx-auto mb-8 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center">
               <Shield className="w-8 h-8 text-landing-accent" />
@@ -334,7 +334,7 @@ export function MarketingPage() {
         </section>
 
         {/* Final CTA Section */}
-        <section className="bg-landing-surface py-24 lg:py-32">
+        <section className="bg-[#121418] py-24 lg:py-32">
           <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-landing-heading mb-6">
               Ready to Build Your
