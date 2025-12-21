@@ -15,7 +15,7 @@ module.exports = {
           'bg-alt': '#121418',        // Charcoal - Alternate sections
           'surface': '#161A1F',       // Subtle lift - Cards
           'card': '#1A1E24',          // Card backgrounds on alt sections
-          'accent': '#00FF85',        // Vibrant Green - CTAs and highlights
+          'accent': '#0099FF',        // Vibrant Blue - CTAs and highlights
           'text': '#F0F4F8',          // Off-White - Body text
           'heading': '#FFFFFF',       // Pure White - Main headings
           'border': '#252A31',        // Subtle border color (neutral gray)

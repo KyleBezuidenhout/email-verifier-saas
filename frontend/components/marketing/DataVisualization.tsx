@@ -27,9 +27,9 @@ export function DataVisualization() {
           
           {/* Gradient for flowing lines */}
           <linearGradient id="flowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#00FF85" stopOpacity="0" />
-            <stop offset="50%" stopColor="#00FF85" stopOpacity="1" />
-            <stop offset="100%" stopColor="#00FF85" stopOpacity="0" />
+            <stop offset="0%" stopColor="#0099FF" stopOpacity="0" />
+            <stop offset="50%" stopColor="#0099FF" stopOpacity="1" />
+            <stop offset="100%" stopColor="#0099FF" stopOpacity="0" />
           </linearGradient>
 
           {/* Glow filter */}
@@ -77,18 +77,18 @@ export function DataVisualization() {
             width="80"
             height="100"
             fill="#161A1F"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1.5"
           />
           
           {/* Inner processing lines */}
-          <line x1="150" y1="120" x2="210" y2="120" stroke="#00FF85" strokeWidth="0.5" opacity="0.5" />
-          <line x1="150" y1="140" x2="210" y2="140" stroke="#00FF85" strokeWidth="0.5" opacity="0.5" />
-          <line x1="150" y1="160" x2="210" y2="160" stroke="#00FF85" strokeWidth="0.5" opacity="0.5" />
-          <line x1="150" y1="180" x2="210" y2="180" stroke="#00FF85" strokeWidth="0.5" opacity="0.5" />
+          <line x1="150" y1="120" x2="210" y2="120" stroke="#0099FF" strokeWidth="0.5" opacity="0.5" />
+          <line x1="150" y1="140" x2="210" y2="140" stroke="#0099FF" strokeWidth="0.5" opacity="0.5" />
+          <line x1="150" y1="160" x2="210" y2="160" stroke="#0099FF" strokeWidth="0.5" opacity="0.5" />
+          <line x1="150" y1="180" x2="210" y2="180" stroke="#0099FF" strokeWidth="0.5" opacity="0.5" />
           
           {/* Processing indicator */}
-          <circle cx="180" cy="150" r="15" fill="none" stroke="#00FF85" strokeWidth="1" opacity="0.8">
+          <circle cx="180" cy="150" r="15" fill="none" stroke="#0099FF" strokeWidth="1" opacity="0.8">
             <animate
               attributeName="r"
               values="12;18;12"
@@ -102,14 +102,14 @@ export function DataVisualization() {
               repeatCount="indefinite"
             />
           </circle>
-          <circle cx="180" cy="150" r="6" fill="#00FF85" opacity="0.9" />
+          <circle cx="180" cy="150" r="6" fill="#0099FF" opacity="0.9" />
         </g>
 
         {/* Flowing lines from chaos to processor */}
         <g>
           <path
             d="M 90 70 Q 115 90 140 120"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
             fill="none"
             strokeDasharray="4,4"
@@ -124,7 +124,7 @@ export function DataVisualization() {
           </path>
           <path
             d="M 85 150 Q 110 150 140 150"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
             fill="none"
             strokeDasharray="4,4"
@@ -139,7 +139,7 @@ export function DataVisualization() {
           </path>
           <path
             d="M 90 230 Q 115 200 140 180"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
             fill="none"
             strokeDasharray="4,4"
@@ -162,7 +162,7 @@ export function DataVisualization() {
             y1="150"
             x2="280"
             y2="150"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="2"
           />
           
@@ -173,10 +173,10 @@ export function DataVisualization() {
             width="100"
             height="40"
             fill="#161A1F"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
           />
-          <text x="295" y="85" fill="#00FF85" fontSize="10" fontFamily="monospace">
+          <text x="295" y="85" fill="#0099FF" fontSize="10" fontFamily="monospace">
             LEAD_001
           </text>
 
@@ -186,10 +186,10 @@ export function DataVisualization() {
             width="100"
             height="40"
             fill="#161A1F"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
           />
-          <text x="295" y="135" fill="#00FF85" fontSize="10" fontFamily="monospace">
+          <text x="295" y="135" fill="#0099FF" fontSize="10" fontFamily="monospace">
             LEAD_002
           </text>
 
@@ -199,10 +199,10 @@ export function DataVisualization() {
             width="100"
             height="40"
             fill="#161A1F"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
           />
-          <text x="295" y="185" fill="#00FF85" fontSize="10" fontFamily="monospace">
+          <text x="295" y="185" fill="#0099FF" fontSize="10" fontFamily="monospace">
             LEAD_003
           </text>
 
@@ -212,38 +212,38 @@ export function DataVisualization() {
             width="100"
             height="40"
             fill="#161A1F"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
           />
-          <text x="295" y="235" fill="#00FF85" fontSize="10" fontFamily="monospace">
+          <text x="295" y="235" fill="#0099FF" fontSize="10" fontFamily="monospace">
             LEAD_004
           </text>
 
           {/* Connection lines to structured data */}
           <path
             d="M 280 150 L 260 80 L 280 80"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
             fill="none"
             opacity="0.6"
           />
           <path
             d="M 280 150 L 265 130 L 280 130"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
             fill="none"
             opacity="0.6"
           />
           <path
             d="M 280 150 L 265 180 L 280 180"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
             fill="none"
             opacity="0.6"
           />
           <path
             d="M 280 150 L 260 230 L 280 230"
-            stroke="#00FF85"
+            stroke="#0099FF"
             strokeWidth="1"
             fill="none"
             opacity="0.6"
@@ -257,10 +257,10 @@ export function DataVisualization() {
             y="265"
             width="80"
             height="24"
-            fill="#00FF85"
+            fill="#0099FF"
             opacity="0.15"
           />
-          <text x="310" y="281" fill="#00FF85" fontSize="9" fontFamily="monospace" fontWeight="bold">
+          <text x="310" y="281" fill="#0099FF" fontSize="9" fontFamily="monospace" fontWeight="bold">
             YOUR DATA
           </text>
         </g>
@@ -269,7 +269,7 @@ export function DataVisualization() {
         <text x="40" y="285" fill="#6B7280" fontSize="10" fontFamily="Inter, sans-serif">
           Shared Pool
         </text>
-        <text x="155" y="220" fill="#00FF85" fontSize="10" fontFamily="Inter, sans-serif">
+        <text x="155" y="220" fill="#0099FF" fontSize="10" fontFamily="Inter, sans-serif">
           Engine
         </text>
         <text x="295" y="50" fill="#F0F4F8" fontSize="10" fontFamily="Inter, sans-serif">
