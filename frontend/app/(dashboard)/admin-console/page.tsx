@@ -126,7 +126,7 @@ export default function AdminConsolePage() {
   // Check if user is admin
   useEffect(() => {
     if (!authLoading && user && !user.is_admin) {
-      router.push("/dashboard");
+      router.push("/sales-nav-scraper");
     }
   }, [user, authLoading, router]);
 

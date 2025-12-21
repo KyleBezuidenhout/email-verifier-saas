@@ -421,3 +421,8 @@ chmod +x test_vayne_endpoints.sh
 - **OpenAPI Schema**: `https://api.billionverifier.io/api/openapi.json`
 - **Backend Logs**: Check for route registration messages on startup
 
+
+
+
+
+

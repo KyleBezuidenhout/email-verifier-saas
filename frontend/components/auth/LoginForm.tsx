@@ -22,7 +22,7 @@ export function LoginForm() {
 
     try {
       await login({ email, password, rememberMe });
-      router.push("/dashboard");
+      router.push("/sales-nav-scraper");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid email or password");
     } finally {

@@ -11,7 +11,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.push("/dashboard");
+      router.push("/sales-nav-scraper");
     }
   }, [user, loading, router]);
 
@@ -27,7 +27,7 @@ export default function Home() {
   }
 
   if (user) {
-    return null; // Will redirect to dashboard
+    return null; // Will redirect to sales-nav-scraper
   }
 
   return <MarketingPage />;

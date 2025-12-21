@@ -57,7 +57,7 @@ export function RegisterForm() {
         full_name: formData.full_name,
         company_name: formData.company_name || undefined,
       });
-      router.push("/dashboard");
+      router.push("/sales-nav-scraper");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
