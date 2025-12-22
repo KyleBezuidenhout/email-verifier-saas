@@ -546,10 +546,26 @@ class ApiClient {
     });
   }
 
-  // Note: Status polling removed - orders are tracked via database, not Vayne API polling
-  
   async getVayneOrder(orderId: string): Promise<VayneOrder> {
     return this.request(`/api/v1/vayne/orders/${orderId}`);
+  }
+
+  /**
+   * Poll Vayne API for live order status (UI-only update, does NOT update database).
+   * Use this for displaying real-time scraping progress in the UI.
+   */
+  async pollVayneOrderStatus(orderId: string): Promise<{
+    order_id: string;
+    vayne_order_id: string | null;
+    status: string;
+    scraping_status: string | null;
+    leads_found: number;
+    leads_qualified: number;
+    progress_percentage: number;
+    from_database: boolean;
+    error?: string;
+  }> {
+    return this.request(`/api/v1/vayne/orders/${orderId}/poll-status`);
   }
 
   async exportVayneOrder(orderId: string): Promise<{ status: string; message: string; csv_file_path?: string }> {

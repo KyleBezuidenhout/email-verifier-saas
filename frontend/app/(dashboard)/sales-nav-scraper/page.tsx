@@ -128,6 +128,82 @@ export default function SalesNavScraperPage() {
     loadInitialData();
   }, [loadCredits, loadScrapeHistory]);
 
+  // Poll Vayne API for live status updates every 5 minutes (UI-only, does not update database)
+  useEffect(() => {
+    const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+    const pollOrderStatuses = async () => {
+      // Use functional update to access latest state without causing re-renders
+      setScrapeHistoryOrders((prevOrders) => {
+        // Get all orders that are not completed or failed
+        const ordersToPolls = prevOrders.filter(
+          (order) => order.status !== "completed" && order.status !== "failed"
+        );
+
+        if (ordersToPolls.length === 0) {
+          return prevOrders; // Return unchanged
+        }
+
+        console.log(`[Polling] Checking status for ${ordersToPolls.length} active orders`);
+
+        // Poll each order asynchronously (fire and forget inside this sync callback)
+        Promise.allSettled(
+          ordersToPolls.map(async (order) => {
+            try {
+              const pollResult = await apiClient.pollVayneOrderStatus(order.id);
+              return { orderId: order.id, pollResult };
+            } catch (err) {
+              console.error(`[Polling] Failed to poll order ${order.id}:`, err);
+              return null;
+            }
+          })
+        ).then((statusUpdates) => {
+          // Update UI state with poll results (does NOT update database)
+          setScrapeHistoryOrders((currentOrders) => {
+            return currentOrders.map((order) => {
+              const updateResult = statusUpdates.find(
+                (result) =>
+                  result.status === "fulfilled" &&
+                  result.value?.orderId === order.id
+              );
+
+              if (updateResult && updateResult.status === "fulfilled" && updateResult.value?.pollResult) {
+                const { pollResult } = updateResult.value;
+                console.log(`[Polling] Order ${order.id} status: ${pollResult.status}, scraping_status: ${pollResult.scraping_status}`);
+                
+                // Only update UI fields - this does NOT affect the database
+                return {
+                  ...order,
+                  status: pollResult.status as 'queued' | 'pending' | 'processing' | 'completed' | 'failed',
+                  scraping_status: pollResult.scraping_status as 'initialization' | 'scraping' | 'finished' | 'failed' | undefined,
+                  leads_found: pollResult.leads_found,
+                  leads_qualified: pollResult.leads_qualified,
+                  progress_percentage: pollResult.progress_percentage,
+                };
+              }
+              return order;
+            });
+          });
+        });
+
+        return prevOrders; // Return unchanged for now, async update will follow
+      });
+    };
+
+    // Initial poll after a short delay (let the page load first)
+    const initialTimeout = setTimeout(() => {
+      pollOrderStatuses();
+    }, 5000); // 5 seconds after mount
+
+    // Set up interval for subsequent polls
+    const intervalId = setInterval(pollOrderStatuses, POLL_INTERVAL);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(intervalId);
+    };
+  }, []); // Empty dependency array - only run once on mount
+
   // Debounced URL validation
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;

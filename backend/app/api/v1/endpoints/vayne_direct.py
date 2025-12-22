@@ -16,6 +16,7 @@ from app.api.v1.endpoints.vayne import (
     url_check,
     list_orders,
     get_order,
+    poll_order_status,
     delete_order,
     download_order_csv,
     create_order,
@@ -39,4 +40,5 @@ router.add_api_route("/orders", list_orders, methods=["GET"])
 router.add_api_route("/orders", create_order, methods=["POST"], response_model=CreateOrderResponse)
 router.add_api_route("/orders/{order_id}", get_order, methods=["GET"], response_model=OrderStatusResponse)
 router.add_api_route("/orders/{order_id}", delete_order, methods=["DELETE"])
+router.add_api_route("/orders/{order_id}/poll-status", poll_order_status, methods=["GET"])
 router.add_api_route("/orders/{order_id}/download", download_order_csv, methods=["GET"])

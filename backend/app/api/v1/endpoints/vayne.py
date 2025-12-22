@@ -364,6 +364,113 @@ async def get_order(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/orders/{order_id}/poll-status")
+async def poll_order_status(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Poll Vayne API for live order status (UI-only update, does NOT update database).
+    This endpoint is for frontend polling to display real-time status without
+    affecting the database status that the vayne queue worker relies on.
+    """
+    try:
+        # Get order from database to find vayne_order_id
+        order = db.query(VayneOrder).filter(
+            VayneOrder.id == order_id,
+            VayneOrder.user_id == current_user.id
+        ).first()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        # If order is already completed or failed in DB, return that status
+        if order.status in ["completed", "failed"]:
+            return {
+                "order_id": str(order.id),
+                "vayne_order_id": order.vayne_order_id,
+                "status": order.status,
+                "scraping_status": "finished" if order.status == "completed" else "failed",
+                "leads_found": getattr(order, 'leads_found', 0) or 0,
+                "leads_qualified": getattr(order, 'leads_qualified', 0) or 0,
+                "progress_percentage": 100 if order.status == "completed" else 0,
+                "from_database": True,
+            }
+        
+        # Poll Vayne API for live status
+        if not order.vayne_order_id:
+            logger.warning(f"Order {order_id} has no vayne_order_id")
+            return {
+                "order_id": str(order.id),
+                "vayne_order_id": None,
+                "status": order.status,
+                "scraping_status": None,
+                "leads_found": 0,
+                "leads_qualified": 0,
+                "progress_percentage": 0,
+                "from_database": True,
+            }
+        
+        try:
+            vayne_response = vayne_client.get_order(order.vayne_order_id)
+            logger.info(f"Vayne API poll response for order {order_id}: {vayne_response}")
+            
+            # Extract status from Vayne response
+            vayne_order = vayne_response.get("order", vayne_response)
+            scraping_status = vayne_order.get("status", "unknown")  # e.g. "initialization", "scraping", "finished", "failed"
+            leads_found = vayne_order.get("leads_found", 0) or 0
+            leads_qualified = vayne_order.get("leads_qualified", 0) or 0
+            
+            # Calculate progress percentage based on scraping_status
+            progress_map = {
+                "initialization": 10,
+                "scraping": 50,
+                "finished": 100,
+                "failed": 0,
+            }
+            progress_percentage = progress_map.get(scraping_status, 25)
+            
+            # Map Vayne scraping_status to our internal status for UI display
+            # NOTE: This is for UI display only - does NOT update database
+            ui_status = order.status  # Keep existing DB status
+            if scraping_status == "finished":
+                ui_status = "completed"
+            elif scraping_status == "failed":
+                ui_status = "failed"
+            elif scraping_status in ["initialization", "scraping"]:
+                ui_status = "processing"
+            
+            return {
+                "order_id": str(order.id),
+                "vayne_order_id": order.vayne_order_id,
+                "status": ui_status,  # Mapped status for UI
+                "scraping_status": scraping_status,  # Raw Vayne status
+                "leads_found": leads_found,
+                "leads_qualified": leads_qualified,
+                "progress_percentage": progress_percentage,
+                "from_database": False,
+            }
+        except Exception as vayne_error:
+            logger.error(f"Failed to poll Vayne API for order {order_id}: {str(vayne_error)}")
+            # Fall back to database status if Vayne API fails
+            return {
+                "order_id": str(order.id),
+                "vayne_order_id": order.vayne_order_id,
+                "status": order.status,
+                "scraping_status": None,
+                "leads_found": getattr(order, 'leads_found', 0) or 0,
+                "leads_qualified": getattr(order, 'leads_qualified', 0) or 0,
+                "progress_percentage": 0,
+                "from_database": True,
+                "error": str(vayne_error),
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error polling order status: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.delete("/orders/{order_id}")
 async def delete_order(
     order_id: str,
