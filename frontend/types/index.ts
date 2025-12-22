@@ -105,8 +105,8 @@ export interface VayneUrlCheck {
 
 export interface VayneOrder {
   id: string;
-  status: 'queued' | 'pending' | 'processing' | 'completed' | 'failed';
-  scraping_status?: 'initialization' | 'scraping' | 'finished' | 'failed';  // Direct from Vayne API
+  status: 'queued' | 'pending' | 'processing' | 'completed' | 'failed' | 'initialization' | 'scraping' | 'segmenting';
+  scraping_status?: 'initialization' | 'scraping' | 'segmenting' | 'finished' | 'failed';  // Direct from Vayne API
   sales_nav_url: string;
   export_format: 'simple' | 'advanced';
   only_qualified: boolean;

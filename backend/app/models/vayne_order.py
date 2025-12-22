@@ -13,7 +13,9 @@ class VayneOrder(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     vayne_order_id = Column(String(255), unique=True, nullable=True, index=True)  # Vayne's order ID (e.g., "123")
     status = Column(String(50))
-    url = Column(Text)
+    sales_nav_url = Column(Text)  # Sales Navigator URL to scrape
+    url = Column(Text)  # Alias for backwards compatibility
+    linkedin_cookie = Column(Text, nullable=True)  # Stored temporarily until processed by queue worker
     export_format = Column(String(20))
     qualified_leads_only = Column(Boolean, default=False)
     estimated_leads = Column(Integer)

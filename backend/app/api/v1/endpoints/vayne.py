@@ -211,62 +211,39 @@ async def create_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create a new Vayne order"""
+    """
+    Create a new Vayne order (queued for processing).
+    
+    Orders are stored locally with status='queued' and processed sequentially
+    by the queue worker. This prevents cookie conflicts when multiple orders
+    are submitted back-to-back.
+    
+    The queue worker will:
+    1. Pick up the oldest queued order when no active orders exist
+    2. Update the LinkedIn cookie with Vayne API
+    3. Create the scraping order with Vayne API
+    4. Update the database with vayne_order_id and status
+    """
     try:
-        # Step 1: Update LinkedIn session with Vayne API using the provided cookie
-        logger.info(f"Updating LinkedIn session for user {current_user.id}")
-        try:
-            vayne_client.update_linkedin_session(payload.linkedin_cookie)
-            logger.info("LinkedIn session updated successfully")
-        except Exception as auth_error:
-            logger.error(f"Failed to update LinkedIn session: {str(auth_error)}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"LinkedIn authentication failed: {str(auth_error)}"
-            )
+        # Validate required fields
+        if not payload.sales_nav_url:
+            raise HTTPException(status_code=400, detail="Sales Navigator URL is required")
+        if not payload.linkedin_cookie:
+            raise HTTPException(status_code=400, detail="LinkedIn cookie is required")
         
-        # Step 2: Create order with Vayne API
-        logger.info(f"Creating Vayne order for URL: {payload.sales_nav_url}")
-        try:
-            # Make order name unique by appending timestamp (Vayne requires unique names)
-            base_name = payload.targeting or "Untitled Order"
-            unique_name = f"{base_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-            
-            vayne_response = vayne_client.create_order(
-                url=payload.sales_nav_url,
-                name=unique_name,
-                limit=None,  # No limit
-                email_enrichment=False,
-                saved_search=False,
-                secondary_webhook="",
-                export_format="simple",
-            )
-            logger.info(f"Vayne order created: {vayne_response}")
-        except Exception as vayne_error:
-            error_msg = str(vayne_error)
-            logger.error(f"Failed to create Vayne order: {error_msg}")
-            # Pass through Vayne's error message (e.g., insufficient credits)
-            raise HTTPException(status_code=400, detail=error_msg)
+        logger.info(f"📝 Creating queued order for user {current_user.id}")
+        logger.info(f"   URL: {payload.sales_nav_url[:50]}...")
+        logger.info(f"   Targeting: {payload.targeting or 'Untitled Order'}")
         
-        # Extract the vayne_order_id from response
-        # Vayne API returns: { "order": { "id": 123, ... } }
-        logger.info(f"📥 Full Vayne API response: {vayne_response}")
-        vayne_order_data = vayne_response.get("order", {})
-        vayne_order_id = str(vayne_order_data.get("id", ""))
-        
-        logger.info(f"📋 Extracted vayne_order_id: '{vayne_order_id}' (type: {type(vayne_order_id).__name__})")
-        
-        if not vayne_order_id:
-            logger.error(f"❌ No order ID in Vayne response: {vayne_response}")
-            raise HTTPException(status_code=400, detail="Failed to get order ID from Vayne")
-        
-        # Step 3: Create order in our database with vayne_order_id
-        logger.info(f"💾 Creating VayneOrder with vayne_order_id='{vayne_order_id}', status='processing'")
+        # Create order in database with status='queued'
+        # The queue worker will process this and send to Vayne when ready
         order = VayneOrder(
             user_id=current_user.id,
-            vayne_order_id=vayne_order_id,
-            status="processing",
-            url=payload.sales_nav_url,
+            vayne_order_id=None,  # Will be set by queue worker when processed
+            status="queued",  # Order is queued for processing
+            sales_nav_url=payload.sales_nav_url,  # Store the Sales Nav URL
+            url=payload.sales_nav_url,  # Also store in url for backwards compatibility
+            linkedin_cookie=payload.linkedin_cookie,  # Store cookie for queue worker
             targeting=payload.targeting or "Untitled Order",
         )
         
@@ -274,15 +251,14 @@ async def create_order(
         db.commit()
         db.refresh(order)
         
-        # Verify the vayne_order_id was saved correctly
-        logger.info(f"✅ Order saved to DB - id: {order.id}, vayne_order_id: {order.vayne_order_id}, status: {order.status}")
+        logger.info(f"✅ Order queued successfully - id: {order.id}, status: {order.status}")
         
         return {
             "success": True,
             "order_id": str(order.id),
-            "vayne_order_id": vayne_order_id,
+            "vayne_order_id": "",  # Not yet assigned - queue worker will set this
             "status": order.status,
-            "message": f"Order created successfully. Vayne order ID: {vayne_order_id}",
+            "message": "Order queued successfully. It will be processed when the scraper is available.",
         }
     except HTTPException:
         raise
@@ -477,7 +453,13 @@ async def delete_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete an order from database"""
+    """
+    Mark an order as deleted (soft delete).
+    
+    The order is not physically removed from the database - its status is 
+    updated to 'deleted'. This ensures proper tracking for queue management
+    and billing purposes.
+    """
     try:
         order = db.query(VayneOrder).filter(
             VayneOrder.id == order_id,
@@ -486,15 +468,66 @@ async def delete_order(
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
         
-        db.delete(order)
+        # Update status to 'deleted' instead of physically deleting
+        old_status = order.status
+        order.status = "deleted"
         db.commit()
         
-        return {"message": "Order deleted successfully"}
+        logger.info(f"Order {order_id} marked as deleted (was: {old_status})")
+        
+        return {"message": "Order deleted successfully", "order_id": str(order_id)}
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error deleting order: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/orders/{order_id}/cancel")
+async def cancel_order(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Cancel a scraping order.
+    
+    Sets the order status to 'cancelled'. This is useful for stopping
+    queued orders before they are processed, or marking active orders
+    as cancelled (note: active scraping jobs on Vayne cannot be stopped).
+    """
+    try:
+        order = db.query(VayneOrder).filter(
+            VayneOrder.id == order_id,
+            VayneOrder.user_id == current_user.id
+        ).first()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        # Check if order can be cancelled
+        if order.status in ("completed", "deleted", "cancelled"):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot cancel order with status '{order.status}'"
+            )
+        
+        old_status = order.status
+        order.status = "cancelled"
+        db.commit()
+        
+        logger.info(f"Order {order_id} cancelled (was: {old_status})")
+        
+        return {
+            "message": "Order cancelled successfully",
+            "order_id": str(order_id),
+            "previous_status": old_status,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error cancelling order: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 

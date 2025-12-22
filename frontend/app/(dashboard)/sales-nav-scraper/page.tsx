@@ -71,12 +71,14 @@ export default function SalesNavScraperPage() {
         hasMore = response.orders.length === limit;
       }
 
-      // Sort by date, newest first - show ALL orders (not just completed)
-      const sortedOrders = allOrders.sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
+      // Filter out deleted orders and sort by date, newest first
+      const visibleOrders = allOrders
+        .filter((order) => order.status !== "deleted")
+        .sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
 
-      setScrapeHistoryOrders(sortedOrders);
+      setScrapeHistoryOrders(visibleOrders);
     } catch (err) {
       console.error("Failed to load scrape history:", err);
     } finally {
@@ -128,9 +130,9 @@ export default function SalesNavScraperPage() {
     loadInitialData();
   }, [loadCredits, loadScrapeHistory]);
 
-  // Poll Vayne API for live status updates every 5 minutes (UI-only, does not update database)
+  // Poll Vayne API for live status updates every 60 seconds (UI-only, does not update database)
   useEffect(() => {
-    const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
+    const POLL_INTERVAL = 60 * 1000; // 60 seconds in milliseconds
 
     const pollOrderStatuses = async () => {
       // Use functional update to access latest state without causing re-renders
@@ -258,10 +260,10 @@ export default function SalesNavScraperPage() {
       
       const response = await apiClient.createVayneOrder(orderData);
       
-      // Immediately add a "processing" order to the UI (no polling, no fetching)
+      // Immediately add a "queued" order to the UI (order will be processed by queue worker)
       const newOrder: VayneOrder = {
         id: response.order_id,
-        status: "processing", // Always show as processing initially
+        status: "queued", // Orders start as queued until processed by queue worker
         targeting: jobName.trim(),
         created_at: new Date().toISOString(),
         leads_found: 0,
@@ -270,7 +272,7 @@ export default function SalesNavScraperPage() {
         sales_nav_url: salesNavUrl,
         export_format: "simple",
         only_qualified: false,
-        vayne_order_id: "", // Will be set by backend
+        vayne_order_id: "", // Will be set by queue worker when processing
       };
       
       // Add to top of history list
@@ -674,7 +676,7 @@ export default function SalesNavScraperPage() {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
-                    Leads Found
+                    Progress
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
                     Actions
@@ -694,16 +696,52 @@ export default function SalesNavScraperPage() {
                       <span
                         className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
                           order.status === "completed" ? "bg-green-500/20 text-green-400" :
-                          order.status === "processing" ? "bg-yellow-500/20 text-yellow-400" :
+                          order.status === "queued" ? "bg-blue-500/20 text-blue-400" :
+                          order.status === "processing" || order.status === "initialization" || order.status === "scraping" || order.status === "segmenting" ? "bg-yellow-500/20 text-yellow-400" :
                           order.status === "failed" ? "bg-red-500/20 text-red-400" :
-                          "bg-blue-500/20 text-blue-400"
+                          order.status === "pending" ? "bg-purple-500/20 text-purple-400" :
+                          "bg-gray-500/20 text-gray-400"
                         }`}
                       >
-                        {order.status === "processing" ? "Processing" : order.status}
+                        {order.status === "processing" || order.status === "initialization" || order.status === "scraping" || order.status === "segmenting" ? "Processing" : 
+                         order.status === "queued" ? "Queued" :
+                         order.status === "pending" ? "Pending" :
+                         order.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
-                      {order.status === "processing" ? "—" : (order.leads_found?.toLocaleString() || "N/A")}
+                      {order.status === "completed" ? (
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span className="text-green-400">Complete</span>
+                        </div>
+                      ) : order.status === "queued" ? (
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-blue-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="text-blue-400">In Queue</span>
+                        </div>
+                      ) : order.status === "failed" ? (
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          <span className="text-red-400">Failed</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 min-w-[120px]">
+                          <div className="flex-1 bg-apple-bg rounded-full h-2 overflow-hidden">
+                            <div 
+                              className="bg-apple-accent h-2 rounded-full transition-all duration-500 ease-out"
+                              style={{ width: `${order.progress_percentage || 5}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-apple-text-muted w-8">{order.progress_percentage || 0}%</span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-3">

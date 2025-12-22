@@ -613,9 +613,15 @@ class ApiClient {
     return this.request(url);
   }
 
-  async deleteVayneOrder(orderId: string): Promise<void> {
-    return this.request<void>(`/api/v1/vayne/orders/${orderId}`, {
+  async deleteVayneOrder(orderId: string): Promise<{ message: string; order_id: string }> {
+    return this.request<{ message: string; order_id: string }>(`/api/v1/vayne/orders/${orderId}`, {
       method: "DELETE",
+    });
+  }
+
+  async cancelVayneOrder(orderId: string): Promise<{ message: string; order_id: string; previous_status: string }> {
+    return this.request<{ message: string; order_id: string; previous_status: string }>(`/api/v1/vayne/orders/${orderId}/cancel`, {
+      method: "POST",
     });
   }
 

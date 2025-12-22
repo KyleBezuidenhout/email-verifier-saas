@@ -68,15 +68,21 @@ def log(message: str, level: str = "info"):
 def get_active_order(db):
     """
     Get the oldest active order that has been sent to Vayne.
-    Only checks orders with vayne_order_id IS NOT NULL and status IN ('pending', 'initialization', 'scraping').
-    'pending', 'initialization', and 'scraping' mean order was created with Vayne but not yet completed.
+    Only checks orders with vayne_order_id IS NOT NULL and status indicating active processing.
+    'pending', 'initialization', 'scraping', and 'segmenting' mean order was created with Vayne but not yet completed.
     These are the possible responses from Vayne's order creation API and status updates.
+    
+    Orders with these statuses are NOT considered active (terminal states):
+    - completed: Order finished successfully
+    - failed: Order failed with an error
+    - cancelled: User cancelled the order
+    - deleted: User deleted the order
     """
     result = db.execute(
         text("""
             SELECT * FROM vayne_orders 
             WHERE vayne_order_id IS NOT NULL 
-            AND status IN ('pending', 'initialization', 'scraping')
+            AND status IN ('pending', 'initialization', 'scraping', 'segmenting')
             ORDER BY created_at ASC 
             LIMIT 1
         """)
@@ -314,11 +320,17 @@ async def wait_for_active_order_completion(db, active_order):
         elif status == "failed":
             log(f"Active order {order_id} failed, proceeding to next queued order", "error")
             return True  # Treat failed as "done" so we can process next order
+        elif status == "cancelled":
+            log(f"Active order {order_id} was cancelled, proceeding to next queued order", "info")
+            return True  # Treat cancelled as "done" so we can process next order
+        elif status == "deleted":
+            log(f"Active order {order_id} was deleted, proceeding to next queued order", "info")
+            return True  # Treat deleted as "done" so we can process next order
         elif status is None:
             log(f"Active order {order_id} not found in database, proceeding", "wait")
             return True  # Order doesn't exist, proceed
         
-        # Status is still initialization (not completed yet), wait and check again
+        # Status is still active (initialization, scraping, segmenting), wait and check again
         # n8n workflow will update status to "completed" when done
         log(f"Active order {order_id} status: {status}, waiting {ACTIVE_CHECK_INTERVAL}s...", "wait")
         await asyncio.sleep(ACTIVE_CHECK_INTERVAL)
@@ -347,7 +359,8 @@ async def process_queued_order(order_row):
         # Step 1: Update LinkedIn session cookie with Vayne
         try:
             log(f"Updating LinkedIn cookie for order {order_id}", "info")
-            cookie_response = await vayne_client.update_authentication(order_row.linkedin_cookie)
+            # VayneClient.update_linkedin_session is synchronous
+            cookie_response = vayne_client.update_linkedin_session(order_row.linkedin_cookie)
             log(f"LinkedIn authentication updated for order {order_id}", "success")
         except Exception as auth_error:
             error_msg = str(auth_error).lower()
@@ -362,12 +375,24 @@ async def process_queued_order(order_row):
         # Step 2: Create the scraping order with Vayne API
         try:
             log(f"Creating Vayne order for order {order_id}", "info")
-            vayne_order = await vayne_client.create_order(
-                sales_nav_url=order_row.sales_nav_url,
-                linkedin_cookie=order_row.linkedin_cookie
+            
+            # Make order name unique by appending timestamp (Vayne requires unique names)
+            base_name = order_row.targeting or "Untitled Order"
+            unique_name = f"{base_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # VayneClient.create_order is synchronous
+            vayne_response = vayne_client.create_order(
+                url=order_row.sales_nav_url,
+                name=unique_name,
+                limit=None,
+                email_enrichment=False,
+                saved_search=False,
+                secondary_webhook="",
+                export_format="simple",
             )
             
-            # Extract vayne_order_id from Vayne's response
+            # Vayne API returns: { "order": { "id": 123, ... } }
+            vayne_order = vayne_response.get("order", {})
             vayne_order_id = vayne_order.get("id")
             if not vayne_order_id:
                 log(f"Vayne order creation returned no order_id for order {order_id}", "error")
@@ -377,13 +402,13 @@ async def process_queued_order(order_row):
             vayne_order_id_str = str(vayne_order_id)
             order_name = vayne_order.get("name")
             
-            # Extract scraping_status from Vayne's create_order response
-            # Vayne may return "initialization" or "pending" status when order is first created
-            scraping_status = vayne_order.get("scraping_status", "initialization")
+            # Extract status from Vayne's create_order response
+            # Vayne may return various statuses when order is first created
+            scraping_status = vayne_order.get("status", "initialization")
             
             # Map Vayne's scraping_status to our database status
-            # Vayne can return "initialization" or "pending" - both mean order is processing
-            if scraping_status == "initialization" or scraping_status == "pending":
+            # Vayne can return "initialization", "pending", "scraping", or "segmenting" - all mean order is processing
+            if scraping_status in ("initialization", "pending", "scraping", "segmenting"):
                 db_status = scraping_status  # Use the status Vayne returned
             else:
                 db_status = "initialization"  # Default fallback
