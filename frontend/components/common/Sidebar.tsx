@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
 interface NavItem {
@@ -90,9 +89,7 @@ const navItems: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, logout } = useAuth();
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const { user } = useAuth();
 
   // Get user initials for avatar
   const getInitials = (name?: string, email?: string) => {
@@ -106,76 +103,12 @@ export function Sidebar() {
     return email?.[0]?.toUpperCase() || "U";
   };
 
-  const handleLogoClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setShowLogoutModal(true);
-  };
-
-  const handleGoToHomePage = async () => {
-    try {
-      await logout();
-      setShowLogoutModal(false);
-      router.push("/");
-    } catch (error) {
-      console.error("Logout failed:", error);
-      // Still redirect even if logout fails
-      setShowLogoutModal(false);
-      router.push("/");
-    }
+  const handleLogoClick = () => {
+    window.location.href = "https://www.billionverifier.io/";
   };
 
   return (
-    <>
-      {/* Logout Confirmation Modal */}
-      {showLogoutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowLogoutModal(false)}
-          />
-          {/* Modal */}
-          <div className="relative bg-apple-surface border border-apple-border rounded-2xl p-8 shadow-2xl max-w-sm w-full mx-4">
-            <div className="text-center">
-              {/* Icon */}
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-apple-accent/10 flex items-center justify-center">
-                <svg 
-                  className="w-8 h-8 text-apple-accent" 
-                  fill="#007AFF" 
-                  viewBox="0 0 24 24" 
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-                </svg>
-              </div>
-              {/* Title */}
-              <h3 className="text-xl font-semibold text-apple-text mb-2">
-                Leave Dashboard?
-              </h3>
-              <p className="text-apple-text-muted text-sm mb-6">
-                You will be logged out and redirected to the home page.
-              </p>
-              {/* Buttons */}
-              <div className="flex flex-col gap-3">
-                <button
-                  onClick={handleGoToHomePage}
-                  className="w-full px-4 py-3 bg-apple-accent text-white font-medium rounded-xl hover:bg-apple-accent/90 transition-colors"
-                >
-                  Go to Home Page
-                </button>
-                <button
-                  onClick={() => setShowLogoutModal(false)}
-                  className="w-full px-4 py-3 bg-apple-surface border border-apple-border text-apple-text font-medium rounded-xl hover:bg-apple-card transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <aside className="fixed left-0 top-0 h-screen w-[250px] bg-apple-bg border-r border-apple-border z-40">
+    <aside className="fixed left-0 top-0 h-screen w-[250px] bg-apple-bg border-r border-apple-border z-40">
       <div className="flex flex-col h-full">
         {/* Logo - Clickable to logout and go home */}
         <div className="p-6 border-b border-apple-border">
@@ -289,7 +222,6 @@ export function Sidebar() {
         )}
       </div>
     </aside>
-    </>
   );
 }
 
