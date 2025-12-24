@@ -4,20 +4,7 @@ import Link from "next/link";
 import { LandingHeader } from "./LandingHeader";
 import { LandingFooter } from "./LandingFooter";
 import { DataVisualization } from "./DataVisualization";
-import {
-  Hammer,
-  Network,
-  Target,
-  Key,
-  User,
-  Rocket,
-  Database,
-  Crown,
-  Shield,
-  RefreshCw,
-  Users,
-  TrendingUp,
-} from "lucide-react";
+import { Key, Target, PiggyBank } from "lucide-react";
 
 export function MarketingPage() {
   return (
@@ -25,7 +12,7 @@ export function MarketingPage() {
       <LandingHeader />
 
       <main className="flex-1">
-        {/* Hero Section */}
+        {/* SECTION 1: Hero Section */}
         <section className="relative min-h-screen flex items-center bg-[#0D0F12] bg-blueprint-grid pt-20">
           {/* Gradient overlay */}
           <div className="absolute inset-0 bg-gradient-mesh pointer-events-none" />
@@ -43,9 +30,10 @@ export function MarketingPage() {
                 </h1>
 
                 <p className="text-lg md:text-xl text-landing-text leading-relaxed mb-10 max-w-xl">
-                  The best B2B teams don&apos;t share databases with their
-                  competitors. They build proprietary lead engines that generate
-                  exclusive opportunities.
+                  The first and only platform that consolidates scraping, 
+                  enrichment, and multi-layer verification into a dedicated 
+                  engine that&apos;s exclusively yours. Stop competing over 
+                  recycled leads and build a proprietary, high-converting pipeline.
                 </p>
 
                 <Link
@@ -77,263 +65,191 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* Problem Section - The "Old Way" */}
-        <section className="bg-[#121418] py-24 lg:py-32">
+        {/* SECTION 2: Trust Bar */}
+        <section className="bg-[#121418] border-y border-landing-border py-16 lg:py-20">
           <div className="max-w-7xl mx-auto px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold text-landing-heading mb-4">
-                Renting Leads is a Losing Strategy
-              </h2>
-              <p className="text-landing-muted text-lg max-w-2xl mx-auto">
-                The traditional model is designed to keep you dependent.
-              </p>
+            {/* Key Metrics */}
+            <div className="grid md:grid-cols-3 gap-8 lg:gap-12 mb-16">
+              <div className="text-center">
+                <div className="text-4xl md:text-5xl font-bold text-landing-accent mb-2">
+                  800M+
+                </div>
+                <div className="text-landing-muted text-sm uppercase tracking-wider">
+                  Person & Company Profiles
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-4xl md:text-5xl font-bold text-landing-accent mb-2">
+                  98.5%
+                </div>
+                <div className="text-landing-muted text-sm uppercase tracking-wider">
+                  Email Verification Accuracy
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-4xl md:text-5xl font-bold text-landing-accent mb-2">
+                  70%
+                </div>
+                <div className="text-landing-muted text-sm uppercase tracking-wider">
+                  Savings vs Traditional Providers
+                </div>
+              </div>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8 lg:gap-12">
-              {/* Problem Card 1 */}
-              <div className="group p-8 border border-landing-border bg-[#1A1E24] hover:border-landing-accent/30 transition-all duration-300">
-                <div className="w-14 h-14 border border-landing-muted/30 flex items-center justify-center mb-6 group-hover:border-landing-accent/50 transition-colors">
-                  <RefreshCw className="w-7 h-7 text-landing-muted group-hover:text-landing-accent transition-colors" />
-                </div>
-                <h3 className="text-xl font-bold text-landing-heading mb-3">
-                  Recycled Data
-                </h3>
-                <p className="text-landing-text leading-relaxed">
-                  The same leads are sold to dozens of companies. By the time
-                  you reach out, your prospects are already fatigued by cold
-                  outreach.
-                </p>
+            {/* Client Logos Placeholder */}
+            <div className="text-center mb-12">
+              <p className="text-landing-muted text-sm uppercase tracking-wider mb-6">
+                Trusted by leading B2B teams
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-8 lg:gap-12 opacity-60">
+                {/* Placeholder logos - replace with actual client logos */}
+                <div className="text-landing-text/40 text-lg font-semibold">Company</div>
+                <div className="text-landing-text/40 text-lg font-semibold">Company</div>
+                <div className="text-landing-text/40 text-lg font-semibold">Company</div>
+                <div className="text-landing-text/40 text-lg font-semibold">Company</div>
+                <div className="text-landing-text/40 text-lg font-semibold">Company</div>
               </div>
+            </div>
 
-              {/* Problem Card 2 */}
-              <div className="group p-8 border border-landing-border bg-[#1A1E24] hover:border-landing-accent/30 transition-all duration-300">
-                <div className="w-14 h-14 border border-landing-muted/30 flex items-center justify-center mb-6 group-hover:border-landing-accent/50 transition-colors">
-                  <Users className="w-7 h-7 text-landing-muted group-hover:text-landing-accent transition-colors" />
+            {/* Testimonial */}
+            <div className="max-w-3xl mx-auto">
+              <blockquote className="relative">
+                <div className="absolute -top-4 -left-2 text-6xl text-landing-accent/20 font-serif">
+                  &ldquo;
                 </div>
-                <h3 className="text-xl font-bold text-landing-heading mb-3">
-                  Fierce Competition
-                </h3>
-                <p className="text-landing-text leading-relaxed">
-                  Your competitors have access to the exact same contact lists.
-                  There&apos;s no differentiation, just a race to the bottom on
-                  price.
+                <p className="text-xl md:text-2xl text-landing-text leading-relaxed text-center italic mb-8 px-8">
+                  BillionVerifier isn&apos;t just a tool; it&apos;s our proprietary 
+                  lead generation infrastructure. We&apos;ve seen a 3x increase in 
+                  qualified opportunities since we stopped renting data and started 
+                  owning it.
                 </p>
-              </div>
-
-              {/* Problem Card 3 */}
-              <div className="group p-8 border border-landing-border bg-[#1A1E24] hover:border-landing-accent/30 transition-all duration-300">
-                <div className="w-14 h-14 border border-landing-muted/30 flex items-center justify-center mb-6 group-hover:border-landing-accent/50 transition-colors">
-                  <TrendingUp className="w-7 h-7 text-landing-muted group-hover:text-landing-accent transition-colors" />
-                </div>
-                <h3 className="text-xl font-bold text-landing-heading mb-3">
-                  Escalating Costs
-                </h3>
-                <p className="text-landing-text leading-relaxed">
-                  Monthly subscriptions that never end. Per-lead fees that scale
-                  with your growth. You&apos;re paying rent on data you&apos;ll
-                  never own.
-                </p>
-              </div>
+                <footer className="flex items-center justify-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-landing-accent/20 border border-landing-accent/30 flex items-center justify-center">
+                    <span className="text-landing-accent font-bold">JD</span>
+                  </div>
+                  <div className="text-left">
+                    <div className="text-landing-heading font-semibold">
+                      Jane Doe
+                    </div>
+                    <div className="text-landing-muted text-sm">
+                      Head of Growth, TechCorp
+                    </div>
+                  </div>
+                </footer>
+              </blockquote>
             </div>
           </div>
         </section>
 
-        {/* Solution Section - The "New Way" */}
+        {/* SECTION 3: Value Proposition */}
         <section className="bg-[#0D0F12] bg-blueprint-grid py-24 lg:py-32 relative">
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0D0F12]/50 to-transparent pointer-events-none" />
 
           <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
+            {/* Section Header */}
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-bold text-landing-heading mb-4">
-                Build Your Proprietary Data Engine
+                Your All-in-One, Proprietary Data Engine
               </h2>
               <p className="text-landing-muted text-lg max-w-2xl mx-auto">
-                Own your lead generation infrastructure. Stop renting, start
-                building.
+                One platform. Complete ownership. Unmatched results.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Solution Card 1 */}
-              <div className="group p-8 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300 hover:bg-[#1A1E24]">
-                <div className="w-12 h-12 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
-                  <Hammer className="w-6 h-6 text-landing-accent" />
+            {/* Three Benefit Cards */}
+            <div className="grid md:grid-cols-3 gap-8 lg:gap-10 mb-20">
+              {/* Benefit Card 1 - Ownership */}
+              <div className="group p-8 lg:p-10 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300">
+                <div className="w-14 h-14 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
+                  <Key className="w-7 h-7 text-landing-accent" />
                 </div>
-                <h3 className="text-lg font-bold text-landing-heading mb-2">
-                  Your Exclusive Lead Engine
+                <h3 className="text-xl font-bold text-landing-heading mb-4">
+                  Own Your Entire Pipeline
                 </h3>
-                <p className="text-landing-text text-sm leading-relaxed">
-                  Custom scraper built to your exact ICP specifications. No
-                  shared infrastructure.
+                <p className="text-landing-text leading-relaxed">
+                  Get a dedicated scraping, enrichment, and verification engine 
+                  built exclusively for you. The infrastructure, the data, and 
+                  the competitive advantage are yours forever. Stop paying rent 
+                  on data you&apos;ll never own.
                 </p>
               </div>
 
-              {/* Solution Card 2 */}
-              <div className="group p-8 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300 hover:bg-[#1A1E24]">
-                <div className="w-12 h-12 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
-                  <Network className="w-6 h-6 text-landing-accent" />
+              {/* Benefit Card 2 - Scale & Accuracy */}
+              <div className="group p-8 lg:p-10 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300">
+                <div className="w-14 h-14 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
+                  <Target className="w-7 h-7 text-landing-accent" />
                 </div>
-                <h3 className="text-lg font-bold text-landing-heading mb-2">
-                  Unparalleled Reach
+                <h3 className="text-xl font-bold text-landing-heading mb-4">
+                  Achieve Unmatched Accuracy & Scale
                 </h3>
-                <p className="text-landing-text text-sm leading-relaxed">
-                  Access to 800M+ email graph. Find anyone, anywhere, with
-                  precision accuracy.
+                <p className="text-landing-text leading-relaxed">
+                  Leverage our 800M+ profile graph and unique Market Waterfall 
+                  Verification to find anyone, anywhere. Our multi-layered process 
+                  ensures 98.5% accuracy on fresh, first-contact leads, at any 
+                  volume you require.
                 </p>
               </div>
 
-              {/* Solution Card 3 */}
-              <div className="group p-8 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300 hover:bg-[#1A1E24]">
-                <div className="w-12 h-12 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
-                  <Target className="w-6 h-6 text-landing-accent" />
+              {/* Benefit Card 3 - Consolidation & Savings */}
+              <div className="group p-8 lg:p-10 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300">
+                <div className="w-14 h-14 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
+                  <PiggyBank className="w-7 h-7 text-landing-accent" />
                 </div>
-                <h3 className="text-lg font-bold text-landing-heading mb-2">
-                  Fresh Lead Precision
+                <h3 className="text-xl font-bold text-landing-heading mb-4">
+                  Consolidate & Save
                 </h3>
-                <p className="text-landing-text text-sm leading-relaxed">
-                  85-90% deliverability on untouched leads. First-contact
-                  advantage every time.
-                </p>
-              </div>
-
-              {/* Solution Card 4 */}
-              <div className="group p-8 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300 hover:bg-[#1A1E24]">
-                <div className="w-12 h-12 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
-                  <Key className="w-6 h-6 text-landing-accent" />
-                </div>
-                <h3 className="text-lg font-bold text-landing-heading mb-2">
-                  Ownership Economics
-                </h3>
-                <p className="text-landing-text text-sm leading-relaxed">
-                  One-time setup, no per-lead fees. The data is yours forever.
+                <p className="text-landing-text leading-relaxed">
+                  Replace 3-4 separate tools with one seamless, easy-to-use 
+                  platform. With a simple, one-time setup and no per-lead costs, 
+                  our clients save an average of 70% compared to traditional 
+                  data providers.
                 </p>
               </div>
             </div>
-          </div>
-        </section>
 
-        {/* How It Works Section */}
-        <section className="bg-[#121418] py-24 lg:py-32">
-          <div className="max-w-7xl mx-auto px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold text-landing-heading mb-4">
-                How It Works
-              </h2>
-              <p className="text-landing-muted text-lg max-w-2xl mx-auto">
-                Three steps to owning your lead generation infrastructure.
+            {/* Integrations Bar */}
+            <div className="text-center">
+              <p className="text-landing-muted text-sm uppercase tracking-wider mb-8">
+                Integrates seamlessly with your favorite tools
               </p>
-            </div>
-
-            <div className="relative">
-              {/* Timeline connector */}
-              <div className="hidden lg:block absolute top-1/2 left-0 right-0 h-px bg-landing-border -translate-y-1/2" />
-              <div className="hidden lg:block absolute top-1/2 left-[16.66%] right-[16.66%] h-px bg-landing-accent/30 -translate-y-1/2" />
-
-              <div className="grid md:grid-cols-3 gap-8 lg:gap-16">
-                {/* Step 1 */}
-                <div className="relative text-center">
-                  <div className="relative z-10 w-20 h-20 mx-auto mb-8 bg-[#0D0F12] border-2 border-landing-accent flex items-center justify-center">
-                    <User className="w-8 h-8 text-landing-accent" />
-                  </div>
-                  <div className="text-landing-accent font-mono text-sm mb-2">
-                    STEP 01
-                  </div>
-                  <h3 className="text-xl font-bold text-landing-heading mb-3">
-                    Define Your ICP
-                  </h3>
-                  <p className="text-landing-text leading-relaxed">
-                    Specify your ideal customer profile with precision. Industry,
-                    company size, job titles, technologies—you define the
-                    parameters.
-                  </p>
+              <div className="flex flex-wrap items-center justify-center gap-8 lg:gap-12">
+                {/* Integration logos - using text placeholders */}
+                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                  </svg>
+                  <span className="font-medium">Salesforce</span>
                 </div>
-
-                {/* Step 2 */}
-                <div className="relative text-center">
-                  <div className="relative z-10 w-20 h-20 mx-auto mb-8 bg-[#0D0F12] border-2 border-landing-accent flex items-center justify-center">
-                    <Rocket className="w-8 h-8 text-landing-accent" />
-                  </div>
-                  <div className="text-landing-accent font-mono text-sm mb-2">
-                    STEP 02
-                  </div>
-                  <h3 className="text-xl font-bold text-landing-heading mb-3">
-                    Deploy Your Scraper
-                  </h3>
-                  <p className="text-landing-text leading-relaxed">
-                    We build and deploy your custom data engine. It runs
-                    exclusively for you, sourcing fresh leads that match your
-                    criteria.
-                  </p>
+                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                  </svg>
+                  <span className="font-medium">HubSpot</span>
                 </div>
-
-                {/* Step 3 */}
-                <div className="relative text-center">
-                  <div className="relative z-10 w-20 h-20 mx-auto mb-8 bg-[#0D0F12] border-2 border-landing-accent flex items-center justify-center">
-                    <div className="relative">
-                      <Database className="w-8 h-8 text-landing-accent" />
-                      <Crown className="w-4 h-4 text-landing-accent absolute -top-2 -right-2" />
-                    </div>
-                  </div>
-                  <div className="text-landing-accent font-mono text-sm mb-2">
-                    STEP 03
-                  </div>
-                  <h3 className="text-xl font-bold text-landing-heading mb-3">
-                    Own Your Pipeline
-                  </h3>
-                  <p className="text-landing-text leading-relaxed">
-                    Receive verified, exclusive leads delivered directly to you.
-                    No sharing, no competition, no recurring fees.
-                  </p>
+                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                  <span className="font-medium">Zapier</span>
+                </div>
+                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                  </svg>
+                  <span className="font-medium">Outreach</span>
+                </div>
+                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                  </svg>
+                  <span className="font-medium">Slack</span>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Trust/Compliance Section */}
-        <section className="bg-[#0D0F12] py-24 lg:py-32">
-          <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
-            <div className="w-16 h-16 mx-auto mb-8 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center">
-              <Shield className="w-8 h-8 text-landing-accent" />
-            </div>
-
-            <h2 className="text-3xl md:text-4xl font-bold text-landing-heading mb-6">
-              Ethical & Compliant by Design
-            </h2>
-
-            <p className="text-lg text-landing-text leading-relaxed max-w-2xl mx-auto">
-              All data is ethically sourced from publicly available information
-              in full compliance with GDPR and CCPA standards. We believe in
-              building sustainable, responsible data infrastructure that
-              respects privacy while delivering results.
-            </p>
-
-            <div className="flex items-center justify-center gap-8 mt-12">
-              <div className="text-center">
-                <div className="text-landing-accent font-mono text-sm mb-1">
-                  GDPR
-                </div>
-                <div className="text-landing-muted text-xs">Compliant</div>
-              </div>
-              <div className="w-px h-8 bg-landing-border" />
-              <div className="text-center">
-                <div className="text-landing-accent font-mono text-sm mb-1">
-                  CCPA
-                </div>
-                <div className="text-landing-muted text-xs">Compliant</div>
-              </div>
-              <div className="w-px h-8 bg-landing-border" />
-              <div className="text-center">
-                <div className="text-landing-accent font-mono text-sm mb-1">
-                  PUBLIC DATA
-                </div>
-                <div className="text-landing-muted text-xs">Only</div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Final CTA Section */}
+        {/* SECTION 4: Final CTA */}
         <section className="bg-[#121418] py-24 lg:py-32">
           <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-landing-heading mb-6">
@@ -343,10 +259,11 @@ export function MarketingPage() {
             </h2>
 
             <p className="text-lg text-landing-text mb-12 max-w-xl mx-auto">
-              Join the companies that have stopped renting leads and started
+              Join the B2B teams that have stopped renting leads and started
               owning their pipeline.
             </p>
 
+            {/* Primary CTA */}
             <Link
               href="/register"
               className="inline-flex items-center gap-3 bg-landing-accent text-landing-bg px-10 py-5 font-bold text-lg tracking-wide glow-accent hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
@@ -366,6 +283,53 @@ export function MarketingPage() {
                 />
               </svg>
             </Link>
+
+            {/* Secondary CTA */}
+            <div className="mt-6">
+              <a
+                href="mailto:sales@billionverifier.io"
+                className="text-landing-muted hover:text-landing-accent text-sm font-medium transition-colors inline-flex items-center gap-1"
+              >
+                or Talk to Sales
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </a>
+            </div>
+
+            {/* Compliance Badges */}
+            <div className="flex items-center justify-center gap-6 mt-16">
+              <div className="flex items-center gap-2 text-landing-muted text-xs">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                <span>GDPR Compliant</span>
+              </div>
+              <div className="w-px h-4 bg-landing-border" />
+              <div className="flex items-center gap-2 text-landing-muted text-xs">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                <span>CCPA Compliant</span>
+              </div>
+              <div className="w-px h-4 bg-landing-border" />
+              <div className="flex items-center gap-2 text-landing-muted text-xs">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Public Data Only</span>
+              </div>
+            </div>
           </div>
         </section>
       </main>

@@ -46,13 +46,21 @@ export function LandingHeader() {
           </span>
         </Link>
 
-        {/* CTA Button */}
-        <Link
-          href="/register"
-          className="bg-landing-accent text-landing-bg px-6 py-3 font-semibold text-sm tracking-wide hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
-        >
-          Request Access
-        </Link>
+        {/* Navigation */}
+        <div className="flex items-center gap-6">
+          <Link
+            href="/login"
+            className="text-landing-muted hover:text-landing-text text-sm font-medium transition-colors"
+          >
+            Log In
+          </Link>
+          <Link
+            href="/register"
+            className="bg-landing-accent text-landing-bg px-6 py-3 font-semibold text-sm tracking-wide hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
+          >
+            Request Access
+          </Link>
+        </div>
       </div>
     </header>
   );
