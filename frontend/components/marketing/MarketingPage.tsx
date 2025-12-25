@@ -5,7 +5,7 @@ import Link from "next/link";
 import { LandingHeader } from "./LandingHeader";
 import { LandingFooter } from "./LandingFooter";
 import { DataVisualization } from "./DataVisualization";
-import { Key, Target, PiggyBank, Check, Users, Sparkles, ShieldCheck } from "lucide-react";
+import { Check, Users, Sparkles, ShieldCheck } from "lucide-react";
 
 const howItWorksSteps = [
   {
@@ -507,72 +507,11 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 5: Value Proposition */}
+        {/* SECTION 5: Integrations */}
         <section className="bg-[#0D0F12] bg-blueprint-grid py-24 lg:py-32 relative">
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0D0F12]/50 to-transparent pointer-events-none" />
 
           <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
-            {/* Section Header */}
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold text-landing-heading mb-4">
-                Your All-in-One, Proprietary Data Engine
-              </h2>
-              <p className="text-landing-muted text-lg max-w-2xl mx-auto">
-                One platform. Complete ownership. Unmatched results.
-              </p>
-            </div>
-
-            {/* Three Benefit Cards */}
-            <div className="grid md:grid-cols-3 gap-8 lg:gap-10 mb-20">
-              {/* Benefit Card 1 - Ownership */}
-              <div className="group p-8 lg:p-10 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300">
-                <div className="w-14 h-14 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
-                  <Key className="w-7 h-7 text-landing-accent" />
-                </div>
-                <h3 className="text-xl font-bold text-landing-heading mb-4">
-                  Own Your Entire Pipeline
-                </h3>
-                <p className="text-landing-text leading-relaxed">
-                  Get a dedicated scraping, enrichment, and verification engine 
-                  built exclusively for you. The infrastructure, the data, and 
-                  the competitive advantage are yours forever. Stop paying rent 
-                  on data you&apos;ll never own.
-                </p>
-              </div>
-
-              {/* Benefit Card 2 - Scale & Accuracy */}
-              <div className="group p-8 lg:p-10 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300">
-                <div className="w-14 h-14 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
-                  <Target className="w-7 h-7 text-landing-accent" />
-                </div>
-                <h3 className="text-xl font-bold text-landing-heading mb-4">
-                  Achieve Unmatched Accuracy & Scale
-                </h3>
-                <p className="text-landing-text leading-relaxed">
-                  Leverage our 800M+ profile graph and unique Market Waterfall 
-                  Verification to find anyone, anywhere. Our multi-layered process 
-                  ensures 98.5% accuracy on fresh, first-contact leads, at any 
-                  volume you require.
-                </p>
-              </div>
-
-              {/* Benefit Card 3 - Consolidation & Savings */}
-              <div className="group p-8 lg:p-10 border border-landing-border bg-[#161A1F] hover:border-landing-accent/50 transition-all duration-300">
-                <div className="w-14 h-14 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center mb-6">
-                  <PiggyBank className="w-7 h-7 text-landing-accent" />
-                </div>
-                <h3 className="text-xl font-bold text-landing-heading mb-4">
-                  Consolidate & Save
-                </h3>
-                <p className="text-landing-text leading-relaxed">
-                  Replace 3-4 separate tools with one seamless, easy-to-use 
-                  platform. With a simple, one-time setup and no per-lead costs, 
-                  our clients save an average of 70% compared to traditional 
-                  data providers.
-                </p>
-              </div>
-            </div>
-
             {/* Integrations Bar */}
             <div className="text-center">
               <p className="text-landing-muted text-sm uppercase tracking-wider mb-8">
@@ -615,89 +554,6 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 6: Final CTA */}
-        <section className="bg-[#121418] py-24 lg:py-32">
-          <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-landing-heading mb-6">
-              Ready to Build Your
-              <br />
-              <span className="text-landing-accent">Unfair Advantage?</span>
-            </h2>
-
-            <p className="text-lg text-landing-text mb-12 max-w-xl mx-auto">
-              Join the B2B teams that have stopped renting leads and started
-              owning their pipeline.
-            </p>
-
-            {/* Primary CTA */}
-            <Link
-              href="/register"
-              className="inline-flex items-center gap-3 bg-landing-accent text-landing-bg px-10 py-5 font-bold text-lg tracking-wide glow-accent hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
-            >
-              Get Free Credits
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 8l4 4m0 0l-4 4m4-4H3"
-                />
-              </svg>
-            </Link>
-
-            {/* Secondary CTA */}
-            <div className="mt-6">
-              <a
-                href="mailto:sales@billionverifier.io"
-                className="text-landing-muted hover:text-landing-accent text-sm font-medium transition-colors inline-flex items-center gap-1"
-              >
-                or Talk to Sales
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </a>
-            </div>
-
-            {/* Compliance Badges */}
-            <div className="flex items-center justify-center gap-6 mt-16">
-              <div className="flex items-center gap-2 text-landing-muted text-xs">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-                <span>GDPR Compliant</span>
-              </div>
-              <div className="w-px h-4 bg-landing-border" />
-              <div className="flex items-center gap-2 text-landing-muted text-xs">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-                <span>CCPA Compliant</span>
-              </div>
-              <div className="w-px h-4 bg-landing-border" />
-              <div className="flex items-center gap-2 text-landing-muted text-xs">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>Public Data Only</span>
-              </div>
-            </div>
-          </div>
-        </section>
       </main>
 
       <LandingFooter />
