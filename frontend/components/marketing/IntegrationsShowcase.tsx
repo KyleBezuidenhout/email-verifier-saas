@@ -30,11 +30,11 @@ const integrations = [
   },
 ];
 
-// Animated connection line component
+// Static connection line (base line)
 function ConnectionLine({ 
-  x1, y1, x2, y2, delay = 0 
+  x1, y1, x2, y2 
 }: { 
-  x1: number; y1: number; x2: number; y2: number; delay?: number 
+  x1: number; y1: number; x2: number; y2: number;
 }) {
   return (
     <line
@@ -42,34 +42,65 @@ function ConnectionLine({
       y1={y1}
       x2={x2}
       y2={y2}
-      stroke="url(#integration-gradient)"
+      stroke="rgba(0, 163, 255, 0.15)"
       strokeWidth="2"
       strokeLinecap="round"
-      className="animate-pulse"
-      style={{
-        filter: "drop-shadow(0 0 6px rgba(0, 153, 255, 0.5))",
-        animationDelay: `${delay}s`,
-        animationDuration: "3s",
-      }}
     />
   );
 }
 
-// Pulsing dot on lines
-function PulsingDot({ cx, cy, delay = 0 }: { cx: number; cy: number; delay?: number }) {
+// Animated energy beam shooting outward from center
+function EnergyBeam({ 
+  x1, y1, x2, y2, delay = 0, id 
+}: { 
+  x1: number; y1: number; x2: number; y2: number; delay?: number; id: string;
+}) {
   return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r="4"
-      fill="#0099FF"
-      className="animate-ping"
-      style={{
-        animationDelay: `${delay}s`,
-        animationDuration: "2s",
-        transformOrigin: `${cx}px ${cy}px`,
-      }}
-    />
+    <>
+      <defs>
+        <linearGradient id={`beam-gradient-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#00A3FF" stopOpacity="0">
+            <animate
+              attributeName="offset"
+              values="0;0.3;1"
+              dur="2s"
+              begin={`${delay}s`}
+              repeatCount="indefinite"
+            />
+          </stop>
+          <stop offset="20%" stopColor="#00A3FF" stopOpacity="1">
+            <animate
+              attributeName="offset"
+              values="0.2;0.5;1.2"
+              dur="2s"
+              begin={`${delay}s`}
+              repeatCount="indefinite"
+            />
+          </stop>
+          <stop offset="40%" stopColor="#00A3FF" stopOpacity="0">
+            <animate
+              attributeName="offset"
+              values="0.4;0.7;1.4"
+              dur="2s"
+              begin={`${delay}s`}
+              repeatCount="indefinite"
+            />
+          </stop>
+        </linearGradient>
+      </defs>
+      <line
+        x1={x1}
+        y1={y1}
+        x2={x2}
+        y2={y2}
+        stroke={`url(#beam-gradient-${id})`}
+        strokeWidth="3"
+        strokeLinecap="round"
+        style={{
+          filter: "drop-shadow(0 0 8px rgba(0, 163, 255, 0.8))",
+        }}
+      />
+    </>
   );
 }
 
@@ -94,16 +125,33 @@ export function IntegrationsShowcase() {
   const centerY = 200;
 
   return (
-    <section className="bg-[#0D0F12] py-24 lg:py-32 relative overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 bg-blueprint-grid opacity-30 pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-mesh pointer-events-none" />
+    <section className="py-24 lg:py-32 relative overflow-hidden">
+      {/* Charcoal black gridded background */}
+      <div 
+        className="absolute inset-0"
+        style={{
+          backgroundColor: "#1a1a1e",
+          backgroundImage: `
+            linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)
+          `,
+          backgroundSize: "60px 60px",
+        }}
+      />
+      
+      {/* Subtle gradient overlay for depth */}
+      <div 
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: "radial-gradient(ellipse at center, rgba(30, 30, 36, 0) 0%, rgba(22, 22, 26, 0.8) 100%)",
+        }}
+      />
       
       {/* Radial glow behind diagram */}
       <div 
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] pointer-events-none"
         style={{
-          background: "radial-gradient(circle, rgba(0, 153, 255, 0.08) 0%, transparent 70%)",
+          background: "radial-gradient(circle, rgba(0, 153, 255, 0.06) 0%, transparent 70%)",
         }}
       />
 
