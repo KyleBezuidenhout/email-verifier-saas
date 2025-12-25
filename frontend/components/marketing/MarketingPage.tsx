@@ -165,51 +165,6 @@ export function MarketingPage() {
             </div>
           </div>
 
-          {/* Integrations Bar - at bottom of hero */}
-          <div className="relative pb-8 lg:pb-12">
-            <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
-              <p className="text-landing-muted text-sm uppercase tracking-wider mb-6">
-                Single-Step Integration
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-10 lg:gap-14">
-                <div className="opacity-60 hover:opacity-100 transition-opacity duration-300">
-                  <img 
-                    src="/images/integrations/clay-logo.png" 
-                    alt="Clay" 
-                    className="h-8 w-auto grayscale brightness-200 hover:grayscale-0 hover:brightness-100 transition-all duration-300"
-                  />
-                </div>
-                <div className="opacity-60 hover:opacity-100 transition-opacity duration-300">
-                  <img 
-                    src="/images/integrations/smartlead-logo.png" 
-                    alt="Smartlead" 
-                    className="h-7 w-auto grayscale brightness-200 hover:grayscale-0 hover:brightness-100 transition-all duration-300"
-                  />
-                </div>
-                <div className="opacity-60 hover:opacity-100 transition-opacity duration-300">
-                  <img 
-                    src="/images/integrations/instantly-logo.png" 
-                    alt="Instantly" 
-                    className="h-6 w-auto grayscale brightness-200 hover:grayscale-0 hover:brightness-100 transition-all duration-300"
-                  />
-                </div>
-                <div className="opacity-60 hover:opacity-100 transition-opacity duration-300">
-                  <img 
-                    src="/images/integrations/salesforce-logo.png" 
-                    alt="Salesforce" 
-                    className="h-7 w-auto grayscale brightness-200 hover:grayscale-0 hover:brightness-100 transition-all duration-300"
-                  />
-                </div>
-                <div className="opacity-60 hover:opacity-100 transition-opacity duration-300">
-                  <img 
-                    src="/images/integrations/plusvibe-logo.png" 
-                    alt="Plusvibe" 
-                    className="h-7 w-auto grayscale brightness-200 hover:grayscale-0 hover:brightness-100 transition-all duration-300"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
         </section>
 
         {/* SECTION 2: Trust Bar */}

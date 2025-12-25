@@ -236,22 +236,6 @@ export function IntegrationsShowcase() {
           ))}
         </div>
 
-        {/* Bottom CTA or Additional Info */}
-        <div className="mt-16 text-center animate-fade-in-delay-2">
-          <p className="text-landing-muted text-sm uppercase tracking-wider mb-4">
-            Plus many more integrations
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            {["HubSpot", "Mailchimp", "Zapier", "Make", "Lemlist", "ActiveCampaign"].map((name) => (
-              <span 
-                key={name}
-                className="px-4 py-2 bg-landing-surface/50 border border-landing-border rounded-lg text-landing-text/70 text-sm font-medium hover:border-landing-accent/50 hover:text-landing-text transition-all duration-300 cursor-default"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-        </div>
       </div>
     </section>
   );
