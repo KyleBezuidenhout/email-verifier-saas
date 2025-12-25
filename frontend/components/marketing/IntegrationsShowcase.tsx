@@ -141,14 +141,14 @@ export function IntegrationsShowcase() {
 
   return (
     <section className="py-24 lg:py-32 relative overflow-hidden">
-      {/* Charcoal black gridded background */}
+      {/* Pitch black gridded background */}
       <div 
         className="absolute inset-0"
         style={{
-          backgroundColor: "#1a1a1e",
+          backgroundColor: "#000000",
           backgroundImage: `
-            linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)
+            linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)
           `,
           backgroundSize: "60px 60px",
         }}
@@ -158,7 +158,7 @@ export function IntegrationsShowcase() {
       <div 
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: "radial-gradient(ellipse at center, rgba(30, 30, 36, 0) 0%, rgba(22, 22, 26, 0.8) 100%)",
+          background: "radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.9) 100%)",
         }}
       />
       
