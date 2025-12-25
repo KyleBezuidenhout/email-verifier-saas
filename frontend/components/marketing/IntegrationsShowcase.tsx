@@ -59,13 +59,26 @@ function getPerpendicularOffset(x1: number, y1: number, x2: number, y2: number, 
   return { px: px * offset, py: py * offset };
 }
 
+// Shorten the end point of a line by a certain amount
+function getShortenedEndpoint(x1: number, y1: number, x2: number, y2: number, shortenBy: number) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const ratio = (length - shortenBy) / length;
+  return {
+    x: x1 + dx * ratio,
+    y: y1 + dy * ratio,
+  };
+}
+
 // Dual parallel connection lines (base lines)
 function ConnectionLines({ 
-  x1, y1, x2, y2, offset = 5 
+  x1, y1, x2, y2, offset = 2.5, shortenEnd = 35 
 }: { 
-  x1: number; y1: number; x2: number; y2: number; offset?: number;
+  x1: number; y1: number; x2: number; y2: number; offset?: number; shortenEnd?: number;
 }) {
   const { px, py } = getPerpendicularOffset(x1, y1, x2, y2, offset);
+  const shortened = getShortenedEndpoint(x1, y1, x2, y2, shortenEnd);
   
   return (
     <>
@@ -73,8 +86,8 @@ function ConnectionLines({
       <line
         x1={x1 - px}
         y1={y1 - py}
-        x2={x2 - px}
-        y2={y2 - py}
+        x2={shortened.x - px}
+        y2={shortened.y - py}
         stroke="rgba(0, 163, 255, 0.25)"
         strokeWidth="2"
         strokeLinecap="round"
@@ -83,8 +96,8 @@ function ConnectionLines({
       <line
         x1={x1 + px}
         y1={y1 + py}
-        x2={x2 + px}
-        y2={y2 + py}
+        x2={shortened.x + px}
+        y2={shortened.y + py}
         stroke="rgba(0, 163, 255, 0.25)"
         strokeWidth="2"
         strokeLinecap="round"
@@ -95,13 +108,14 @@ function ConnectionLines({
 
 // Animated energy beam shooting outward from center (runs between the two parallel lines)
 function EnergyBeam({ 
-  x1, y1, x2, y2, delay = 0, id, lineOffset = 5 
+  x1, y1, x2, y2, delay = 0, id, lineOffset = 2.5, shortenEnd = 35 
 }: { 
-  x1: number; y1: number; x2: number; y2: number; delay?: number; id: string; lineOffset?: number;
+  x1: number; y1: number; x2: number; y2: number; delay?: number; id: string; lineOffset?: number; shortenEnd?: number;
 }) {
   // The beam runs centered between the two lines, so no perpendicular offset needed
   // But we'll make the beam width fit nicely between the rails
   const beamWidth = lineOffset * 1.5; // Beam fills the gap between the two lines
+  const shortened = getShortenedEndpoint(x1, y1, x2, y2, shortenEnd);
   
   return (
     <>
@@ -111,8 +125,8 @@ function EnergyBeam({
           gradientUnits="userSpaceOnUse"
           x1={x1} 
           y1={y1} 
-          x2={x2} 
-          y2={y2}
+          x2={shortened.x} 
+          y2={shortened.y}
         >
           <stop offset="0%" stopColor="#00A3FF" stopOpacity="0">
             <animate
@@ -146,8 +160,8 @@ function EnergyBeam({
       <line
         x1={x1}
         y1={y1}
-        x2={x2}
-        y2={y2}
+        x2={shortened.x}
+        y2={shortened.y}
         stroke={`url(#beam-gradient-${id})`}
         strokeWidth={beamWidth}
         strokeLinecap="round"
@@ -243,7 +257,6 @@ export function IntegrationsShowcase() {
                   y1={centerY} 
                   x2={integration.svgPos.x} 
                   y2={integration.svgPos.y}
-                  offset={5}
                 />
               ))}
             </g>
@@ -259,7 +272,6 @@ export function IntegrationsShowcase() {
                   y2={integration.svgPos.y} 
                   delay={index * 0.25} 
                   id={`beam${index}`}
-                  lineOffset={5}
                 />
               ))}
             </g>
