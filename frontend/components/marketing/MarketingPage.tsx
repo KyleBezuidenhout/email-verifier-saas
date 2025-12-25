@@ -168,7 +168,7 @@ export function MarketingPage() {
           <div className="relative pb-8 lg:pb-12">
             <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
               <p className="text-landing-muted text-sm uppercase tracking-wider mb-6">
-                Integrates seamlessly with your favorite tools
+                Single-Step Integration
               </p>
               <div className="flex flex-wrap items-center justify-center gap-8 lg:gap-12">
                 <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
