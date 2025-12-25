@@ -114,11 +114,11 @@ export function MarketingPage() {
 
       <main className="flex-1">
         {/* SECTION 1: Hero Section */}
-        <section className="relative min-h-screen flex items-center bg-[#0D0F12] bg-blueprint-grid pt-20">
+        <section className="relative min-h-screen flex flex-col bg-[#0D0F12] bg-blueprint-grid pt-20">
           {/* Gradient overlay */}
           <div className="absolute inset-0 bg-gradient-mesh pointer-events-none" />
 
-          <div className="relative max-w-7xl mx-auto px-6 lg:px-8 py-24 lg:py-32">
+          <div className="relative flex-1 flex items-center max-w-7xl mx-auto px-6 lg:px-8 py-24 lg:py-32">
             <div className="grid lg:grid-cols-2 gap-16 items-center">
               {/* Left - Text content */}
               <div className="animate-fade-in-up">
@@ -160,6 +160,47 @@ export function MarketingPage() {
               {/* Right - Data visualization */}
               <div className="animate-fade-in-delay-2">
                 <DataVisualization />
+              </div>
+            </div>
+          </div>
+
+          {/* Integrations Bar - at bottom of hero */}
+          <div className="relative pb-8 lg:pb-12">
+            <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
+              <p className="text-landing-muted text-sm uppercase tracking-wider mb-6">
+                Integrates seamlessly with your favorite tools
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-8 lg:gap-12">
+                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                  </svg>
+                  <span className="font-medium">Salesforce</span>
+                </div>
+                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                  </svg>
+                  <span className="font-medium">HubSpot</span>
+                </div>
+                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                  <span className="font-medium">Zapier</span>
+                </div>
+                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                  </svg>
+                  <span className="font-medium">Outreach</span>
+                </div>
+                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                  </svg>
+                  <span className="font-medium">Slack</span>
+                </div>
               </div>
             </div>
           </div>
@@ -503,53 +544,6 @@ export function MarketingPage() {
                   </div>
                 );
               })}
-            </div>
-          </div>
-        </section>
-
-        {/* SECTION 5: Integrations */}
-        <section className="bg-[#0D0F12] bg-blueprint-grid py-24 lg:py-32 relative">
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0D0F12]/50 to-transparent pointer-events-none" />
-
-          <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
-            {/* Integrations Bar */}
-            <div className="text-center">
-              <p className="text-landing-muted text-sm uppercase tracking-wider mb-8">
-                Integrates seamlessly with your favorite tools
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-8 lg:gap-12">
-                {/* Integration logos - using text placeholders */}
-                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-                  </svg>
-                  <span className="font-medium">Salesforce</span>
-                </div>
-                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                  </svg>
-                  <span className="font-medium">HubSpot</span>
-                </div>
-                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                  </svg>
-                  <span className="font-medium">Zapier</span>
-                </div>
-                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-                  </svg>
-                  <span className="font-medium">Outreach</span>
-                </div>
-                <div className="flex items-center gap-2 text-landing-text/60 hover:text-landing-text transition-colors">
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-                  </svg>
-                  <span className="font-medium">Slack</span>
-                </div>
-              </div>
             </div>
           </div>
         </section>
