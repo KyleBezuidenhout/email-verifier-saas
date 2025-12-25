@@ -1,12 +1,80 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { LandingHeader } from "./LandingHeader";
 import { LandingFooter } from "./LandingFooter";
 import { DataVisualization } from "./DataVisualization";
-import { Key, Target, PiggyBank } from "lucide-react";
+import { Key, Target, PiggyBank, Check } from "lucide-react";
 
 export function MarketingPage() {
+  const [isAnnual, setIsAnnual] = useState(false);
+
+  const pricingPlans = [
+    {
+      name: "Freelance",
+      subtitle: "Individual professionals",
+      description: "Perfect for solo operators",
+      monthlyPrice: 297,
+      features: [
+        "Scrape profiles at $3.50 per 1,000 leads",
+        "Find 2,500 emails per hour",
+        "Find 130k+ valid emails daily",
+        "Uncapped verification",
+        "24hr Email Support",
+      ],
+      highlighted: false,
+      extras: [],
+    },
+    {
+      name: "Starter",
+      subtitle: "Growing teams",
+      description: "Scale your outreach",
+      monthlyPrice: 497,
+      features: [
+        "Scrape leads at $3 per 1,000 leads",
+        "Find 5,000 emails per hour",
+        "Find over 250k+ valid email addresses daily (just need full name & website)",
+        "Uncapped verification",
+        "> 60-minute Email Support",
+      ],
+      highlighted: false,
+      extras: ["Enterprise Sales Nav Seat"],
+    },
+    {
+      name: "Agency",
+      subtitle: "High-volume teams",
+      description: "Maximize your pipeline",
+      monthlyPrice: 997,
+      features: [
+        "Scrape leads at $2.50 per 1,000 leads",
+        "Find 10,000 emails per hour",
+        "Find over 500k+ valid email addresses daily (just need full name & website)",
+        "Uncapped verification",
+        "> 60-minute Email Support",
+        "API Access",
+      ],
+      highlighted: true,
+      extras: ["Enterprise Sales Nav Seat"],
+    },
+    {
+      name: "Enterprise",
+      subtitle: "Large scale operations",
+      description: "Unlimited potential",
+      monthlyPrice: 1497,
+      features: [
+        "Scrape leads at $2.20 per 1,000 leads",
+        "Find 20,000 emails per hour",
+        "Find over 1M+ valid email addresses daily (just need full name & website)",
+        "Uncapped verification",
+        "> Priority Email Support",
+        "API Access",
+      ],
+      highlighted: false,
+      extras: ["Enterprise Sales Nav Seat", "Prewarmed LinkedIn Account"],
+    },
+  ];
+
   return (
     <div className="flex flex-col min-h-screen bg-[#0D0F12]">
       <LandingHeader />
@@ -140,7 +208,138 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 3: Value Proposition */}
+        {/* SECTION 3: Pricing Plans */}
+        <section className="bg-[#0D0F12] py-24 lg:py-32 relative">
+          <div className="absolute inset-0 bg-blueprint-grid opacity-30 pointer-events-none" />
+          
+          <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
+            {/* Section Header */}
+            <div className="text-center mb-12">
+              <h2 className="text-3xl md:text-4xl font-bold text-landing-heading mb-4">
+                Simple, Transparent Pricing
+              </h2>
+              <p className="text-landing-muted text-lg max-w-2xl mx-auto mb-10">
+                Choose the plan that fits your needs. Scale up anytime.
+              </p>
+              
+              {/* Annual/Monthly Toggle */}
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  onClick={() => setIsAnnual(false)}
+                  className={`relative flex items-center gap-3 px-1 py-1 rounded-full transition-all duration-300 ${
+                    !isAnnual ? "text-landing-heading" : "text-landing-muted"
+                  }`}
+                >
+                  <div
+                    className={`w-14 h-8 rounded-full transition-all duration-300 cursor-pointer flex items-center ${
+                      isAnnual ? "bg-landing-accent" : "bg-[#252A31]"
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsAnnual(!isAnnual);
+                    }}
+                  >
+                    <div
+                      className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 mx-1 ${
+                        isAnnual ? "translate-x-6" : "translate-x-0"
+                      }`}
+                    />
+                  </div>
+                  <span className={`font-medium transition-colors ${isAnnual ? "text-landing-heading" : "text-landing-muted"}`}>
+                    Annual billing
+                  </span>
+                  <span className="text-landing-accent font-medium">(2 months free)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Pricing Cards Grid */}
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-5">
+              {pricingPlans.map((plan, index) => {
+                const displayPrice = isAnnual ? plan.monthlyPrice * 10 : plan.monthlyPrice;
+                
+                return (
+                  <div
+                    key={plan.name}
+                    className={`relative flex flex-col p-6 lg:p-8 border bg-[#161A1F] transition-all duration-300 animate-fade-in ${
+                      plan.highlighted
+                        ? "border-landing-accent shadow-lg shadow-landing-accent/10"
+                        : "border-landing-border hover:border-landing-border/80"
+                    }`}
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
+                    {/* Plan Header */}
+                    <div className="text-center mb-6">
+                      <h3 className="text-xl font-bold text-landing-heading mb-1">
+                        {plan.name}
+                      </h3>
+                      <p className="text-landing-muted text-sm mb-1">{plan.subtitle}</p>
+                      <p className="text-landing-text/70 text-sm">{plan.description}</p>
+                    </div>
+
+                    {/* Price */}
+                    <div className="text-center mb-6">
+                      <div className="flex items-baseline justify-center">
+                        <span className={`text-4xl lg:text-5xl font-bold ${plan.highlighted ? "text-landing-accent" : "text-landing-heading"}`}>
+                          ${displayPrice.toLocaleString()}
+                        </span>
+                        <span className="text-landing-muted text-base ml-1">
+                          /{isAnnual ? "yr" : "mo"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* CTA Button */}
+                    <Link
+                      href="/register"
+                      className={`w-full py-3 px-6 font-semibold text-center transition-all duration-300 mb-8 ${
+                        plan.highlighted
+                          ? "bg-landing-accent text-landing-bg hover:bg-landing-accent/90 glow-accent"
+                          : "bg-transparent border border-landing-border text-landing-heading hover:border-landing-accent hover:text-landing-accent"
+                      }`}
+                    >
+                      Get started
+                    </Link>
+
+                    {/* Divider */}
+                    <div className="border-t border-landing-border mb-6" />
+
+                    {/* Features List */}
+                    <div className="flex-1">
+                      <p className="text-landing-heading font-semibold text-sm mb-4">
+                        What&apos;s included
+                      </p>
+                      <ul className="space-y-3">
+                        {plan.features.map((feature, featureIndex) => (
+                          <li key={featureIndex} className="flex items-start gap-3">
+                            <Check className="w-5 h-5 text-landing-accent flex-shrink-0 mt-0.5" />
+                            <span className="text-landing-text text-sm leading-relaxed">
+                              {feature}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      
+                      {/* Extras */}
+                      {plan.extras.length > 0 && (
+                        <div className="mt-6 pt-4 border-t border-landing-border/50">
+                          {plan.extras.map((extra, extraIndex) => (
+                            <div key={extraIndex} className="flex items-center gap-2 text-landing-accent text-sm font-medium">
+                              <span>+</span>
+                              <span>{extra}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* SECTION 4: Value Proposition */}
         <section className="bg-[#0D0F12] bg-blueprint-grid py-24 lg:py-32 relative">
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0D0F12]/50 to-transparent pointer-events-none" />
 
@@ -248,7 +447,7 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 4: Final CTA */}
+        {/* SECTION 5: Final CTA */}
         <section className="bg-[#121418] py-24 lg:py-32">
           <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-landing-heading mb-6">
