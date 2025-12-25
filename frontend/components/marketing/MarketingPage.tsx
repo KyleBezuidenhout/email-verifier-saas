@@ -32,8 +32,7 @@ export function MarketingPage() {
                 <p className="text-lg md:text-xl text-landing-text leading-relaxed mb-10 max-w-xl">
                   The first and only platform that consolidates scraping, 
                   enrichment, and multi-layer verification into a dedicated 
-                  engine that&apos;s exclusively yours. Stop competing over 
-                  recycled leads and build a proprietary, high-converting pipeline.
+                  engine that&apos;s exclusively yours.
                 </p>
 
                 <Link

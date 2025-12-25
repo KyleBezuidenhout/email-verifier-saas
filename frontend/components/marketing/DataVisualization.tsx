@@ -281,31 +281,6 @@ export function DataVisualization() {
           PIPELINE
         </text>
 
-        {/* Top banner - Dedicated/Exclusive messaging */}
-        <rect x="125" y="70" width="250" height="30" fill="#0099FF" fillOpacity="0.1" rx="4" />
-        <text x="250" y="90" fill="#0099FF" fontSize="10" fontFamily="monospace" textAnchor="middle" fontWeight="bold">
-          DEDICATED • EXCLUSIVE • YOURS
-        </text>
-
-        {/* Bottom stat badges */}
-        <g>
-          <rect x="125" y="260" width="70" height="24" fill="#161A1F" stroke="#0099FF" strokeWidth="0.5" rx="4" />
-          <text x="160" y="276" fill="#0099FF" fontSize="9" fontFamily="monospace" textAnchor="middle">
-            800M+
-          </text>
-        </g>
-        <g>
-          <rect x="215" y="260" width="70" height="24" fill="#161A1F" stroke="#0099FF" strokeWidth="0.5" rx="4" />
-          <text x="250" y="276" fill="#0099FF" fontSize="9" fontFamily="monospace" textAnchor="middle">
-            98.5%
-          </text>
-        </g>
-        <g>
-          <rect x="305" y="260" width="70" height="24" fill="#161A1F" stroke="#0099FF" strokeWidth="0.5" rx="4" />
-          <text x="340" y="276" fill="#0099FF" fontSize="9" fontFamily="monospace" textAnchor="middle">
-            SAVE 70%
-          </text>
-        </g>
       </svg>
     </div>
   );
