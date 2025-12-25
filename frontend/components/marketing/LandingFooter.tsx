@@ -7,23 +7,11 @@ export function LandingFooter() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center">
-              <svg
-                className="w-4 h-4 text-landing-accent"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="square"
-                  strokeLinejoin="miter"
-                  d="M4 7V4h16v3M9 20h6M12 4v16"
-                />
-              </svg>
-            </div>
+            <span className="text-landing-accent font-bold text-lg tracking-tight">
+              BillionVerifier
+            </span>
             <span className="text-landing-text text-sm">
-              © {new Date().getFullYear()} Billionverifier.io
+              © {new Date().getFullYear()}
             </span>
           </div>
 

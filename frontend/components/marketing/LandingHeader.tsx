@@ -25,24 +25,9 @@ export function LandingHeader() {
     >
       <div className="max-w-7xl mx-auto px-6 lg:px-8 h-20 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 bg-landing-accent/10 border border-landing-accent/30 flex items-center justify-center">
-            <svg
-              className="w-6 h-6 text-landing-accent"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="square"
-                strokeLinejoin="miter"
-                d="M4 7V4h16v3M9 20h6M12 4v16"
-              />
-            </svg>
-          </div>
-          <span className="text-landing-heading font-bold text-xl tracking-tight">
-            Billionverifier<span className="text-landing-accent">.io</span>
+        <Link href="/" className="flex items-center group">
+          <span className="text-landing-accent font-bold text-2xl tracking-tight">
+            BillionVerifier
           </span>
         </Link>
 
