@@ -168,60 +168,62 @@ export function MarketingPage() {
         {/* SECTION 2: Trust Bar */}
         <section className="bg-[#121418] border-y border-landing-border py-16 lg:py-20">
           <div className="max-w-7xl mx-auto px-6 lg:px-8">
-            {/* Key Metrics */}
-            <div className="grid md:grid-cols-3 gap-8 lg:gap-12 mb-16">
-              <div className="text-center">
-                <div className="text-4xl md:text-5xl font-bold text-landing-accent mb-2">
-                  800M+
-                </div>
-                <div className="text-landing-muted text-sm uppercase tracking-wider">
-                  Person & Company Profiles
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-4xl md:text-5xl font-bold text-landing-accent mb-2">
-                  98.5%
-                </div>
-                <div className="text-landing-muted text-sm uppercase tracking-wider">
-                  Email Verification Accuracy
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-4xl md:text-5xl font-bold text-landing-accent mb-2">
-                  70%
-                </div>
-                <div className="text-landing-muted text-sm uppercase tracking-wider">
-                  Savings vs Traditional Providers
+            {/* Feature Cards */}
+            <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
+              {/* Card 1: Unmatched Pricing */}
+              <div className="group relative bg-gradient-to-br from-[#1a1d24] to-[#14161a] rounded-2xl p-8 border border-landing-border hover:border-landing-accent/40 transition-all duration-300 hover:shadow-[0_0_40px_rgba(0,163,255,0.15)]">
+                <div className="absolute inset-0 bg-gradient-to-br from-landing-accent/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-xl bg-landing-accent/10 border border-landing-accent/20 flex items-center justify-center mb-6">
+                    <svg className="w-7 h-7 text-landing-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold text-landing-heading mb-3">
+                    Unmatched Pricing
+                  </h3>
+                  <p className="text-landing-muted leading-relaxed">
+                    Scrape Leads at <span className="text-landing-accent font-semibold">$2 per 1,000 leads</span>
+                    <span className="block text-sm mt-1 text-landing-muted/70">[$0.002 per profile]</span>
+                  </p>
                 </div>
               </div>
-            </div>
 
-            {/* Testimonial */}
-            <div className="max-w-3xl mx-auto">
-              <blockquote className="relative">
-                <div className="absolute -top-4 -left-2 text-6xl text-landing-accent/20 font-serif">
-                  &ldquo;
+              {/* Card 2: 800M+ */}
+              <div className="group relative bg-gradient-to-br from-[#1a1d24] to-[#14161a] rounded-2xl p-8 border border-landing-border hover:border-landing-accent/40 transition-all duration-300 hover:shadow-[0_0_40px_rgba(0,163,255,0.15)]">
+                <div className="absolute inset-0 bg-gradient-to-br from-landing-accent/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-xl bg-landing-accent/10 border border-landing-accent/20 flex items-center justify-center mb-6">
+                    <svg className="w-7 h-7 text-landing-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                    </svg>
+                  </div>
+                  <h3 className="text-2xl font-bold text-landing-heading mb-3">
+                    <span className="text-landing-accent">800M+</span>
+                  </h3>
+                  <p className="text-landing-muted leading-relaxed">
+                    Get access to over <span className="text-landing-text font-medium">800M valid B2B Emails</span>
+                  </p>
                 </div>
-                <p className="text-xl md:text-2xl text-landing-text leading-relaxed text-center italic mb-8 px-8">
-                  BillionVerifier isn&apos;t just a tool; it&apos;s our proprietary 
-                  lead generation infrastructure. We&apos;ve seen a 3x increase in 
-                  qualified opportunities since we stopped renting data and started 
-                  owning it.
-                </p>
-                <footer className="flex items-center justify-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-landing-accent/20 border border-landing-accent/30 flex items-center justify-center">
-                    <span className="text-landing-accent font-bold">JD</span>
+              </div>
+
+              {/* Card 3: 99%+ Accuracy */}
+              <div className="group relative bg-gradient-to-br from-[#1a1d24] to-[#14161a] rounded-2xl p-8 border border-landing-border hover:border-landing-accent/40 transition-all duration-300 hover:shadow-[0_0_40px_rgba(0,163,255,0.15)]">
+                <div className="absolute inset-0 bg-gradient-to-br from-landing-accent/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-xl bg-landing-accent/10 border border-landing-accent/20 flex items-center justify-center mb-6">
+                    <svg className="w-7 h-7 text-landing-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
+                    </svg>
                   </div>
-                  <div className="text-left">
-                    <div className="text-landing-heading font-semibold">
-                      Jane Doe
-                    </div>
-                    <div className="text-landing-muted text-sm">
-                      Head of Growth, TechCorp
-                    </div>
-                  </div>
-                </footer>
-              </blockquote>
+                  <h3 className="text-2xl font-bold text-landing-heading mb-3">
+                    <span className="text-landing-accent">99%+</span> Accuracy
+                  </h3>
+                  <p className="text-landing-muted leading-relaxed">
+                    All Leads are verified twice, we guarantee a <span className="text-landing-text font-medium">sub 3% bounce rate</span>
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </section>
