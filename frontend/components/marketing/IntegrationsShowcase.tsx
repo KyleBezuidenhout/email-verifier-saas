@@ -174,10 +174,10 @@ export function IntegrationsShowcase() {
         {/* Section Header */}
         <div className="text-center mb-16 lg:mb-20 animate-fade-in">
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-landing-heading leading-[1.1] tracking-tight mb-6">
-            Connect <span className="text-landing-accent">BillionVerifier</span> with Your Entire Stack
+            Single-Step <span className="text-landing-accent">Integration</span>
           </h2>
           <p className="text-lg md:text-xl text-landing-muted max-w-2xl mx-auto leading-relaxed">
-            Seamlessly integrate our powerful email verification service with the tools you already use to ensure a clean and effective email list.
+            Seamlessly integrate With All Your Favorite Tools
           </p>
         </div>
 
