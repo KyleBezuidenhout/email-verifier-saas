@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LandingHeader } from "./LandingHeader";
 import { LandingFooter } from "./LandingFooter";
 import { DataVisualization } from "./DataVisualization";
+import { IntegrationsShowcase } from "./IntegrationsShowcase";
 import { Check, Users, Sparkles, ShieldCheck } from "lucide-react";
 
 const howItWorksSteps = [
@@ -422,7 +423,10 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 4: Pricing Plans */}
+        {/* SECTION 4: Integrations Showcase */}
+        <IntegrationsShowcase />
+
+        {/* SECTION 5: Pricing Plans */}
         <section className="bg-[#0D0F12] py-24 lg:py-32 relative">
           <div className="absolute inset-0 bg-blueprint-grid opacity-30 pointer-events-none" />
           

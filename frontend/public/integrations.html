@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BillionVerifier Integrations</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ========================================
+           General Setup
+           ======================================== */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0D0F12;
+            color: #F0F4F8;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* ========================================
+           Integration Section Styling
+           ======================================== */
+        .integration-section {
+            padding: 100px 0;
+            text-align: center;
+            overflow: hidden;
+            position: relative;
+            min-height: 100vh;
+        }
+
+        /* Background Grid Pattern */
+        .integration-section::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(0, 153, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 153, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
+        /* Gradient Mesh Overlay */
+        .integration-section::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: 
+                radial-gradient(at 20% 30%, rgba(0, 255, 133, 0.08) 0%, transparent 50%),
+                radial-gradient(at 80% 70%, rgba(28, 37, 54, 0.8) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .section-title {
+            font-size: clamp(32px, 5vw, 48px);
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 20px;
+            line-height: 1.2;
+            letter-spacing: -0.02em;
+        }
+
+        .section-title .highlight {
+            color: #0099FF;
+        }
+
+        .section-subtitle {
+            font-size: 18px;
+            color: #6B7280;
+            max-width: 600px;
+            margin: 0 auto 80px;
+            line-height: 1.7;
+        }
+
+        /* ========================================
+           Hub-and-Spoke Diagram
+           ======================================== */
+        .integration-diagram {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            height: 400px;
+            margin: 0 auto 60px;
+        }
+
+        /* Radial Glow Effect Behind Diagram */
+        .diagram-glow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(0, 153, 255, 0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        /* Center Hub */
+        .center-hub {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #ffffff 0%, #f3f4f6 100%);
+            padding: 18px 28px;
+            border-radius: 20px;
+            box-shadow: 
+                0 0 60px rgba(0, 153, 255, 0.4),
+                0 0 100px rgba(124, 58, 237, 0.2),
+                0 10px 40px rgba(0, 0, 0, 0.3);
+            z-index: 20;
+            animation: hub-pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes hub-pulse {
+            0%, 100% {
+                box-shadow: 
+                    0 0 60px rgba(0, 153, 255, 0.4),
+                    0 0 100px rgba(124, 58, 237, 0.2),
+                    0 10px 40px rgba(0, 0, 0, 0.3);
+            }
+            50% {
+                box-shadow: 
+                    0 0 80px rgba(0, 153, 255, 0.5),
+                    0 0 120px rgba(124, 58, 237, 0.3),
+                    0 10px 40px rgba(0, 0, 0, 0.3);
+            }
+        }
+
+        .center-hub::before {
+            content: '';
+            position: absolute;
+            inset: -8px;
+            border-radius: 28px;
+            background: linear-gradient(135deg, rgba(0, 153, 255, 0.3), rgba(124, 58, 237, 0.3));
+            filter: blur(12px);
+            opacity: 0.6;
+            z-index: -1;
+            animation: ring-pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes ring-pulse {
+            0%, 100% { opacity: 0.4; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
+        }
+
+        .brand-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: #111827;
+            text-transform: uppercase;
+            line-height: 1.3;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+
+        /* Integration Icons */
+        .integration-icon {
+            position: absolute;
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #1F2937 0%, #111827 100%);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 
+                0 4px 24px rgba(0, 0, 0, 0.6),
+                0 0 0 1px rgba(255, 255, 255, 0.05);
+            z-index: 10;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .integration-icon:hover {
+            transform: scale(1.15);
+            box-shadow: 
+                0 4px 24px rgba(0, 0, 0, 0.6),
+                0 0 30px rgba(0, 153, 255, 0.5);
+        }
+
+        .integration-icon::after {
+            content: attr(data-name);
+            position: absolute;
+            bottom: -36px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #161A1F;
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid #252A31;
+            font-size: 12px;
+            font-weight: 500;
+            color: #ffffff;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .integration-icon:hover::after {
+            opacity: 1;
+        }
+
+        .integration-icon img {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+            transition: transform 0.3s ease;
+        }
+
+        .integration-icon:hover img {
+            transform: scale(1.1);
+        }
+
+        /* Icon Positioning */
+        .icon-top-left { top: 60px; left: 120px; }
+        .icon-top-right { top: 60px; right: 120px; }
+        .icon-middle-left { top: 50%; left: 40px; transform: translateY(-50%); }
+        .icon-middle-right { top: 50%; right: 40px; transform: translateY(-50%); }
+        .icon-bottom-left { bottom: 60px; left: 120px; }
+        .icon-bottom-right { bottom: 60px; right: 120px; }
+
+        .icon-middle-left:hover,
+        .icon-middle-right:hover {
+            transform: translateY(-50%) scale(1.15);
+        }
+
+        /* ========================================
+           SVG Connection Lines
+           ======================================== */
+        .connection-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .connection-lines line {
+            stroke: url(#line-gradient);
+            stroke-width: 2;
+            stroke-linecap: round;
+            filter: drop-shadow(0 0 8px rgba(0, 153, 255, 0.5));
+        }
+
+        /* Animated dots */
+        .pulse-dot {
+            fill: #0099FF;
+            animation: dot-pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes dot-pulse {
+            0%, 100% { opacity: 0.3; r: 3; }
+            50% { opacity: 1; r: 5; }
+        }
+
+        /* ========================================
+           Additional Integrations List
+           ======================================== */
+        .more-integrations {
+            margin-top: 60px;
+        }
+
+        .more-integrations-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #6B7280;
+            margin-bottom: 16px;
+        }
+
+        .integration-tags {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .integration-tag {
+            padding: 10px 20px;
+            background: rgba(22, 26, 31, 0.5);
+            border: 1px solid #252A31;
+            border-radius: 10px;
+            color: rgba(240, 244, 248, 0.7);
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            cursor: default;
+        }
+
+        .integration-tag:hover {
+            border-color: rgba(0, 153, 255, 0.5);
+            color: #F0F4F8;
+            background: rgba(0, 153, 255, 0.1);
+        }
+
+        /* ========================================
+           Responsive Adjustments
+           ======================================== */
+        @media (max-width: 768px) {
+            .integration-section {
+                padding: 60px 0;
+            }
+
+            .section-subtitle {
+                margin-bottom: 50px;
+            }
+
+            .integration-diagram {
+                width: 100%;
+                max-width: 360px;
+                height: 480px;
+            }
+
+            .integration-icon {
+                width: 52px;
+                height: 52px;
+                border-radius: 14px;
+            }
+
+            .integration-icon img {
+                width: 32px;
+                height: 32px;
+            }
+
+            /* Reposition icons for mobile - hexagonal pattern */
+            .icon-top-left { top: 30px; left: 50%; transform: translateX(-50%); }
+            .icon-top-right { top: 100px; left: calc(50% + 100px); transform: translateX(-50%); }
+            .icon-middle-left { top: 100px; left: calc(50% - 100px); transform: translateX(-50%); }
+            .icon-middle-right { bottom: 100px; left: calc(50% + 100px); transform: translateX(-50%); top: auto; }
+            .icon-bottom-left { bottom: 100px; left: calc(50% - 100px); transform: translateX(-50%); }
+            .icon-bottom-right { bottom: 30px; left: 50%; transform: translateX(-50%); }
+
+            .icon-top-left:hover,
+            .icon-top-right:hover,
+            .icon-middle-left:hover,
+            .icon-middle-right:hover,
+            .icon-bottom-left:hover,
+            .icon-bottom-right:hover {
+                transform: translateX(-50%) scale(1.15);
+            }
+
+            .center-hub {
+                padding: 14px 22px;
+            }
+
+            .brand-name {
+                font-size: 14px;
+            }
+
+            /* Hide SVG lines on mobile for cleaner look */
+            .connection-lines {
+                display: none;
+            }
+
+            .integration-tag {
+                padding: 8px 16px;
+                font-size: 13px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .integration-diagram {
+                max-width: 300px;
+                height: 420px;
+            }
+
+            .icon-top-right,
+            .icon-middle-left { left: calc(50% + 80px); }
+            
+            .icon-middle-right,
+            .icon-bottom-left { left: calc(50% - 80px); }
+        }
+
+        /* ========================================
+           Animation Entry Effects
+           ======================================== */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-in {
+            animation: fadeInUp 0.8s ease-out forwards;
+        }
+
+        .delay-1 { animation-delay: 0.1s; opacity: 0; }
+        .delay-2 { animation-delay: 0.2s; opacity: 0; }
+        .delay-3 { animation-delay: 0.3s; opacity: 0; }
+        .delay-4 { animation-delay: 0.4s; opacity: 0; }
+        .delay-5 { animation-delay: 0.5s; opacity: 0; }
+        .delay-6 { animation-delay: 0.6s; opacity: 0; }
+    </style>
+</head>
+<body>
+
+<section class="integration-section">
+  <div class="container">
+    <!-- Header -->
+    <h2 class="section-title animate-in">
+      Connect <span class="highlight">BillionVerifier</span> with Your Entire Stack
+    </h2>
+    <p class="section-subtitle animate-in delay-1">
+      Seamlessly integrate our powerful email verification service with the tools you already use to ensure a clean and effective email list.
+    </p>
+    
+    <!-- Hub and Spoke Diagram -->
+    <div class="integration-diagram">
+      <!-- Radial Glow -->
+      <div class="diagram-glow"></div>
+
+      <!-- SVG Lines for connecting the hub to the icons -->
+      <svg class="connection-lines" viewBox="0 0 500 400" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="line-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:#0099FF;stop-opacity:0.8" />
+            <stop offset="50%" style="stop-color:#7C3AED;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#0099FF;stop-opacity:0.8" />
+          </linearGradient>
+        </defs>
+        
+        <!-- Lines from center (250, 200) to each icon's center -->
+        <line x1="250" y1="200" x2="152" y2="92"></line>
+        <line x1="250" y1="200" x2="348" y2="92"></line>
+        <line x1="250" y1="200" x2="72" y2="200"></line>
+        <line x1="250" y1="200" x2="428" y2="200"></line>
+        <line x1="250" y1="200" x2="152" y2="308"></line>
+        <line x1="250" y1="200" x2="348" y2="308"></line>
+
+        <!-- Animated pulse dots along lines -->
+        <circle class="pulse-dot" cx="201" cy="146" r="4" style="animation-delay: 0s;"></circle>
+        <circle class="pulse-dot" cx="299" cy="146" r="4" style="animation-delay: 0.3s;"></circle>
+        <circle class="pulse-dot" cx="161" cy="200" r="4" style="animation-delay: 0.6s;"></circle>
+        <circle class="pulse-dot" cx="339" cy="200" r="4" style="animation-delay: 0.9s;"></circle>
+        <circle class="pulse-dot" cx="201" cy="254" r="4" style="animation-delay: 1.2s;"></circle>
+        <circle class="pulse-dot" cx="299" cy="254" r="4" style="animation-delay: 1.5s;"></circle>
+      </svg>
+
+      <!-- Center Hub -->
+      <div class="center-hub">
+        <span class="brand-name">Billion<br>Verifier</span>
+      </div>
+      
+      <!-- Integration Icons -->
+      <!-- Clay - Top Left -->
+      <div class="integration-icon icon-top-left animate-in delay-1" data-name="Clay">
+        <img src="https://i.ibb.co/5g8S3CKS/clay-logo-transparent.png" alt="Clay">
+      </div>
+
+      <!-- Salesforce - Top Right -->
+      <div class="integration-icon icon-top-right animate-in delay-2" data-name="Salesforce">
+        <img src="https://i.ibb.co/7JzG4fv9/salesforce-logo-transparent.png" alt="Salesforce">
+      </div>
+
+      <!-- LinkedIn - Middle Left -->
+      <div class="integration-icon icon-middle-left animate-in delay-3" data-name="LinkedIn">
+        <img src="https://i.ibb.co/Q3pQFHg7/Linkedin-logo-transparent.png" alt="LinkedIn">
+      </div>
+
+      <!-- Smartlead - Middle Right -->
+      <div class="integration-icon icon-middle-right animate-in delay-4" data-name="Smartlead">
+        <img src="https://i.ibb.co/PGnz9qDX/Smartlead-logo-transparent.png" alt="Smartlead">
+      </div>
+
+      <!-- Instantly - Bottom Left -->
+      <div class="integration-icon icon-bottom-left animate-in delay-5" data-name="Instantly">
+        <img src="https://i.ibb.co/60PSSXJf/instantly-logo-transparent.png" alt="Instantly">
+      </div>
+
+      <!-- Plusvibe - Bottom Right -->
+      <div class="integration-icon icon-bottom-right animate-in delay-6" data-name="Plusvibe">
+        <img src="https://i.ibb.co/7JV2m8Bn/plusvibe-logo-transparent.png" alt="Plusvibe">
+      </div>
+    </div>
+
+    <!-- Additional Integrations -->
+    <div class="more-integrations animate-in delay-6">
+      <p class="more-integrations-label">Plus many more integrations</p>
+      <div class="integration-tags">
+        <span class="integration-tag">HubSpot</span>
+        <span class="integration-tag">Mailchimp</span>
+        <span class="integration-tag">Zapier</span>
+        <span class="integration-tag">Make</span>
+        <span class="integration-tag">Lemlist</span>
+        <span class="integration-tag">ActiveCampaign</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
