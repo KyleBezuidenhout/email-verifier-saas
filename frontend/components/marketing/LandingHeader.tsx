@@ -49,12 +49,6 @@ export function LandingHeader() {
         {/* Navigation */}
         <div className="flex items-center gap-6">
           <Link
-            href="/how-it-works"
-            className="text-landing-muted hover:text-landing-text text-sm font-medium transition-colors"
-          >
-            How it Works
-          </Link>
-          <Link
             href="/login"
             className="text-landing-muted hover:text-landing-text text-sm font-medium transition-colors"
           >
