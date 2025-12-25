@@ -48,31 +48,61 @@ const integrations = [
   },
 ];
 
-// Static connection line (base line)
-function ConnectionLine({ 
-  x1, y1, x2, y2 
+// Calculate perpendicular offset for parallel lines
+function getPerpendicularOffset(x1: number, y1: number, x2: number, y2: number, offset: number) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  // Perpendicular unit vector
+  const px = -dy / length;
+  const py = dx / length;
+  return { px: px * offset, py: py * offset };
+}
+
+// Dual parallel connection lines (base lines)
+function ConnectionLines({ 
+  x1, y1, x2, y2, offset = 5 
 }: { 
-  x1: number; y1: number; x2: number; y2: number;
+  x1: number; y1: number; x2: number; y2: number; offset?: number;
 }) {
+  const { px, py } = getPerpendicularOffset(x1, y1, x2, y2, offset);
+  
   return (
-    <line
-      x1={x1}
-      y1={y1}
-      x2={x2}
-      y2={y2}
-      stroke="rgba(0, 163, 255, 0.25)"
-      strokeWidth="2"
-      strokeLinecap="round"
-    />
+    <>
+      {/* First line (offset negative) */}
+      <line
+        x1={x1 - px}
+        y1={y1 - py}
+        x2={x2 - px}
+        y2={y2 - py}
+        stroke="rgba(0, 163, 255, 0.25)"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      {/* Second line (offset positive) */}
+      <line
+        x1={x1 + px}
+        y1={y1 + py}
+        x2={x2 + px}
+        y2={y2 + py}
+        stroke="rgba(0, 163, 255, 0.25)"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </>
   );
 }
 
-// Animated energy beam shooting outward from center
+// Animated energy beam shooting outward from center (runs between the two parallel lines)
 function EnergyBeam({ 
-  x1, y1, x2, y2, delay = 0, id 
+  x1, y1, x2, y2, delay = 0, id, lineOffset = 5 
 }: { 
-  x1: number; y1: number; x2: number; y2: number; delay?: number; id: string;
+  x1: number; y1: number; x2: number; y2: number; delay?: number; id: string; lineOffset?: number;
 }) {
+  // The beam runs centered between the two lines, so no perpendicular offset needed
+  // But we'll make the beam width fit nicely between the rails
+  const beamWidth = lineOffset * 1.5; // Beam fills the gap between the two lines
+  
   return (
     <>
       <defs>
@@ -119,7 +149,7 @@ function EnergyBeam({
         x2={x2}
         y2={y2}
         stroke={`url(#beam-gradient-${id})`}
-        strokeWidth="4"
+        strokeWidth={beamWidth}
         strokeLinecap="round"
         style={{
           filter: "drop-shadow(0 0 10px rgba(0, 163, 255, 1))",
@@ -204,20 +234,21 @@ export function IntegrationsShowcase() {
               </filter>
             </defs>
 
-            {/* Base connection lines (subtle) - all 6 branches */}
+            {/* Base connection lines (dual parallel lines) - all 6 branches */}
             <g>
               {integrations.map((integration, index) => (
-                <ConnectionLine 
-                  key={`line-${index}`}
+                <ConnectionLines 
+                  key={`lines-${index}`}
                   x1={centerX} 
                   y1={centerY} 
                   x2={integration.svgPos.x} 
-                  y2={integration.svgPos.y} 
+                  y2={integration.svgPos.y}
+                  offset={5}
                 />
               ))}
             </g>
 
-            {/* Animated energy beams shooting outward - all 6 branches */}
+            {/* Animated energy beams shooting outward (between the parallel lines) - all 6 branches */}
             <g>
               {integrations.map((integration, index) => (
                 <EnergyBeam 
@@ -227,56 +258,17 @@ export function IntegrationsShowcase() {
                   x2={integration.svgPos.x} 
                   y2={integration.svgPos.y} 
                   delay={index * 0.25} 
-                  id={`beam${index}`} 
+                  id={`beam${index}`}
+                  lineOffset={5}
                 />
               ))}
             </g>
           </svg>
 
-          {/* Center Hub - Card with glowing blue lines */}
+          {/* Center Hub - Card */}
           <div 
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20"
           >
-            {/* Glowing diagonal lines shooting from corners */}
-            <div className="absolute inset-0 pointer-events-none">
-              {/* Top-left diagonal line */}
-              <div 
-                className="absolute -top-16 -left-16 w-24 h-[2px] origin-right"
-                style={{
-                  background: "linear-gradient(90deg, rgba(0, 163, 255, 0) 0%, rgba(0, 163, 255, 0.8) 100%)",
-                  transform: "rotate(-45deg)",
-                  filter: "drop-shadow(0 0 6px rgba(0, 163, 255, 0.8))",
-                }}
-              />
-              {/* Top-right diagonal line */}
-              <div 
-                className="absolute -top-16 -right-16 w-24 h-[2px] origin-left"
-                style={{
-                  background: "linear-gradient(90deg, rgba(0, 163, 255, 0.8) 0%, rgba(0, 163, 255, 0) 100%)",
-                  transform: "rotate(45deg)",
-                  filter: "drop-shadow(0 0 6px rgba(0, 163, 255, 0.8))",
-                }}
-              />
-              {/* Bottom-left diagonal line */}
-              <div 
-                className="absolute -bottom-16 -left-16 w-24 h-[2px] origin-right"
-                style={{
-                  background: "linear-gradient(90deg, rgba(0, 163, 255, 0) 0%, rgba(0, 163, 255, 0.8) 100%)",
-                  transform: "rotate(45deg)",
-                  filter: "drop-shadow(0 0 6px rgba(0, 163, 255, 0.8))",
-                }}
-              />
-              {/* Bottom-right diagonal line */}
-              <div 
-                className="absolute -bottom-16 -right-16 w-24 h-[2px] origin-left"
-                style={{
-                  background: "linear-gradient(90deg, rgba(0, 163, 255, 0.8) 0%, rgba(0, 163, 255, 0) 100%)",
-                  transform: "rotate(-45deg)",
-                  filter: "drop-shadow(0 0 6px rgba(0, 163, 255, 0.8))",
-                }}
-              />
-            </div>
-            
             {/* Main card */}
             <div 
               className="relative bg-black px-10 py-6 rounded-2xl shadow-2xl border border-[#00A3FF]/30"
