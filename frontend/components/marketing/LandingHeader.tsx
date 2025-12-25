@@ -35,15 +35,28 @@ export function LandingHeader() {
         <div className="flex items-center gap-6">
           <Link
             href="/login"
-            className="text-landing-muted hover:text-landing-text text-sm font-medium transition-colors"
+            className="text-landing-text/70 hover:text-landing-accent text-sm font-semibold tracking-wide transition-all duration-300"
           >
             Log In
           </Link>
           <Link
             href="/register"
-            className="bg-landing-accent text-landing-bg px-6 py-3 font-semibold text-sm tracking-wide hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
+            className="inline-flex items-center gap-2 bg-landing-accent text-landing-bg px-6 py-3 font-semibold text-sm tracking-wide glow-accent hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
           >
             Request Access
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 8l4 4m0 0l-4 4m4-4H3"
+              />
+            </svg>
           </Link>
         </div>
       </div>
