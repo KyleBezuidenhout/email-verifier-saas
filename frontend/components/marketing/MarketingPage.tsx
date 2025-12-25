@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LandingHeader } from "./LandingHeader";
 import { LandingFooter } from "./LandingFooter";
 import { DataVisualization } from "./DataVisualization";
+import { TrustedBy } from "./TrustedBy";
 import { Key, Target, PiggyBank, Check, Users, Sparkles, ShieldCheck } from "lucide-react";
 
 const howItWorksSteps = [
@@ -165,7 +166,10 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 2: Trust Bar */}
+        {/* SECTION 2: Trusted By */}
+        <TrustedBy />
+
+        {/* SECTION 3: Trust Bar */}
         <section className="bg-[#121418] border-y border-landing-border py-16 lg:py-20">
           <div className="max-w-7xl mx-auto px-6 lg:px-8">
             {/* Key Metrics */}
@@ -193,21 +197,6 @@ export function MarketingPage() {
                 <div className="text-landing-muted text-sm uppercase tracking-wider">
                   Savings vs Traditional Providers
                 </div>
-              </div>
-            </div>
-
-            {/* Client Logos Placeholder */}
-            <div className="text-center mb-12">
-              <p className="text-landing-muted text-sm uppercase tracking-wider mb-6">
-                Trusted by leading B2B teams
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-8 lg:gap-12 opacity-60">
-                {/* Placeholder logos - replace with actual client logos */}
-                <div className="text-landing-text/40 text-lg font-semibold">Company</div>
-                <div className="text-landing-text/40 text-lg font-semibold">Company</div>
-                <div className="text-landing-text/40 text-lg font-semibold">Company</div>
-                <div className="text-landing-text/40 text-lg font-semibold">Company</div>
-                <div className="text-landing-text/40 text-lg font-semibold">Company</div>
               </div>
             </div>
 
@@ -241,7 +230,7 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 3: How It Works */}
+        {/* SECTION 4: How It Works */}
         <section className="bg-[#0D0F12] py-24 lg:py-32 relative">
           <div className="absolute inset-0 bg-blueprint-grid opacity-30 pointer-events-none" />
 
@@ -389,7 +378,7 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 4: Pricing Plans */}
+        {/* SECTION 5: Pricing Plans */}
         <section className="bg-[#0D0F12] py-24 lg:py-32 relative">
           <div className="absolute inset-0 bg-blueprint-grid opacity-30 pointer-events-none" />
           
@@ -520,7 +509,7 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 5: Value Proposition */}
+        {/* SECTION 6: Value Proposition */}
         <section className="bg-[#0D0F12] bg-blueprint-grid py-24 lg:py-32 relative">
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0D0F12]/50 to-transparent pointer-events-none" />
 
@@ -628,7 +617,7 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 6: Final CTA */}
+        {/* SECTION 7: Final CTA */}
         <section className="bg-[#121418] py-24 lg:py-32">
           <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-landing-heading mb-6">
