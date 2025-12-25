@@ -88,7 +88,7 @@ function EnergyBeam({
             <animate
               attributeName="offset"
               values="-0.3;0.7;1.3"
-              dur="1.5s"
+              dur="3s"
               begin={`${delay}s`}
               repeatCount="indefinite"
             />
@@ -97,7 +97,7 @@ function EnergyBeam({
             <animate
               attributeName="offset"
               values="-0.15;0.85;1.45"
-              dur="1.5s"
+              dur="3s"
               begin={`${delay}s`}
               repeatCount="indefinite"
             />
@@ -106,7 +106,7 @@ function EnergyBeam({
             <animate
               attributeName="offset"
               values="0;1;1.6"
-              dur="1.5s"
+              dur="3s"
               begin={`${delay}s`}
               repeatCount="indefinite"
             />
@@ -279,22 +279,22 @@ export function IntegrationsShowcase() {
             
             {/* Main card */}
             <div 
-              className="relative bg-gradient-to-br from-gray-100 to-gray-200 px-10 py-6 rounded-2xl shadow-2xl"
+              className="relative bg-black px-10 py-6 rounded-2xl shadow-2xl border border-[#00A3FF]/30"
               style={{
-                boxShadow: "0 4px 30px rgba(0, 0, 0, 0.3), 0 0 60px rgba(0, 163, 255, 0.2)",
+                boxShadow: "0 4px 30px rgba(0, 0, 0, 0.5), 0 0 60px rgba(0, 163, 255, 0.3)",
               }}
             >
               {/* Subtle inner border glow */}
               <div 
                 className="absolute inset-0 rounded-2xl"
                 style={{
-                  background: "linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.05) 100%)",
+                  background: "linear-gradient(135deg, rgba(0, 163, 255, 0.1) 0%, rgba(0, 0, 0, 0) 50%, rgba(0, 163, 255, 0.05) 100%)",
                 }}
               />
               
               <div className="relative">
-                <span className="block text-xl font-bold text-gray-900 tracking-wide leading-tight text-center">
-                  Billion<br/>Verifier
+                <span className="block text-xl font-bold text-[#00A3FF] tracking-wide leading-tight text-center">
+                  BillionVerifier
                 </span>
               </div>
             </div>
