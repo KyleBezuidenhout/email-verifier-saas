@@ -50,7 +50,7 @@ export function MarketingPage() {
       description: "Perfect for solo operators",
       monthlyPrice: 297,
       features: [
-        "Scrape leads at $2 per 1,000 leads",
+        "Scrape leads at $2 per 1,000",
         "Find 2,500 emails per hour",
         "Find 130k+ valid emails daily",
         "Uncapped verification",
@@ -65,7 +65,7 @@ export function MarketingPage() {
       description: "Scale your outreach",
       monthlyPrice: 497,
       features: [
-        "Scrape leads at $2 per 1,000 leads",
+        "Scrape leads at $2 per 1,000",
         "Find 5,000 emails per hour",
         "Find over 250k+ valid email addresses daily (just need full name & website)",
         "Uncapped verification",
@@ -80,7 +80,7 @@ export function MarketingPage() {
       description: "Maximize your pipeline",
       monthlyPrice: 997,
       features: [
-        "Scrape leads at $2 per 1,000 leads",
+        "Scrape leads at $2 per 1,000",
         "Find 10,000 emails per hour",
         "Find over 500k+ valid email addresses daily (just need full name & website)",
         "Uncapped verification",
@@ -96,7 +96,7 @@ export function MarketingPage() {
       description: "Unlimited potential",
       monthlyPrice: 1497,
       features: [
-        "Scrape leads at $2 per 1,000 leads",
+        "Scrape leads at $2 per 1,000",
         "Find 20,000 emails per hour",
         "Find over 1M+ valid email addresses daily (just need full name & website)",
         "Uncapped verification",
