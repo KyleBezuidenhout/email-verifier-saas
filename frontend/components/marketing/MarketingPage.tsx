@@ -140,7 +140,7 @@ export function MarketingPage() {
                   href="/register"
                   className="inline-flex items-center gap-3 bg-landing-accent text-landing-bg px-8 py-4 font-semibold text-base tracking-wide glow-accent hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
                 >
-                  Request Access
+                  Get Free Credits
                   <svg
                     className="w-5 h-5"
                     fill="none"
@@ -632,7 +632,7 @@ export function MarketingPage() {
               href="/register"
               className="inline-flex items-center gap-3 bg-landing-accent text-landing-bg px-10 py-5 font-bold text-lg tracking-wide glow-accent hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
             >
-              Request Access
+              Get Free Credits
               <svg
                 className="w-6 h-6"
                 fill="none"

@@ -43,7 +43,7 @@ export function LandingHeader() {
             href="/register"
             className="inline-flex items-center gap-2 bg-landing-accent text-landing-bg px-6 py-3 font-semibold text-sm tracking-wide glow-accent hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
           >
-            Request Access
+            Get Free Credits
             <svg
               className="w-4 h-4"
               fill="none"
