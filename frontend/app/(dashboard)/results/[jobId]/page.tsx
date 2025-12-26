@@ -306,11 +306,10 @@ export default function ResultsPage() {
 
       <div className="glass-card p-6">
         <div className="mb-4">
-          {/* Current Filter Info & MX Provider Filter */}
+          {/* Current Filter Info */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
             <div className="text-sm text-dashboard-text-muted">
               Showing <span className="font-medium text-dashboard-text">{previewLeads.length}</span> of <span className="font-medium text-dashboard-text">{filteredLeads.length}</span> {filter === "all" ? "leads" : filter === "valid" ? "valid emails" : filter === "catchall" ? "catchall emails" : "not found"}
-              {hasMoreLeads && <span className="text-yellow-400"> (preview limited to {PREVIEW_LIMIT} rows)</span>}
               {mxFilters.length > 0 && <span> • Filtered by: {mxFilters.join(", ")}</span>}
             </div>
           </div>
@@ -318,52 +317,55 @@ export default function ResultsPage() {
           {/* MX Provider Filter */}
           <div className="flex items-center space-x-4">
             <span className="text-sm font-medium text-dashboard-text-muted">MX Provider:</span>
-            <div className="flex space-x-3">
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={mxFilters.includes('outlook')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setMxFilters([...mxFilters, 'outlook']);
-                    } else {
-                      setMxFilters(mxFilters.filter(f => f !== 'outlook'));
-                    }
-                  }}
-                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
-                />
-                <span className="text-sm text-dashboard-text">Outlook Only</span>
-              </label>
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={mxFilters.includes('google')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setMxFilters([...mxFilters, 'google']);
-                    } else {
-                      setMxFilters(mxFilters.filter(f => f !== 'google'));
-                    }
-                  }}
-                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
-                />
-                <span className="text-sm text-dashboard-text">Google Only</span>
-              </label>
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={mxFilters.includes('other')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setMxFilters([...mxFilters, 'other']);
-                    } else {
-                      setMxFilters(mxFilters.filter(f => f !== 'other'));
-                    }
-                  }}
-                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
-                />
-                <span className="text-sm text-dashboard-text">Other MX</span>
-              </label>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  if (mxFilters.includes('outlook')) {
+                    setMxFilters(mxFilters.filter(f => f !== 'outlook'));
+                  } else {
+                    setMxFilters([...mxFilters, 'outlook']);
+                  }
+                }}
+                className={`px-3 py-1.5 text-sm rounded-md transition-all ${
+                  mxFilters.includes('outlook')
+                    ? 'bg-dashboard-card text-dashboard-text ring-1 ring-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]'
+                    : 'bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text hover:bg-dashboard-card/80'
+                }`}
+              >
+                Outlook
+              </button>
+              <button
+                onClick={() => {
+                  if (mxFilters.includes('google')) {
+                    setMxFilters(mxFilters.filter(f => f !== 'google'));
+                  } else {
+                    setMxFilters([...mxFilters, 'google']);
+                  }
+                }}
+                className={`px-3 py-1.5 text-sm rounded-md transition-all ${
+                  mxFilters.includes('google')
+                    ? 'bg-dashboard-card text-dashboard-text ring-1 ring-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]'
+                    : 'bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text hover:bg-dashboard-card/80'
+                }`}
+              >
+                Google
+              </button>
+              <button
+                onClick={() => {
+                  if (mxFilters.includes('other')) {
+                    setMxFilters(mxFilters.filter(f => f !== 'other'));
+                  } else {
+                    setMxFilters([...mxFilters, 'other']);
+                  }
+                }}
+                className={`px-3 py-1.5 text-sm rounded-md transition-all ${
+                  mxFilters.includes('other')
+                    ? 'bg-dashboard-card text-dashboard-text ring-1 ring-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]'
+                    : 'bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text hover:bg-dashboard-card/80'
+                }`}
+              >
+                Other
+              </button>
             </div>
             {mxFilters.length > 0 && (
               <button
