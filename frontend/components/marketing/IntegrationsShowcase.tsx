@@ -308,23 +308,68 @@ export function IntegrationsShowcase() {
           {integrations.map((integration, index) => (
             <div
               key={integration.name}
-              className="absolute z-10 w-16 h-16"
+              className="absolute z-10 w-[72px] h-[72px]"
               style={{
                 ...integration.style,
                 animationDelay: `${index * 0.1}s`,
               }}
             >
+              {/* 3D Shadow layer - sits behind the main card */}
               <div 
-                className="group relative w-full h-full bg-[#1F2937] rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 cursor-pointer overflow-hidden"
+                className="absolute inset-0 rounded-2xl"
                 style={{
-                  boxShadow: "0 4px 24px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 163, 255, 0.15)",
+                  background: "rgba(0, 0, 0, 0.8)",
+                  transform: "translateY(8px) translateZ(-10px)",
+                  filter: "blur(12px)",
+                }}
+              />
+              
+              {/* Secondary shadow for depth */}
+              <div 
+                className="absolute inset-0 rounded-2xl"
+                style={{
+                  background: "rgba(0, 0, 0, 0.5)",
+                  transform: "translateY(4px)",
+                  filter: "blur(6px)",
+                }}
+              />
+              
+              <div 
+                className="group relative w-full h-full rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 hover:-translate-y-1 cursor-pointer overflow-hidden"
+                style={{
+                  background: "linear-gradient(145deg, #2a3240 0%, #1a2028 50%, #151a20 100%)",
+                  boxShadow: `
+                    0 12px 40px rgba(0, 0, 0, 0.8),
+                    0 6px 20px rgba(0, 0, 0, 0.6),
+                    0 0 30px rgba(0, 163, 255, 0.15),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+                    inset 0 -2px 10px rgba(0, 0, 0, 0.3)
+                  `,
+                  border: "1px solid rgba(255, 255, 255, 0.06)",
+                  transform: "translateZ(20px)",
                 }}
               >
-                {/* Connection point glow */}
+                {/* Top edge highlight - simulates light from above */}
+                <div 
+                  className="absolute top-0 left-2 right-2 h-[1px] rounded-full"
+                  style={{
+                    background: "linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%)",
+                  }}
+                />
+                
+                {/* Inner glow layer */}
                 <div 
                   className="absolute inset-0 rounded-2xl"
                   style={{
-                    boxShadow: "inset 0 0 15px rgba(0, 163, 255, 0.1)",
+                    boxShadow: "inset 0 0 20px rgba(0, 163, 255, 0.12)",
+                  }}
+                />
+                
+                {/* Corner accent highlights */}
+                <div 
+                  className="absolute top-1 left-1 w-3 h-3 rounded-tl-xl"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 60%)",
                   }}
                 />
                 
@@ -332,7 +377,7 @@ export function IntegrationsShowcase() {
                 <div 
                   className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                   style={{
-                    boxShadow: "0 0 30px rgba(0, 163, 255, 0.6)",
+                    boxShadow: "0 0 40px rgba(0, 163, 255, 0.7), 0 20px 50px rgba(0, 0, 0, 0.8)",
                   }}
                 />
                 
@@ -340,7 +385,10 @@ export function IntegrationsShowcase() {
                 <img 
                   src={integration.image} 
                   alt={integration.name}
-                  className="relative w-10 h-10 object-contain transform group-hover:scale-110 transition-transform duration-300"
+                  className="relative w-10 h-10 object-contain transform group-hover:scale-110 transition-transform duration-300 drop-shadow-lg"
+                  style={{
+                    filter: "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5))",
+                  }}
                 />
 
                 {/* Tooltip */}
