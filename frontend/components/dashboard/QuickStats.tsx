@@ -28,36 +28,36 @@ export function QuickStats({ jobs }: QuickStatsProps) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div className="dashbrd-card-hover p-4">
-        <div className="text-sm text-apple-text-muted">Total Verified</div>
-        <div className="text-2xl font-bold text-apple-text mt-1">
+      <div className="glass-card-hover p-4">
+        <div className="text-sm text-dashboard-text-muted">Total Verified</div>
+        <div className="text-2xl font-bold text-dashboard-text mt-1">
           {totalVerified.toLocaleString()}
         </div>
-        <div className="text-xs text-apple-text-muted mt-1">emails found</div>
+        <div className="text-xs text-dashboard-text-muted mt-1">emails found</div>
       </div>
       
-      <div className="dashbrd-card-hover p-4">
-        <div className="text-sm text-apple-text-muted">Total Cost</div>
-        <div className="text-2xl font-bold text-apple-text mt-1">
+      <div className="glass-card-hover p-4">
+        <div className="text-sm text-dashboard-text-muted">Total Cost</div>
+        <div className="text-2xl font-bold text-dashboard-text mt-1">
           ${totalCost.toFixed(2)}
         </div>
-        <div className="text-xs text-apple-text-muted mt-1">spent</div>
+        <div className="text-xs text-dashboard-text-muted mt-1">spent</div>
       </div>
       
-      <div className="dashbrd-card-hover p-4">
-        <div className="text-sm text-apple-text-muted">Avg Speed</div>
-        <div className="text-2xl font-bold text-apple-text mt-1">
+      <div className="glass-card-hover p-4">
+        <div className="text-sm text-dashboard-text-muted">Avg Speed</div>
+        <div className="text-2xl font-bold text-dashboard-text mt-1">
           {avgProcessingTime > 0 ? `${avgProcessingTime.toFixed(1)}` : "—"}
         </div>
-        <div className="text-xs text-apple-text-muted mt-1">minutes per job</div>
+        <div className="text-xs text-dashboard-text-muted mt-1">minutes per job</div>
       </div>
       
-      <div className="dashbrd-card-hover p-4">
-        <div className="text-sm text-apple-text-muted">Uptime</div>
-        <div className="text-2xl font-bold text-apple-success mt-1">
+      <div className="glass-card-hover p-4">
+        <div className="text-sm text-dashboard-text-muted">Uptime</div>
+        <div className="text-2xl font-bold text-green-400 mt-1">
           99.9%
         </div>
-        <div className="text-xs text-apple-text-muted mt-1">guaranteed</div>
+        <div className="text-xs text-dashboard-text-muted mt-1">guaranteed</div>
       </div>
     </div>
   );

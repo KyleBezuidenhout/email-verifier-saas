@@ -211,7 +211,7 @@ export default function GetCreditsPage() {
           </div>
 
           {/* Top Up Card */}
-          <div className="relative bg-dashboard-surface border border-dashboard-border rounded-2xl p-8 overflow-hidden">
+          <div className="relative glass-card p-8 overflow-hidden">
             {/* Decorative gradient */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-dashboard-accent/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
             
@@ -278,10 +278,10 @@ export default function GetCreditsPage() {
               </div>
 
               {/* Right: Credit Info */}
-              <div className="bg-dashboard-card rounded-xl p-6 border border-dashboard-border">
+              <div className="glass-card p-6">
                 <h3 className="text-lg font-semibold text-dashboard-text mb-4">Credit Usage</h3>
                 <div className="space-y-4">
-                  <div className="flex items-center gap-4 p-4 rounded-lg bg-dashboard-surface border border-dashboard-border">
+                  <div className="flex items-center gap-4 p-4 rounded-lg glass-card-hover">
                     <div className="w-12 h-12 rounded-xl bg-dashboard-accent/10 flex items-center justify-center">
                       <svg className="w-6 h-6 text-dashboard-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -293,7 +293,7 @@ export default function GetCreditsPage() {
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-4 p-4 rounded-lg bg-dashboard-surface border border-dashboard-border">
+                  <div className="flex items-center gap-4 p-4 rounded-lg glass-card-hover">
                     <div className="w-12 h-12 rounded-xl bg-dashboard-accent/10 flex items-center justify-center">
                       <svg className="w-6 h-6 text-dashboard-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -369,10 +369,10 @@ export default function GetCreditsPage() {
               return (
                 <div
                   key={plan.name}
-                  className={`relative flex flex-col p-6 lg:p-8 border bg-dashboard-surface rounded-xl transition-all duration-300 animate-fade-in ${
+                  className={`relative flex flex-col p-6 lg:p-8 glass-card transition-all duration-300 animate-fade-in ${
                     plan.highlighted
                       ? "border-dashboard-accent shadow-lg shadow-dashboard-accent/10"
-                      : "border-dashboard-border hover:border-dashboard-border-light"
+                      : "hover:border-dashboard-border-light"
                   }`}
                   style={{ animationDelay: `${index * 0.1}s` }}
                 >
@@ -526,7 +526,7 @@ export default function GetCreditsPage() {
             {/* Center Hub */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
               <div 
-                className="relative bg-dashboard-surface px-10 py-6 rounded-2xl shadow-2xl border border-dashboard-accent/30"
+                className="relative glass-card px-10 py-6 shadow-2xl border-dashboard-accent/30"
                 style={{
                   boxShadow: "0 4px 30px rgba(0, 0, 0, 0.5), 0 0 60px rgba(0, 163, 255, 0.3)",
                 }}
@@ -619,7 +619,7 @@ export default function GetCreditsPage() {
                     }}
                   />
                   <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none">
-                    <div className="bg-dashboard-card px-3 py-1.5 rounded-lg border border-dashboard-border whitespace-nowrap">
+                    <div className="glass-card px-3 py-1.5 whitespace-nowrap">
                       <span className="text-sm font-medium text-dashboard-text">{integration.name}</span>
                     </div>
                   </div>

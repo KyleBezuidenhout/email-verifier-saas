@@ -422,14 +422,14 @@ export default function SalesNavScraperPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-apple-text">Sales Nav Scraper</h1>
-        <p className="mt-2 text-apple-text-muted">
+        <h1 className="text-3xl font-bold text-dashboard-text">Sales Nav Scraper</h1>
+        <p className="mt-2 text-dashboard-text-muted">
           Import and enrich leads from Sales Navigator
         </p>
       </div>
 
       {/* Notice about charges */}
-      <div className="mb-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+      <div className="mb-6 glass-card bg-yellow-500/10 border-yellow-500/30 p-4">
         <div className="flex items-start gap-3">
           <svg className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -453,13 +453,14 @@ export default function SalesNavScraperPage() {
           onClick={handleCancelDelete}
         >
           <div 
-            className="bg-apple-surface border border-apple-border rounded-xl p-6 max-w-md w-full mx-4"
+            className="glass-card p-6 max-w-md w-full mx-4"
+            style={{ background: 'rgba(13, 15, 18, 0.9)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold text-apple-text mb-4">Delete Order</h3>
-            <p className="text-sm text-apple-text-muted mb-6">
+            <h3 className="text-lg font-semibold text-dashboard-text mb-4">Delete Order</h3>
+            <p className="text-sm text-dashboard-text-muted mb-6">
               Are you sure you want to delete this order from your order history? 
-              <strong className="text-apple-text block mt-2">
+              <strong className="text-dashboard-text block mt-2">
                 You will still be charged for all leads scraped, even if you delete the order.
               </strong>
             </p>
@@ -469,7 +470,7 @@ export default function SalesNavScraperPage() {
                   e.stopPropagation();
                   handleCancelDelete();
                 }}
-                className="flex-1 px-4 py-2 bg-apple-bg border border-apple-border text-apple-text rounded-lg hover:bg-apple-card transition-colors text-sm font-medium"
+                className="flex-1 px-4 py-2 glass-card text-dashboard-text hover:bg-dashboard-card transition-colors text-sm font-medium"
               >
                 Cancel
               </button>
@@ -488,8 +489,8 @@ export default function SalesNavScraperPage() {
       )}
 
       {/* Job Name Input */}
-      <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
-        <label className="block text-sm font-medium text-apple-text mb-2">
+      <div className="glass-card p-6 mb-6">
+        <label className="block text-sm font-medium text-dashboard-text mb-2">
           Job Name <span className="text-red-500">*</span>
         </label>
         <input
@@ -498,38 +499,38 @@ export default function SalesNavScraperPage() {
           onChange={(e) => setJobName(e.target.value)}
           placeholder="Enter a name for this scraping job (e.g., 'Q4 Sales Outreach')"
           required
-          className="w-full px-4 py-3 bg-apple-bg border border-apple-border rounded-lg text-apple-text focus:outline-none focus:ring-2 focus:ring-apple-accent"
+          className="apple-input w-full py-3"
         />
-        <p className="mt-2 text-xs text-apple-text-muted">
+        <p className="mt-2 text-xs text-dashboard-text-muted">
           Give your scraping job a descriptive name to easily identify it in your order history
         </p>
       </div>
 
       {/* LinkedIn Cookie Input Card */}
-      <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
+      <div className="glass-card p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             {linkedinCookie.trim() ? (
               <>
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 <div>
-                  <p className="text-sm font-medium text-apple-text">LinkedIn Cookie Ready</p>
-                  <p className="text-xs text-apple-text-muted">Cookie entered - ready to scrape</p>
+                  <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie Ready</p>
+                  <p className="text-xs text-dashboard-text-muted">Cookie entered - ready to scrape</p>
                 </div>
               </>
             ) : (
               <>
                 <div className="w-3 h-3 rounded-full bg-red-500"></div>
                 <div>
-                  <p className="text-sm font-medium text-apple-text">LinkedIn Cookie Required</p>
-                  <p className="text-xs text-apple-text-muted">Enter your session cookie to start scraping</p>
+                  <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie Required</p>
+                  <p className="text-xs text-dashboard-text-muted">Enter your session cookie to start scraping</p>
                 </div>
               </>
             )}
           </div>
           <button
             onClick={() => setShowAuthModal(true)}
-            className="px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors text-sm font-medium"
+            className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors text-sm font-medium"
           >
             {linkedinCookie.trim() ? "Update Cookie" : "Connect LinkedIn Account"}
           </button>
@@ -540,13 +541,13 @@ export default function SalesNavScraperPage() {
       {showAuthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAuthModal(false)} />
-          <div className="relative bg-apple-surface border border-apple-border rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4">
-            <h3 className="text-xl font-semibold text-apple-text mb-4">LinkedIn Authentication</h3>
-            <p className="text-sm text-apple-text-muted mb-4">
-              Enter your LinkedIn session cookie (<code className="bg-apple-bg px-1 py-0.5 rounded">li_at</code>) to authenticate.
+          <div className="relative glass-card p-6 shadow-2xl max-w-md w-full mx-4" style={{ background: 'rgba(13, 15, 18, 0.9)' }}>
+            <h3 className="text-xl font-semibold text-dashboard-text mb-4">LinkedIn Authentication</h3>
+            <p className="text-sm text-dashboard-text-muted mb-4">
+              Enter your LinkedIn session cookie (<code className="bg-dashboard-card px-1 py-0.5 rounded">li_at</code>) to authenticate.
               <strong className="block mt-2">A fresh cookie is required for each scraping order.</strong>
             </p>
-            <p className="text-xs text-apple-text-muted mb-4">
+            <p className="text-xs text-dashboard-text-muted mb-4">
               <strong>How to get your cookie:</strong> Open browser developer tools (F12), go to Application/Storage → Cookies → linkedin.com, copy the "li_at" value.
             </p>
             <input
@@ -554,7 +555,7 @@ export default function SalesNavScraperPage() {
               value={linkedinCookie}
               onChange={(e) => setLinkedinCookie(e.target.value)}
               placeholder="Paste your li_at cookie here"
-              className="w-full px-4 py-2 bg-apple-bg border border-apple-border rounded-lg text-apple-text mb-4 focus:outline-none focus:ring-2 focus:ring-apple-accent"
+              className="apple-input w-full mb-4"
             />
             <div className="flex gap-3">
               <button
@@ -566,7 +567,7 @@ export default function SalesNavScraperPage() {
                     setShowErrorModal(true);
                   }
                 }}
-                className="flex-1 px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors"
+                className="flex-1 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors"
               >
                 Save Cookie
               </button>
@@ -574,7 +575,7 @@ export default function SalesNavScraperPage() {
                 onClick={() => {
                   setShowAuthModal(false);
                 }}
-                className="px-4 py-2 bg-apple-surface border border-apple-border rounded-lg hover:bg-apple-card transition-colors"
+                className="px-4 py-2 glass-card hover:bg-dashboard-card transition-colors"
               >
                 Cancel
               </button>
@@ -585,8 +586,8 @@ export default function SalesNavScraperPage() {
 
 
       {/* Sales Navigator URL Input */}
-      <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
-        <label className="block text-sm font-medium text-apple-text mb-2">
+      <div className="glass-card p-6 mb-6">
+        <label className="block text-sm font-medium text-dashboard-text mb-2">
           Sales Navigator URL
         </label>
         <input
@@ -594,9 +595,9 @@ export default function SalesNavScraperPage() {
           value={salesNavUrl}
           onChange={(e) => setSalesNavUrl(e.target.value)}
           placeholder="https://www.linkedin.com/sales/search/..."
-          className="w-full px-4 py-3 bg-apple-bg border border-apple-border rounded-lg text-apple-text focus:outline-none focus:ring-2 focus:ring-apple-accent"
+          className="apple-input w-full py-3"
         />
-        <p className="mt-2 text-xs text-apple-text-muted">
+        <p className="mt-2 text-xs text-dashboard-text-muted">
           Paste the URL from your Sales Navigator search results page
         </p>
         {validatingUrl && (
@@ -633,7 +634,7 @@ export default function SalesNavScraperPage() {
         <button
           onClick={handleStartScraping}
           disabled={!urlValidation?.is_valid || !linkedinCookie.trim() || creatingOrder}
-          className="flex-1 px-6 py-3 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+          className="flex-1 px-6 py-3 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
         >
           {creatingOrder ? (
             <span className="flex items-center justify-center gap-2">
@@ -646,50 +647,50 @@ export default function SalesNavScraperPage() {
         </button>
         <button
           onClick={handleClearForm}
-          className="px-6 py-3 bg-apple-surface border border-apple-border rounded-lg hover:bg-apple-card transition-colors"
+          className="px-6 py-3 glass-card hover:bg-dashboard-card transition-colors"
         >
           Clear Form
         </button>
       </div>
 
       {/* Scrape History Section - Shows all orders */}
-      <div className="bg-apple-surface border border-apple-border rounded-xl p-6 mb-6">
-        <h3 className="text-lg font-semibold text-apple-text mb-4">Scraping Orders</h3>
+      <div className="glass-card p-6 mb-6">
+        <h3 className="text-lg font-semibold text-dashboard-text mb-4">Scraping Orders</h3>
         {loadingScrapeHistory && scrapeHistoryOrders.length === 0 ? (
           <div className="flex justify-center items-center py-8">
             <LoadingSpinner size="sm" />
           </div>
         ) : scrapeHistoryOrders.length === 0 ? (
-          <p className="text-apple-text-muted text-center py-8">No scraping orders yet. Start a new scrape above.</p>
+          <p className="text-dashboard-text-muted text-center py-8">No scraping orders yet. Start a new scrape above.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-apple-border">
-              <thead className="bg-apple-surface-hover">
+            <table className="min-w-full divide-y divide-dashboard-border">
+              <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }}>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Job Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Created At
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Progress
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-apple-surface divide-y divide-apple-border">
+              <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
                 {scrapeHistoryOrders.map((order) => (
                   <tr key={order.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-apple-text">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text">
                       {order.targeting || order.vayne_order_id || order.id.slice(0, 8)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                       {formatDate(order.created_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -709,7 +710,7 @@ export default function SalesNavScraperPage() {
                          order.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
                       {order.status === "completed" ? (
                         <div className="flex items-center gap-2">
                           <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -733,13 +734,13 @@ export default function SalesNavScraperPage() {
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 min-w-[120px]">
-                          <div className="flex-1 bg-apple-bg rounded-full h-2 overflow-hidden">
+                          <div className="flex-1 bg-dashboard-card rounded-full h-2 overflow-hidden">
                             <div 
-                              className="bg-apple-accent h-2 rounded-full transition-all duration-500 ease-out"
+                              className="bg-dashboard-accent h-2 rounded-full transition-all duration-500 ease-out"
                               style={{ width: `${order.progress_percentage || 5}%` }}
                             />
                           </div>
-                          <span className="text-xs text-apple-text-muted w-8">{order.progress_percentage || 0}%</span>
+                          <span className="text-xs text-dashboard-text-muted w-8">{order.progress_percentage || 0}%</span>
                         </div>
                       )}
                     </td>
@@ -749,7 +750,7 @@ export default function SalesNavScraperPage() {
                           <button
                             onClick={() => handleDownloadCSV(order.id)}
                             disabled={downloadingOrderId === order.id}
-                            className="px-3 py-1.5 bg-apple-accent text-white text-xs rounded-lg hover:bg-apple-accent/90 transition-colors disabled:opacity-50"
+                            className="px-3 py-1.5 bg-dashboard-accent text-white text-xs rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50"
                           >
                             {downloadingOrderId === order.id ? "Downloading..." : "Download CSV"}
                           </button>
@@ -757,14 +758,14 @@ export default function SalesNavScraperPage() {
                         {deleteConfirmOrderId === order.id ? (
                           <button
                             onClick={() => handleDeleteOrder(order.id)}
-                            className="text-apple-error hover:text-apple-error/80 transition-colors text-xs"
+                            className="text-red-400 hover:text-red-300 transition-colors text-xs"
                           >
                             Confirm Delete
                           </button>
                         ) : (
                           <button
                             onClick={() => handleDeleteOrder(order.id)}
-                            className="text-apple-text-muted hover:text-apple-error transition-colors text-xs"
+                            className="text-dashboard-text-muted hover:text-red-400 transition-colors text-xs"
                           >
                             Delete
                           </button>
@@ -780,8 +781,8 @@ export default function SalesNavScraperPage() {
       </div>
 
       {/* FAQ Section */}
-      <div className="bg-apple-surface border border-apple-border rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-apple-text mb-4">Frequently Asked Questions</h3>
+      <div className="glass-card p-6">
+        <h3 className="text-lg font-semibold text-dashboard-text mb-4">Frequently Asked Questions</h3>
         <div className="space-y-2">
           {[
             {
@@ -805,14 +806,14 @@ export default function SalesNavScraperPage() {
               a: "Yes, you can create multiple orders. Each order processes one Sales Navigator URL. You can have multiple orders running concurrently.",
             },
           ].map((faq, idx) => (
-            <div key={idx} className="border-b border-apple-border last:border-0">
+            <div key={idx} className="border-b border-dashboard-border last:border-0">
               <button
                 onClick={() => setOpenFaq(openFaq === idx ? null : idx)}
                 className="w-full flex items-center justify-between py-3 text-left"
               >
-                <span className="text-sm font-medium text-apple-text">{faq.q}</span>
+                <span className="text-sm font-medium text-dashboard-text">{faq.q}</span>
                 <svg
-                  className={`w-5 h-5 text-apple-text-muted transition-transform ${
+                  className={`w-5 h-5 text-dashboard-text-muted transition-transform ${
                     openFaq === idx ? "rotate-180" : ""
                   }`}
                   fill="none"
@@ -823,7 +824,7 @@ export default function SalesNavScraperPage() {
                 </svg>
               </button>
               {openFaq === idx && (
-                <p className="pb-3 text-sm text-apple-text-muted">{faq.a}</p>
+                <p className="pb-3 text-sm text-dashboard-text-muted">{faq.a}</p>
               )}
             </div>
           ))}

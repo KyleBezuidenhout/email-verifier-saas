@@ -35,35 +35,35 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
   };
 
   return (
-    <div className="dashbrd-card overflow-hidden">
+    <div className="glass-card overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-apple-border">
-          <thead className="bg-apple-surface">
+        <table className="min-w-full divide-y divide-dashboard-border">
+          <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }}>
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                 Job ID
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                 Upload Date
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                 Leads
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                 Progress
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                 Hit Rate
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="bg-apple-surface divide-y divide-apple-border">
+          <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
             {jobs.map((job) => {
               // Only calculate hit rate after job is completed
               // Enrichment: (valid + catchall) / total unique leads | Verification: valid / total
@@ -81,10 +81,10 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
               return (
               <tr 
                 key={job.id} 
-                className="hover:bg-apple-surface-hover transition-colors cursor-pointer"
+                className="hover:bg-dashboard-card/50 transition-colors cursor-pointer"
                 onClick={(e) => handleRowClick(job.id, e)}
               >
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-apple-text">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-dashboard-text">
                   <div className="flex items-center gap-2">
                     <span>{job.id.slice(0, 8)}...</span>
                     {(job.source === "Sales Nav" || job.source === "Scraped") && (
@@ -94,10 +94,10 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                     )}
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                   {formatDate(job.created_at)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
                   {job.total_leads}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -115,9 +115,9 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="w-full bg-apple-surface-hover rounded-full h-2">
+                  <div className="w-full bg-dashboard-card rounded-full h-2">
                     <div
-                      className="bg-apple-accent h-2 rounded-full transition-all"
+                      className="bg-dashboard-accent h-2 rounded-full transition-all"
                       style={{
                         width: `${calculateProgress(
                           job.processed_leads,
@@ -126,12 +126,12 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                       }}
                     />
                   </div>
-                  <span className="text-xs text-apple-text-muted mt-1 block">
+                  <span className="text-xs text-dashboard-text-muted mt-1 block">
                     {calculateProgress(job.processed_leads, job.total_leads)}%
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <span className={`font-medium ${isCompleted ? 'text-green-400' : 'text-apple-text-muted'}`}>
+                  <span className={`font-medium ${isCompleted ? 'text-green-400' : 'text-dashboard-text-muted'}`}>
                     {hitRateDisplay}
                   </span>
                 </td>
@@ -139,7 +139,7 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                   <Link
                     href={`/results/${job.id}`}
                     onClick={(e) => e.stopPropagation()}
-                    className="text-apple-accent hover:opacity-80 transition-opacity"
+                    className="text-dashboard-accent hover:opacity-80 transition-opacity"
                   >
                     View
                   </Link>
@@ -149,7 +149,7 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                         e.stopPropagation();
                         onCancel(job.id);
                       }}
-                      className="text-apple-warning hover:text-apple-warning/80 transition-colors"
+                      className="text-yellow-400 hover:text-yellow-300 transition-colors"
                     >
                       Cancel
                     </button>
@@ -160,7 +160,7 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                         e.stopPropagation();
                         handleDelete(job.id);
                       }}
-                      className="text-apple-error hover:text-apple-error/80 transition-colors"
+                      className="text-red-400 hover:text-red-300 transition-colors"
                     >
                       Confirm
                     </button>
@@ -170,7 +170,7 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                         e.stopPropagation();
                         handleDelete(job.id);
                       }}
-                      className="text-apple-error hover:text-apple-error/80 transition-colors"
+                      className="text-red-400 hover:text-red-300 transition-colors"
                     >
                       Delete
                     </button>
@@ -184,7 +184,7 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
       </div>
       {jobs.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-apple-text-muted">No jobs yet. Upload a CSV file to get started.</p>
+          <p className="text-dashboard-text-muted">No jobs yet. Upload a CSV file to get started.</p>
         </div>
       )}
     </div>

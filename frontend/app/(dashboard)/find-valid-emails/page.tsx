@@ -204,8 +204,8 @@ export default function FindValidEmailsPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-apple-text">Find Valid Emails</h1>
-        <p className="mt-2 text-apple-text-muted">
+        <h1 className="text-3xl font-bold text-dashboard-text">Find Valid Emails</h1>
+        <p className="mt-2 text-dashboard-text-muted">
           Manage and monitor your email verification jobs
         </p>
       </div>
@@ -220,7 +220,7 @@ export default function FindValidEmailsPage() {
       <QuickStats jobs={jobs} />
 
       {/* Upload Section */}
-      <div className="mb-8 dashbrd-card p-6 space-y-6">
+      <div className="mb-8 glass-card p-6 space-y-6">
         {uploadError && (
           <div className="badge-error px-4 py-3 rounded-lg text-sm">
             {uploadError}
@@ -234,18 +234,18 @@ export default function FindValidEmailsPage() {
 
         {selectedFile && (
           <>
-            <div className="border-t border-apple-border pt-6">
-              <h3 className="text-lg font-medium text-apple-text mb-4">
+            <div className="border-t border-dashboard-border pt-6">
+              <h3 className="text-lg font-medium text-dashboard-text mb-4">
                 File Information
               </h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-apple-text-muted">File name:</span>
-                  <span className="ml-2 font-medium text-apple-text">{selectedFile.name}</span>
+                  <span className="text-dashboard-text-muted">File name:</span>
+                  <span className="ml-2 font-medium text-dashboard-text">{selectedFile.name}</span>
                 </div>
                 <div>
-                  <span className="text-apple-text-muted">File size:</span>
-                  <span className="ml-2 font-medium text-apple-text">
+                  <span className="text-dashboard-text-muted">File size:</span>
+                  <span className="ml-2 font-medium text-dashboard-text">
                     {formatFileSize(selectedFile.size)}
                   </span>
                 </div>
@@ -255,14 +255,14 @@ export default function FindValidEmailsPage() {
             <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
 
             {/* Company Size Selection - Always Required */}
-            <div className="border-t border-apple-border pt-6">
-              <h3 className="text-lg font-medium text-apple-text mb-4">
+            <div className="border-t border-dashboard-border pt-6">
+              <h3 className="text-lg font-medium text-dashboard-text mb-4">
                 Company Size
               </h3>
               <div>
                 <label
                   htmlFor="company-size"
-                  className="block text-sm font-medium text-apple-text-muted mb-2"
+                  className="block text-sm font-medium text-dashboard-text-muted mb-2"
                 >
                   Select the company size range for your leads
                 </label>
@@ -270,7 +270,7 @@ export default function FindValidEmailsPage() {
                   id="company-size"
                   value={companySize}
                   onChange={(e) => setCompanySize(e.target.value)}
-                  className={`apple-input w-full ${!companySize ? "border-apple-warning" : ""}`}
+                  className={`apple-input w-full ${!companySize ? "border-yellow-500/50" : ""}`}
                 >
                   <option value="">-- Select company size range --</option>
                   <option value="1-50">1-50 employees (Small)</option>
@@ -279,14 +279,14 @@ export default function FindValidEmailsPage() {
                   <option value="500+">500+ employees (Enterprise)</option>
                 </select>
                 {!companySize && (
-                  <p className="mt-1 text-xs text-apple-warning">
+                  <p className="mt-1 text-xs text-yellow-400">
                     Required: Select a company size range to optimize email pattern accuracy
                   </p>
                 )}
               </div>
             </div>
 
-            <div className="flex justify-end space-x-4 pt-6 border-t border-apple-border">
+            <div className="flex justify-end space-x-4 pt-6 border-t border-dashboard-border">
               <button
                 onClick={() => {
                   setSelectedFile(null);

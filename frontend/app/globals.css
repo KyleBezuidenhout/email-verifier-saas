@@ -20,20 +20,92 @@
 }
 
 @layer components {
-  /* Card component */
+  /* Glass Card Components - Modern glassmorphism matching sidebar */
+  .glass-card {
+    background: rgba(13, 15, 18, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    box-shadow: 
+      0 4px 24px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    transition: all 0.3s ease;
+  }
+
+  .glass-card-hover {
+    background: rgba(13, 15, 18, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    box-shadow: 
+      0 4px 24px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    transition: all 0.3s ease;
+  }
+
+  .glass-card-hover:hover {
+    background: rgba(13, 15, 18, 0.85);
+    border-color: rgba(0, 153, 255, 0.2);
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(0, 153, 255, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transform: translateY(-1px);
+  }
+
+  /* Card component - updated to use glass effect */
   .dashbrd-card {
-    @apply bg-apple-surface border border-apple-border rounded-xl;
-    transition: all 0.2s ease;
+    background: rgba(13, 15, 18, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    box-shadow: 
+      0 4px 24px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    transition: all 0.3s ease;
   }
 
   .dashbrd-card-hover {
-    @apply dashbrd-card hover:bg-apple-surface-hover hover:border-apple-border;
+    background: rgba(13, 15, 18, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    box-shadow: 
+      0 4px 24px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    transition: all 0.3s ease;
   }
 
-  /* Input/Select styling */
+  .dashbrd-card-hover:hover {
+    background: rgba(13, 15, 18, 0.85);
+    border-color: rgba(0, 153, 255, 0.2);
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(0, 153, 255, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transform: translateY(-1px);
+  }
+
+  /* Input/Select styling - Glass effect */
   .dashbrd-input {
-    @apply bg-apple-surface border border-apple-border rounded-lg px-4 py-2 text-apple-text placeholder-apple-text-muted;
-    @apply focus:outline-none focus:ring-2 focus:ring-apple-accent focus:border-apple-accent;
+    background: rgba(13, 15, 18, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    @apply border border-dashboard-border rounded-lg px-4 py-2 text-dashboard-text placeholder-dashboard-text-muted;
+    @apply focus:outline-none focus:ring-2 focus:ring-dashboard-accent focus:border-dashboard-accent;
+    transition: all 0.2s ease;
+  }
+
+  .apple-input {
+    background: rgba(13, 15, 18, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    @apply border border-dashboard-border rounded-lg px-4 py-2 text-dashboard-text placeholder-dashboard-text-muted;
+    @apply focus:outline-none focus:ring-2 focus:ring-dashboard-accent focus:border-dashboard-accent;
     transition: all 0.2s ease;
   }
 

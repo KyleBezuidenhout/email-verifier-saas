@@ -153,20 +153,20 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
     <div className="mt-4 space-y-4">
       {/* Column Mapping Section - only show if there are unmapped columns */}
       {unmappedColumns.length > 0 && (
-        <div className="bg-yellow-900/20 border border-yellow-800 rounded-lg p-4">
+        <div className="glass-card bg-yellow-900/20 border-yellow-800 p-4">
           <h4 className="text-sm font-medium text-yellow-300 mb-3">
             📋 Please map the following columns:
           </h4>
           <div className="space-y-3">
             {unmappedColumns.map((col) => (
               <div key={col} className="flex items-center gap-3">
-                <label className="text-sm text-apple-text w-40">
+                <label className="text-sm text-dashboard-text w-40">
                   {getColumnLabel(col)}:
                 </label>
                 <select
                   value={mapping[col] || ""}
                   onChange={(e) => handleColumnSelect(col, e.target.value)}
-                  className="dashbrd-input flex-1 text-sm"
+                  className="apple-input flex-1 text-sm"
                 >
                   <option value="">-- Select column --</option>
                   {headers.map((header) => (
@@ -192,40 +192,40 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
       )}
 
       {/* Column Mapping Summary */}
-      <div className="bg-apple-surface border border-apple-border rounded-lg p-4">
-        <h4 className="text-sm font-medium text-apple-text mb-2">Column Mapping:</h4>
+      <div className="glass-card p-4">
+        <h4 className="text-sm font-medium text-dashboard-text mb-2">Column Mapping:</h4>
         <div className="grid grid-cols-2 gap-2 text-sm">
           {mode === 'verification' ? (
             <>
-              <div className="text-apple-text-muted">Email →</div>
-              <div className={mapping.email ? "text-apple-success font-medium" : "text-apple-error"}>
+              <div className="text-dashboard-text-muted">Email →</div>
+              <div className={mapping.email ? "text-green-400 font-medium" : "text-red-400"}>
                 {mapping.email || "Not mapped (required)"}
               </div>
-              <div className="text-apple-text-muted">First Name →</div>
-              <div className={mapping.first_name ? "text-apple-success font-medium" : "text-apple-text-muted"}>
+              <div className="text-dashboard-text-muted">First Name →</div>
+              <div className={mapping.first_name ? "text-green-400 font-medium" : "text-dashboard-text-muted"}>
                 {mapping.first_name || "Not mapped (optional)"}
               </div>
-              <div className="text-apple-text-muted">Last Name →</div>
-              <div className={mapping.last_name ? "text-apple-success font-medium" : "text-apple-text-muted"}>
+              <div className="text-dashboard-text-muted">Last Name →</div>
+              <div className={mapping.last_name ? "text-green-400 font-medium" : "text-dashboard-text-muted"}>
                 {mapping.last_name || "Not mapped (optional)"}
               </div>
             </>
           ) : (
             <>
-              <div className="text-apple-text-muted">First Name →</div>
-              <div className={mapping.first_name ? "text-apple-success font-medium" : "text-apple-error"}>
+              <div className="text-dashboard-text-muted">First Name →</div>
+              <div className={mapping.first_name ? "text-green-400 font-medium" : "text-red-400"}>
                 {mapping.first_name || "Not mapped"}
               </div>
-              <div className="text-apple-text-muted">Last Name →</div>
-              <div className={mapping.last_name ? "text-apple-success font-medium" : "text-apple-error"}>
+              <div className="text-dashboard-text-muted">Last Name →</div>
+              <div className={mapping.last_name ? "text-green-400 font-medium" : "text-red-400"}>
                 {mapping.last_name || "Not mapped"}
               </div>
-              <div className="text-apple-text-muted">Website →</div>
-              <div className={mapping.website ? "text-apple-success font-medium" : "text-apple-error"}>
+              <div className="text-dashboard-text-muted">Website →</div>
+              <div className={mapping.website ? "text-green-400 font-medium" : "text-red-400"}>
                 {mapping.website || "Not mapped"}
               </div>
-              <div className="text-apple-text-muted">Company Size →</div>
-              <div className={mapping.company_size ? "text-apple-success font-medium" : "text-apple-text-muted"}>
+              <div className="text-dashboard-text-muted">Company Size →</div>
+              <div className={mapping.company_size ? "text-green-400 font-medium" : "text-dashboard-text-muted"}>
                 {mapping.company_size || "Not mapped (optional)"}
               </div>
             </>
@@ -235,33 +235,33 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
 
       {/* Preview Table */}
       {preview.length > 0 && (
-        <div className="dashbrd-card overflow-hidden">
-          <div className="px-4 py-2 bg-apple-surface-hover border-b border-apple-border">
-            <p className="text-sm font-medium text-apple-text">
+        <div className="glass-card overflow-hidden">
+          <div className="px-4 py-2 border-b border-dashboard-border" style={{ background: 'rgba(13, 15, 18, 0.5)' }}>
+            <p className="text-sm font-medium text-dashboard-text">
               Preview (first 5 rows)
             </p>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-apple-border">
-              <thead className="bg-apple-surface-hover">
+            <table className="min-w-full divide-y divide-dashboard-border">
+              <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }}>
                 <tr>
                   {headers.map((header) => (
                     <th
                       key={header}
-                      className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider"
+                      className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider"
                     >
                       {header}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="bg-apple-surface divide-y divide-apple-border">
+              <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
                 {preview.map((row, i) => (
                   <tr key={i}>
                     {headers.map((header) => (
                       <td
                         key={header}
-                        className="px-4 py-3 whitespace-nowrap text-sm text-apple-text"
+                        className="px-4 py-3 whitespace-nowrap text-sm text-dashboard-text"
                       >
                         {row[header] || "-"}
                       </td>

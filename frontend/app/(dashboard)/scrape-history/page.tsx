@@ -125,16 +125,16 @@ export default function ScrapeHistoryPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-apple-text">Scrape History</h1>
-        <p className="mt-2 text-apple-text-muted">
+        <h1 className="text-3xl font-bold text-dashboard-text">Scrape History</h1>
+        <p className="mt-2 text-dashboard-text-muted">
           View and download all your Sales Navigator scraping results
         </p>
       </div>
 
       {/* Date Filter */}
-      <div className="mb-6 dashbrd-card p-4">
+      <div className="mb-6 glass-card p-4">
         <div className="flex flex-wrap items-center gap-4">
-          <label className="text-sm font-medium text-apple-text-muted">Filter by date:</label>
+          <label className="text-sm font-medium text-dashboard-text-muted">Filter by date:</label>
           <div className="flex gap-2">
             {(["7d", "30d", "90d", "all"] as DateRange[]).map((range) => (
               <button
@@ -142,8 +142,8 @@ export default function ScrapeHistoryPage() {
                 onClick={() => setDateRange(range)}
                 className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                   dateRange === range
-                    ? "bg-apple-accent text-white font-medium"
-                    : "bg-dashbrd-card border border-apple-border text-apple-text-muted hover:bg-dashbrd-card-hover hover:text-apple-text"
+                    ? "bg-dashboard-accent text-white font-medium"
+                    : "glass-card text-dashboard-text-muted hover:bg-dashboard-surface/60 hover:text-dashboard-text"
                 }`}
               >
                 {range === "7d" ? "Last 7 days" : range === "30d" ? "Last 30 days" : range === "90d" ? "Last 90 days" : "All time"}
@@ -153,8 +153,8 @@ export default function ScrapeHistoryPage() {
               onClick={() => setDateRange("custom")}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 dateRange === "custom"
-                  ? "bg-apple-accent text-white font-medium"
-                  : "bg-dashbrd-card border border-apple-border text-apple-text-muted hover:bg-dashbrd-card-hover hover:text-apple-text"
+                  ? "bg-dashboard-accent text-white font-medium"
+                  : "glass-card text-dashboard-text-muted hover:bg-dashboard-surface/60 hover:text-dashboard-text"
               }`}
             >
               Custom
@@ -168,7 +168,7 @@ export default function ScrapeHistoryPage() {
                 onChange={(e) => setCustomStartDate(e.target.value)}
                 className="apple-input text-sm"
               />
-              <span className="text-apple-text-muted">to</span>
+              <span className="text-dashboard-text-muted">to</span>
               <input
                 type="date"
                 value={customEndDate}
@@ -187,43 +187,43 @@ export default function ScrapeHistoryPage() {
       )}
 
       {/* Orders Table */}
-      <div className="dashbrd-card overflow-hidden">
+      <div className="glass-card overflow-hidden">
         {filteredOrders.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-apple-text-muted">No scrape history found for the selected date range.</p>
+            <p className="text-dashboard-text-muted">No scrape history found for the selected date range.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-apple-border">
-              <thead className="bg-apple-surface">
+            <table className="min-w-full divide-y divide-dashboard-border">
+              <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }}>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Job Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Leads Found
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Completed
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-apple-bg divide-y divide-apple-border">
+              <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
                 {filteredOrders.map((order) => (
-                  <tr key={order.id} className="hover:bg-apple-surface-hover">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
+                  <tr key={order.id} className="hover:bg-dashboard-card/50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                       {formatDate(order.created_at)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
                       {order.targeting || "Untitled Scrape"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -233,24 +233,24 @@ export default function ScrapeHistoryPage() {
                         {order.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
                       {order.leads_found?.toLocaleString() || "—"}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                       {order.completed_at ? formatDate(order.completed_at) : "—"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                       {deleteConfirmOrderId === order.id ? (
                         <button
                           onClick={() => handleDeleteOrder(order.id)}
-                          className="text-apple-error hover:text-apple-error/80 transition-colors"
+                          className="text-red-400 hover:text-red-300 transition-colors"
                         >
                           Confirm
                         </button>
                       ) : (
                         <button
                           onClick={() => handleDeleteOrder(order.id)}
-                          className="text-apple-error hover:text-apple-error/80 transition-colors"
+                          className="text-red-400 hover:text-red-300 transition-colors"
                         >
                           Delete
                         </button>
@@ -266,10 +266,10 @@ export default function ScrapeHistoryPage() {
 
       {/* Summary */}
       {filteredOrders.length > 0 && (
-        <div className="mt-6 dashbrd-card p-4">
-          <p className="text-sm text-apple-text-muted">
-            Showing <strong className="text-apple-text">{filteredOrders.length}</strong> of{" "}
-            <strong className="text-apple-text">{orders.length}</strong> total scrapes
+        <div className="mt-6 glass-card p-4">
+          <p className="text-sm text-dashboard-text-muted">
+            Showing <strong className="text-dashboard-text">{filteredOrders.length}</strong> of{" "}
+            <strong className="text-dashboard-text">{orders.length}</strong> total scrapes
           </p>
         </div>
       )}

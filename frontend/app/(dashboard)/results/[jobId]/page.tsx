@@ -212,7 +212,7 @@ export default function ResultsPage() {
   if (error || !job) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-apple-error/20 border border-apple-error/30 text-apple-error px-4 py-3 rounded-lg">
+        <div className="bg-red-500/20 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg">
           {error || "Job not found"}
         </div>
       </div>
@@ -228,30 +228,30 @@ export default function ResultsPage() {
       <div className="mb-8">
         <Link
           href={backLink}
-          className="text-apple-accent hover:opacity-80 transition-opacity mb-4 inline-block"
+          className="text-dashboard-accent hover:opacity-80 transition-opacity mb-4 inline-block"
         >
           ← {backLinkText}
         </Link>
-        <h1 className="text-3xl font-bold text-apple-text">Results</h1>
-        <p className="mt-2 text-apple-text-muted">Job ID: {jobId}</p>
+        <h1 className="text-3xl font-bold text-dashboard-text">Results</h1>
+        <p className="mt-2 text-dashboard-text-muted">Job ID: {jobId}</p>
       </div>
 
       {/* Hit Rate Summary Banner - Only show after completion */}
       {job && (
-        <div className="mb-8 bg-apple-surface border border-apple-border rounded-lg p-6">
+        <div className="mb-8 glass-card p-6">
           {job.status === "completed" ? (
-            <h2 className="text-3xl font-bold text-[#007AFF]">
+            <h2 className="text-3xl font-bold text-dashboard-accent">
               {job.job_type === "enrichment"
                 ? `${job.total_leads > 0 ? Math.min(((validLeads.length + catchallLeads.length) / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% of Emails Were Found`
                 : `${job.total_leads > 0 ? Math.min((validLeads.length / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% of Emails Are Valid`
               }
             </h2>
           ) : job.status === "processing" ? (
-            <h2 className="text-3xl font-bold text-apple-text-muted">
+            <h2 className="text-3xl font-bold text-dashboard-text-muted">
               Processing... {job.processed_leads}/{job.total_leads} leads
             </h2>
           ) : (
-            <h2 className="text-3xl font-bold text-apple-text-muted">
+            <h2 className="text-3xl font-bold text-dashboard-text-muted">
               Status: {job.status}
             </h2>
           )}
@@ -262,62 +262,62 @@ export default function ResultsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <button
           onClick={() => setFilter("all")}
-          className={`text-left bg-apple-surface border p-6 rounded-lg transition-all hover:border-apple-accent ${
-            filter === "all" ? "border-apple-accent ring-2 ring-apple-accent/20" : "border-apple-border"
+          className={`text-left glass-card p-6 transition-all hover:border-dashboard-accent ${
+            filter === "all" ? "border-dashboard-accent ring-2 ring-dashboard-accent/20" : ""
           }`}
         >
-          <p className="text-sm text-apple-text-muted">Total Leads</p>
-          <p className="text-2xl font-bold text-apple-text">{job.total_leads}</p>
+          <p className="text-sm text-dashboard-text-muted">Total Leads</p>
+          <p className="text-2xl font-bold text-dashboard-text">{job.total_leads}</p>
         </button>
         <button
           onClick={() => setFilter("valid")}
-          className={`text-left bg-apple-surface border p-6 rounded-lg transition-all hover:border-apple-accent ${
-            filter === "valid" ? "border-apple-accent ring-2 ring-apple-accent/20" : "border-apple-border"
+          className={`text-left glass-card p-6 transition-all hover:border-dashboard-accent ${
+            filter === "valid" ? "border-dashboard-accent ring-2 ring-dashboard-accent/20" : ""
           }`}
         >
-          <p className="text-sm text-apple-text-muted">Valid Emails</p>
-          <p className="text-2xl font-bold text-apple-accent">
+          <p className="text-sm text-dashboard-text-muted">Valid Emails</p>
+          <p className="text-2xl font-bold text-dashboard-accent">
             {validLeads.length}
           </p>
         </button>
         <button
           onClick={() => setFilter("catchall")}
-          className={`text-left bg-apple-surface border p-6 rounded-lg transition-all hover:border-yellow-500 ${
-            filter === "catchall" ? "border-yellow-500 ring-2 ring-yellow-500/20" : "border-apple-border"
+          className={`text-left glass-card p-6 transition-all hover:border-yellow-500 ${
+            filter === "catchall" ? "border-yellow-500 ring-2 ring-yellow-500/20" : ""
           }`}
         >
-          <p className="text-sm text-apple-text-muted">Catchall Emails</p>
+          <p className="text-sm text-dashboard-text-muted">Catchall Emails</p>
           <p className="text-2xl font-bold text-yellow-500">
             {catchallLeads.length}
           </p>
         </button>
         <button
           onClick={() => setFilter("invalid")}
-          className={`text-left bg-apple-surface border p-6 rounded-lg transition-all hover:border-red-500 ${
-            filter === "invalid" ? "border-red-500 ring-2 ring-red-500/20" : "border-apple-border"
+          className={`text-left glass-card p-6 transition-all hover:border-red-500 ${
+            filter === "invalid" ? "border-red-500 ring-2 ring-red-500/20" : ""
           }`}
         >
-          <p className="text-sm text-apple-text-muted">Not Found</p>
+          <p className="text-sm text-dashboard-text-muted">Not Found</p>
           <p className="text-2xl font-bold text-red-500">
             {notFoundLeads.length}
           </p>
         </button>
       </div>
 
-      <div className="bg-apple-surface border border-apple-border rounded-lg p-6">
+      <div className="glass-card p-6">
         <div className="mb-4">
           {/* Current Filter Info & MX Provider Filter */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
-            <div className="text-sm text-apple-text-muted">
-              Showing <span className="font-medium text-apple-text">{previewLeads.length}</span> of <span className="font-medium text-apple-text">{filteredLeads.length}</span> {filter === "all" ? "leads" : filter === "valid" ? "valid emails" : filter === "catchall" ? "catchall emails" : "not found"}
-              {hasMoreLeads && <span className="text-apple-warning"> (preview limited to {PREVIEW_LIMIT} rows)</span>}
+            <div className="text-sm text-dashboard-text-muted">
+              Showing <span className="font-medium text-dashboard-text">{previewLeads.length}</span> of <span className="font-medium text-dashboard-text">{filteredLeads.length}</span> {filter === "all" ? "leads" : filter === "valid" ? "valid emails" : filter === "catchall" ? "catchall emails" : "not found"}
+              {hasMoreLeads && <span className="text-yellow-400"> (preview limited to {PREVIEW_LIMIT} rows)</span>}
               {mxFilters.length > 0 && <span> • Filtered by: {mxFilters.join(", ")}</span>}
             </div>
           </div>
           
           {/* MX Provider Filter */}
           <div className="flex items-center space-x-4">
-            <span className="text-sm font-medium text-apple-text-muted">MX Provider:</span>
+            <span className="text-sm font-medium text-dashboard-text-muted">MX Provider:</span>
             <div className="flex space-x-3">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -330,9 +330,9 @@ export default function ResultsPage() {
                       setMxFilters(mxFilters.filter(f => f !== 'outlook'));
                     }
                   }}
-                  className="w-4 h-4 rounded border-apple-border bg-apple-bg text-apple-accent focus:ring-apple-accent"
+                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
                 />
-                <span className="text-sm text-apple-text">Outlook Only</span>
+                <span className="text-sm text-dashboard-text">Outlook Only</span>
               </label>
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -345,9 +345,9 @@ export default function ResultsPage() {
                       setMxFilters(mxFilters.filter(f => f !== 'google'));
                     }
                   }}
-                  className="w-4 h-4 rounded border-apple-border bg-apple-bg text-apple-accent focus:ring-apple-accent"
+                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
                 />
-                <span className="text-sm text-apple-text">Google Only</span>
+                <span className="text-sm text-dashboard-text">Google Only</span>
               </label>
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -360,15 +360,15 @@ export default function ResultsPage() {
                       setMxFilters(mxFilters.filter(f => f !== 'other'));
                     }
                   }}
-                  className="w-4 h-4 rounded border-apple-border bg-apple-bg text-apple-accent focus:ring-apple-accent"
+                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
                 />
-                <span className="text-sm text-apple-text">Other MX</span>
+                <span className="text-sm text-dashboard-text">Other MX</span>
               </label>
             </div>
             {mxFilters.length > 0 && (
               <button
                 onClick={() => setMxFilters([])}
-                className="text-xs text-apple-text-muted hover:text-apple-text underline"
+                className="text-xs text-dashboard-text-muted hover:text-dashboard-text underline"
               >
                 Clear ({mxFilters.length})
               </button>
@@ -381,63 +381,63 @@ export default function ResultsPage() {
               <button
                 disabled={true}
                 title="Catchall verification temporarily unavailable"
-                className="px-4 py-2 bg-apple-surface text-apple-text-muted rounded-lg cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2 border border-apple-border"
+                className="px-4 py-2 glass-card text-dashboard-text-muted cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2"
               >
                 <span>Verify Catchalls (Coming Soon)</span>
               </button>
             )}
             <button
               onClick={downloadCSV}
-              className="px-4 py-2 bg-apple-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
+              className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
             >
               Download CSV
             </button>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-apple-border">
-            <thead className="bg-apple-surface">
+        <div className="overflow-x-auto mt-4">
+          <table className="min-w-full divide-y divide-dashboard-border">
+            <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
                   First Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
                   Last Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
                   Website
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
                   Email
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
                   MX Type
                 </th>
                 {/* Dynamic columns from extra_data */}
                 {extraColumns.map((col) => (
-                  <th key={col} className="px-6 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">
+                  <th key={col} className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
                     {col.replace(/_/g, ' ')}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="bg-apple-surface divide-y divide-apple-border">
+            <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
               {previewLeads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-apple-surface transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
+                <tr key={lead.id} className="hover:bg-dashboard-card/50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
                     {lead.first_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
                     {lead.last_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                     {lead.domain}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
                     {lead.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -445,27 +445,27 @@ export default function ResultsPage() {
                       <span
                         className={`px-2 py-1 text-xs font-semibold rounded-full ${
                           lead.verification_status === "valid" || lead.verification_tag === "valid-catchall"
-                            ? "bg-apple-success/20 text-apple-success border border-apple-success/30"
+                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
                             : lead.verification_status === "catchall"
-                            ? "bg-apple-warning/20 text-apple-warning border border-apple-warning/30"
-                            : "bg-apple-error/20 text-apple-error border border-apple-error/30"
+                            ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                            : "bg-red-500/20 text-red-400 border border-red-500/30"
                         }`}
                       >
                         {lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status}
                       </span>
                       {lead.verification_tag === "catchall-verified" && (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-apple-accent/20 text-apple-accent border border-apple-accent/30">
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-dashboard-accent/20 text-dashboard-accent border border-dashboard-accent/30">
                           Catchall-Verified
                         </span>
                       )}
                       {lead.verification_tag === "valid-catchall" && (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-apple-success/30 text-apple-success border border-apple-success/50">
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-500/30 text-green-400 border border-green-500/50">
                           Valid-Catchall
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                     {(() => {
                       const mxType = getProviderFromMX(lead.mx_record, lead.mx_provider);
                       return mxType.charAt(0).toUpperCase() + mxType.slice(1); // Capitalize first letter
@@ -473,7 +473,7 @@ export default function ResultsPage() {
                   </td>
                   {/* Dynamic cells from extra_data */}
                   {extraColumns.map((col) => (
-                    <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-apple-text-muted">
+                    <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                       {lead.extra_data?.[col] || "-"}
                     </td>
                   ))}
@@ -485,12 +485,12 @@ export default function ResultsPage() {
 
         {/* Show message when there are more leads than the preview limit */}
         {hasMoreLeads && (
-          <div className="mt-4 p-4 bg-apple-surface-hover border border-apple-border rounded-lg text-center">
-            <p className="text-apple-text-muted text-sm">
+          <div className="mt-4 p-4 glass-card-hover text-center">
+            <p className="text-dashboard-text-muted text-sm">
               Showing {PREVIEW_LIMIT} of {filteredLeads.length} results. 
               <button
                 onClick={downloadCSV}
-                className="ml-2 text-apple-accent hover:underline font-medium"
+                className="ml-2 text-dashboard-accent hover:underline font-medium"
               >
                 Download CSV
               </button>

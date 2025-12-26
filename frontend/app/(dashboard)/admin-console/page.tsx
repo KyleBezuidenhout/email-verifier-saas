@@ -294,8 +294,8 @@ export default function AdminConsolePage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-apple-text">Admin Console</h1>
-        <p className="text-apple-text-muted mt-2">Platform overview and management</p>
+        <h1 className="text-3xl font-bold text-dashboard-text">Admin Console</h1>
+        <p className="text-dashboard-text-muted mt-2">Platform overview and management</p>
       </div>
 
       {error && (
@@ -305,7 +305,7 @@ export default function AdminConsolePage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-8 border-b border-apple-border pb-4 overflow-x-auto">
+      <div className="flex gap-2 mb-8 border-b border-dashboard-border pb-4 overflow-x-auto">
         {[
           { id: "overview", label: "Overview" },
           { id: "clients", label: "Clients" },
@@ -318,8 +318,8 @@ export default function AdminConsolePage() {
             onClick={() => setActiveTab(tab.id as typeof activeTab)}
             className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-all ${
               activeTab === tab.id
-                ? "bg-apple-accent text-white"
-                : "text-apple-text-muted hover:bg-apple-surface hover:text-apple-text"
+                ? "bg-dashboard-accent text-white"
+                : "text-dashboard-text-muted hover:bg-dashboard-card hover:text-dashboard-text"
             }`}
           >
             {tab.label}
@@ -339,15 +339,15 @@ export default function AdminConsolePage() {
           </div>
 
           {/* Credit Assignment Section */}
-          <div className="bg-apple-surface border border-apple-border rounded-xl p-6">
-            <h2 className="text-lg font-semibold text-apple-text mb-4">Update Client Credits</h2>
+          <div className="glass-card p-6">
+            <h2 className="text-lg font-semibold text-dashboard-text mb-4">Update Client Credits</h2>
             <div className="flex flex-wrap gap-4 items-end">
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm text-apple-text-muted mb-2">Select Client</label>
+                <label className="block text-sm text-dashboard-text-muted mb-2">Select Client</label>
                 <select
                   value={selectedClientId}
                   onChange={(e) => setSelectedClientId(e.target.value)}
-                  className="w-full px-4 py-2 bg-apple-bg border border-apple-border rounded-lg text-apple-text focus:outline-none focus:ring-2 focus:ring-apple-accent"
+                  className="apple-input w-full"
                 >
                   <option value="">-- Select a client --</option>
                   {clients.map((client) => (
@@ -358,20 +358,20 @@ export default function AdminConsolePage() {
                 </select>
               </div>
               <div className="w-[150px]">
-                <label className="block text-sm text-apple-text-muted mb-2">Update credit amount to:</label>
+                <label className="block text-sm text-dashboard-text-muted mb-2">Update credit amount to:</label>
                 <input
                   type="number"
                   min="0"
                   value={creditAmount}
                   onChange={(e) => setCreditAmount(e.target.value)}
                   placeholder="Enter credits"
-                  className="w-full px-4 py-2 bg-apple-bg border border-apple-border rounded-lg text-apple-text focus:outline-none focus:ring-2 focus:ring-apple-accent"
+                  className="apple-input w-full"
                 />
               </div>
               <button
                 onClick={handleCreditAssignment}
                 disabled={creditLoading}
-                className="px-6 py-2 bg-apple-accent text-white rounded-lg font-medium hover:bg-apple-accent/90 disabled:opacity-50 transition-all"
+                className="px-6 py-2 bg-dashboard-accent text-white rounded-lg font-medium hover:bg-dashboard-accent/90 disabled:opacity-50 transition-all"
               >
                 {creditLoading ? "Updating..." : "Update Credits"}
               </button>
@@ -384,9 +384,9 @@ export default function AdminConsolePage() {
           </div>
 
           {/* Chart Section */}
-          <div className="bg-apple-surface border border-apple-border rounded-xl p-6">
+          <div className="glass-card p-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-apple-text">Enrichment Activity</h2>
+              <h2 className="text-lg font-semibold text-dashboard-text">Enrichment Activity</h2>
               <div className="flex gap-2">
                 {["day", "week", "month"].map((period) => (
                   <button
@@ -394,8 +394,8 @@ export default function AdminConsolePage() {
                     onClick={() => setChartPeriod(period as typeof chartPeriod)}
                     className={`px-3 py-1 rounded text-sm ${
                       chartPeriod === period
-                        ? "bg-apple-accent text-white"
-                        : "bg-apple-bg text-apple-text-muted hover:text-apple-text"
+                        ? "bg-dashboard-accent text-white"
+                        : "bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text"
                     }`}
                   >
                     {period.charAt(0).toUpperCase() + period.slice(1)}
@@ -412,18 +412,18 @@ export default function AdminConsolePage() {
                   return (
                     <div key={i} className="flex-1 flex flex-col items-center gap-1">
                       <div
-                        className="w-full bg-apple-accent/70 rounded-t hover:bg-apple-accent transition-all"
+                        className="w-full bg-dashboard-accent/70 rounded-t hover:bg-dashboard-accent transition-all"
                         style={{ height: `${Math.max(height, 2)}%` }}
                         title={`${d.date}: ${d.leads_enriched} leads`}
                       />
-                      <span className="text-[10px] text-apple-text-muted truncate max-w-full">
+                      <span className="text-[10px] text-dashboard-text-muted truncate max-w-full">
                         {d.date.slice(5)}
                       </span>
                     </div>
                   );
                 })
               ) : (
-                <div className="flex-1 flex items-center justify-center text-apple-text-muted">
+                <div className="flex-1 flex items-center justify-center text-dashboard-text-muted">
                   No data for this period
                 </div>
               )}
@@ -432,12 +432,12 @@ export default function AdminConsolePage() {
 
           {/* Low Credit Alerts */}
           {lowCreditClients.length > 0 && (
-            <div className="bg-red-500/5 border border-red-500/30 rounded-xl p-6">
+            <div className="glass-card bg-red-500/5 border-red-500/30 p-6">
               <h2 className="text-lg font-semibold text-red-400 mb-4">⚠️ Low Credit Clients ({lowCreditClients.length})</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {lowCreditClients.map((client) => (
-                  <div key={client.id} className="bg-apple-bg border border-red-500/20 rounded-lg p-3">
-                    <p className="font-medium text-apple-text truncate">{client.email}</p>
+                  <div key={client.id} className="glass-card-hover border-red-500/20 p-3">
+                    <p className="font-medium text-dashboard-text truncate">{client.email}</p>
                     <p className="text-sm text-red-400">{client.credits} credits remaining</p>
                   </div>
                 ))}
@@ -449,37 +449,37 @@ export default function AdminConsolePage() {
 
       {/* Clients Tab */}
       {activeTab === "clients" && (
-        <div className="bg-apple-surface border border-apple-border rounded-xl overflow-hidden">
+        <div className="glass-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-apple-bg border-b border-apple-border">
+              <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }} className="border-b border-dashboard-border">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Company</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Credits</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Jobs</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Valid Emails</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Created</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Email</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Company</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Credits</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Jobs</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Valid Emails</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Created</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-apple-border">
+              <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
                 {clients.map((client) => (
-                  <tr key={client.id} className="hover:bg-apple-bg/50">
+                  <tr key={client.id} className="hover:bg-dashboard-card/50">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-apple-text">{client.email}</span>
+                        <span className="text-dashboard-text">{client.email}</span>
                         {client.is_admin && (
-                          <span className="px-2 py-0.5 text-xs bg-apple-accent/20 text-apple-accent rounded">Admin</span>
+                          <span className="px-2 py-0.5 text-xs bg-dashboard-accent/20 text-dashboard-accent rounded">Admin</span>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-apple-text-muted">{client.company_name || "-"}</td>
-                    <td className={`px-4 py-3 text-right font-medium ${client.credits < 10 ? "text-red-400" : "text-apple-text"}`}>
+                    <td className="px-4 py-3 text-dashboard-text-muted">{client.company_name || "-"}</td>
+                    <td className={`px-4 py-3 text-right font-medium ${client.credits < 10 ? "text-red-400" : "text-dashboard-text"}`}>
                       {client.credits}
                     </td>
-                    <td className="px-4 py-3 text-right text-apple-text">{client.stats.total_jobs}</td>
+                    <td className="px-4 py-3 text-right text-dashboard-text">{client.stats.total_jobs}</td>
                     <td className="px-4 py-3 text-right text-green-400">{client.stats.total_valid_emails}</td>
-                    <td className="px-4 py-3 text-apple-text-muted text-sm">
+                    <td className="px-4 py-3 text-dashboard-text-muted text-sm">
                       {new Date(client.created_at).toLocaleDateString()}
                     </td>
                   </tr>
@@ -492,23 +492,23 @@ export default function AdminConsolePage() {
 
       {/* Jobs Tab */}
       {activeTab === "jobs" && (
-        <div className="bg-apple-surface border border-apple-border rounded-xl overflow-hidden">
+        <div className="glass-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-apple-bg border-b border-apple-border">
+              <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }} className="border-b border-dashboard-border">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Client</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Type</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Status</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Leads</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Valid</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Catchall</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-apple-text-muted uppercase">Hit Rate</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Client</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Status</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Leads</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Valid</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Catchall</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Hit Rate</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-apple-border">
+              <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
                 {jobs.map((job) => {
                   // Only calculate hit rate after job is completed
                   // Enrichment: (valid + catchall) / total unique leads | Verification: valid / total
@@ -526,13 +526,13 @@ export default function AdminConsolePage() {
                   return (
                   <tr 
                     key={job.id} 
-                    className="hover:bg-apple-bg/50 cursor-pointer"
+                    className="hover:bg-dashboard-card/50 cursor-pointer"
                     onClick={() => router.push(`/results/${job.id}`)}
                   >
                     <td className="px-4 py-3">
                       <div>
-                        <p className="text-apple-text font-medium truncate max-w-[200px]">{job.client.email}</p>
-                        <p className="text-xs text-apple-text-muted">{job.client.company_name || "-"}</p>
+                        <p className="text-dashboard-text font-medium truncate max-w-[200px]">{job.client.email}</p>
+                        <p className="text-xs text-dashboard-text-muted">{job.client.company_name || "-"}</p>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -543,15 +543,15 @@ export default function AdminConsolePage() {
                     <td className="px-4 py-3">
                       <StatusBadge status={job.status} />
                     </td>
-                    <td className="px-4 py-3 text-right text-apple-text">{job.total_leads}</td>
+                    <td className="px-4 py-3 text-right text-dashboard-text">{job.total_leads}</td>
                     <td className="px-4 py-3 text-right text-green-400">{job.valid_emails_found}</td>
                     <td className="px-4 py-3 text-right text-yellow-400">{job.catchall_emails_found}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`font-medium ${isCompleted ? 'text-green-400' : 'text-apple-text-muted'}`}>
+                      <span className={`font-medium ${isCompleted ? 'text-green-400' : 'text-dashboard-text-muted'}`}>
                         {hitRateDisplay}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-apple-text-muted text-sm">
+                    <td className="px-4 py-3 text-dashboard-text-muted text-sm">
                       {new Date(job.created_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
@@ -559,7 +559,7 @@ export default function AdminConsolePage() {
                         <Link
                           href={`/results/${job.id}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="text-apple-accent hover:underline text-sm"
+                          className="text-dashboard-accent hover:underline text-sm"
                         >
                           View
                         </Link>
@@ -587,7 +587,7 @@ export default function AdminConsolePage() {
                               e.stopPropagation();
                               setDeleteConfirmJobId(null);
                             }}
-                            className="text-sm text-apple-text-muted hover:text-apple-text"
+                            className="text-sm text-dashboard-text-muted hover:text-dashboard-text"
                           >
                             Cancel
                           </button>
@@ -607,8 +607,8 @@ export default function AdminConsolePage() {
       {activeTab === "api-keys" && (
         <div className="space-y-6">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-apple-text">MailTester API Keys</h2>
-            <p className="text-sm text-apple-text-muted">Auto-refreshes every minute</p>
+            <h2 className="text-lg font-semibold text-dashboard-text">MailTester API Keys</h2>
+            <p className="text-sm text-dashboard-text-muted">Auto-refreshes every minute</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -640,10 +640,10 @@ export default function AdminConsolePage() {
                 return (
                 <div 
                   key={key.key_id} 
-                  className={`bg-apple-surface border rounded-xl p-6 transition-all ${
+                  className={`glass-card p-6 transition-all ${
                     isKeyActive 
-                      ? `border-apple-accent shadow-lg ${colors.glow}` 
-                      : 'border-apple-border'
+                      ? `border-dashboard-accent shadow-lg ${colors.glow}` 
+                      : ''
                   }`}
                 >
                   <div className="flex gap-6">
@@ -662,7 +662,7 @@ export default function AdminConsolePage() {
                       <div className="flex justify-between items-start mb-3">
                         <div>
                           <div className="flex items-center gap-2">
-                            <p className="font-mono text-apple-text">{key.key_preview}</p>
+                            <p className="font-mono text-dashboard-text">{key.key_preview}</p>
                             {/* Health indicator dot */}
                             <span className={`w-2 h-2 rounded-full ${
                               healthStatus === 'critical' ? 'bg-red-500 animate-pulse' :
@@ -671,12 +671,12 @@ export default function AdminConsolePage() {
                               'bg-green-500'
                             }`} title={`Status: ${healthStatus}`} />
                             {isKeyActive && (
-                              <span className="text-xs bg-apple-accent/20 text-apple-accent px-2 py-0.5 rounded-full">
+                              <span className="text-xs bg-dashboard-accent/20 text-dashboard-accent px-2 py-0.5 rounded-full">
                                 ACTIVE
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-apple-text-muted">Key {index + 1} • ID: {key.key_id}</p>
+                          <p className="text-xs text-dashboard-text-muted">Key {index + 1} • ID: {key.key_id}</p>
                         </div>
                         <span className={`px-2 py-1 text-xs rounded ${colors.bg} ${colors.text}`}>
                           {key.usage_percentage.toFixed(1)}%
@@ -685,10 +685,10 @@ export default function AdminConsolePage() {
                       
                       <div className="mb-2">
                         <div className="flex justify-between text-sm mb-1">
-                          <span className="text-apple-text-muted">Usage Today</span>
-                          <span className="text-apple-text">{key.usage_today.toLocaleString()} / {key.limit.toLocaleString()}</span>
+                          <span className="text-dashboard-text-muted">Usage Today</span>
+                          <span className="text-dashboard-text">{key.usage_today.toLocaleString()} / {key.limit.toLocaleString()}</span>
                         </div>
-                        <div className="w-full bg-apple-bg rounded-full h-2">
+                        <div className="w-full bg-dashboard-card rounded-full h-2">
                           <div
                             className={`h-2 rounded-full transition-all ${
                               healthStatus === 'critical' ? 'bg-red-500' :
@@ -702,14 +702,14 @@ export default function AdminConsolePage() {
                       </div>
                       
                       <div className="flex justify-between items-center">
-                        <p className="text-sm text-apple-text-muted">
-                          Remaining: <span className="text-apple-text font-medium">{key.remaining.toLocaleString()}</span>
+                        <p className="text-sm text-dashboard-text-muted">
+                          Remaining: <span className="text-dashboard-text font-medium">{key.remaining.toLocaleString()}</span>
                         </p>
                         {key.remaining < 50000 && (
                           <span className="text-xs text-orange-400">⚠️ Low capacity</span>
                         )}
                       </div>
-                      <p className="text-xs text-apple-text-muted mt-1">
+                      <p className="text-xs text-dashboard-text-muted mt-1">
                         Resets at midnight GMT+2
                       </p>
                     </div>
@@ -718,7 +718,7 @@ export default function AdminConsolePage() {
                 );
               })
             ) : (
-              <div className="col-span-full text-center py-8 text-apple-text-muted">
+              <div className="col-span-full text-center py-8 text-dashboard-text-muted">
                 No MailTester API keys configured
               </div>
             )}
@@ -726,17 +726,17 @@ export default function AdminConsolePage() {
           
           {/* Multi-key info banner */}
           {apiKeyUsage.length > 1 && (
-            <div className="bg-apple-accent/10 border border-apple-accent/20 rounded-lg p-4">
+            <div className="glass-card bg-dashboard-accent/10 border-dashboard-accent/20 p-4">
               <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-apple-accent mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-dashboard-accent mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                  <p className="text-sm text-apple-text font-medium">Multi-Key Load Balancing Active</p>
-                  <p className="text-xs text-apple-text-muted mt-1">
+                  <p className="text-sm text-dashboard-text font-medium">Multi-Key Load Balancing Active</p>
+                  <p className="text-xs text-dashboard-text-muted mt-1">
                     Workers automatically use the key with the most remaining capacity. If a key encounters errors, 
                     it will automatically switch to a healthy backup key. Total daily capacity: {' '}
-                    <span className="text-apple-accent font-medium">
+                    <span className="text-dashboard-accent font-medium">
                       {(apiKeyUsage.reduce((sum, k) => sum + k.limit, 0)).toLocaleString()}
                     </span>
                     {' '}verifications.
@@ -748,20 +748,20 @@ export default function AdminConsolePage() {
 
           {/* OmniVerifier Credits */}
           {omniCredits && (
-            <div className="bg-apple-surface border border-apple-border rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-apple-text mb-4">OmniVerifier Credits</h3>
-              <p className="text-3xl font-bold text-apple-accent">{omniCredits.available.toLocaleString()}</p>
-              <p className="text-sm text-apple-text-muted">Available catchall verification credits</p>
+            <div className="glass-card p-6">
+              <h3 className="text-lg font-semibold text-dashboard-text mb-4">OmniVerifier Credits</h3>
+              <p className="text-3xl font-bold text-dashboard-accent">{omniCredits.available.toLocaleString()}</p>
+              <p className="text-sm text-dashboard-text-muted">Available catchall verification credits</p>
             </div>
           )}
 
           {/* Credits & Limits Display */}
           {vayneStats && !vayneStats.error && (
-            <div className="bg-apple-surface border border-apple-border rounded-xl p-6">
+            <div className="glass-card p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-apple-text">Credits & Limits</h3>
+                <h3 className="text-lg font-semibold text-dashboard-text">Credits & Limits</h3>
                 {vayneStats?.subscription_plan && (
-                  <span className="text-xs text-apple-text-muted">
+                  <span className="text-xs text-dashboard-text-muted">
                     Plan: {vayneStats.subscription_plan}
                     {vayneStats.subscription_expires_at && (
                       <span className="ml-2">Expires: {new Date(vayneStats.subscription_expires_at).toLocaleDateString()}</span>
@@ -772,18 +772,18 @@ export default function AdminConsolePage() {
               <div className="space-y-3">
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-apple-text-muted">Available Credits</span>
-                    <span className="font-medium text-apple-text">{vayneStats?.available_credits?.toLocaleString() || 0}</span>
+                    <span className="text-dashboard-text-muted">Available Credits</span>
+                    <span className="font-medium text-dashboard-text">{vayneStats?.available_credits?.toLocaleString() || 0}</span>
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-apple-text-muted">Leads Scraped Today</span>
-                    <span className="font-medium text-apple-text">
+                    <span className="text-dashboard-text-muted">Leads Scraped Today</span>
+                    <span className="font-medium text-dashboard-text">
                       {vayneStats?.leads_scraped_today?.toLocaleString() || 0} / {vayneStats?.daily_limit?.toLocaleString() || 0}
                     </span>
                   </div>
-                  <div className="w-full bg-apple-bg rounded-full h-2">
+                  <div className="w-full bg-dashboard-card rounded-full h-2">
                     {(() => {
                       const usagePercentage = vayneStats && vayneStats.daily_limit > 0 
                         ? (vayneStats.leads_scraped_today / vayneStats.daily_limit) * 100 
@@ -799,7 +799,7 @@ export default function AdminConsolePage() {
                   </div>
                 </div>
                 {vayneStats?.subscription_plan && (
-                  <button className="w-full mt-3 px-4 py-2 bg-apple-accent text-white rounded-lg hover:bg-apple-accent/90 transition-colors text-sm font-medium">
+                  <button className="w-full mt-3 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors text-sm font-medium">
                     Upgrade Plan
                   </button>
                 )}
@@ -814,8 +814,8 @@ export default function AdminConsolePage() {
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-lg font-semibold text-apple-text">Verification Error Logs</h2>
-              <p className="text-sm text-apple-text-muted">
+              <h2 className="text-lg font-semibold text-dashboard-text">Verification Error Logs</h2>
+              <p className="text-sm text-dashboard-text-muted">
                 {errorSummary?.total_errors || 0} errors today • Auto-refreshes every minute
               </p>
             </div>
@@ -825,8 +825,8 @@ export default function AdminConsolePage() {
           {errorSummary && errorSummary.total_errors > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {Object.entries(errorSummary.by_type).map(([type, count]) => (
-                <div key={type} className="bg-red-500/5 border border-red-500/20 rounded-lg p-4">
-                  <p className="text-sm text-apple-text-muted">{type.replace(/_/g, " ")}</p>
+                <div key={type} className="glass-card bg-red-500/5 border-red-500/20 p-4">
+                  <p className="text-sm text-dashboard-text-muted">{type.replace(/_/g, " ")}</p>
                   <p className="text-2xl font-bold text-red-400">{count}</p>
                 </div>
               ))}
@@ -834,28 +834,28 @@ export default function AdminConsolePage() {
           )}
 
           {/* Error Table */}
-          <div className="bg-apple-surface border border-apple-border rounded-xl overflow-hidden">
+          <div className="glass-card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-apple-bg border-b border-apple-border">
+                <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }} className="border-b border-dashboard-border">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Time</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">User</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Job ID</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Type</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-apple-text-muted uppercase">Message</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Time</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">User</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Job ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Message</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-apple-border">
+                <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
                   {errors.length > 0 ? (
                     errors.map((err, i) => (
-                      <tr key={i} className="hover:bg-apple-bg/50">
-                        <td className="px-4 py-3 text-sm text-apple-text-muted whitespace-nowrap">
+                      <tr key={i} className="hover:bg-dashboard-card/50">
+                        <td className="px-4 py-3 text-sm text-dashboard-text-muted whitespace-nowrap">
                           {new Date(err.timestamp).toLocaleTimeString()}
                         </td>
-                        <td className="px-4 py-3 text-apple-text truncate max-w-[150px]">{err.user_email}</td>
+                        <td className="px-4 py-3 text-dashboard-text truncate max-w-[150px]">{err.user_email}</td>
                         <td className="px-4 py-3">
-                          <Link href={`/results/${err.job_id}`} className="text-apple-accent hover:underline text-sm font-mono">
+                          <Link href={`/results/${err.job_id}`} className="text-dashboard-accent hover:underline text-sm font-mono">
                             {err.job_id.slice(0, 8)}...
                           </Link>
                         </td>
@@ -864,14 +864,14 @@ export default function AdminConsolePage() {
                             {err.error_type}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-apple-text-muted truncate max-w-[300px]">
+                        <td className="px-4 py-3 text-sm text-dashboard-text-muted truncate max-w-[300px]">
                           {err.error_message}
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-apple-text-muted">
+                      <td colSpan={5} className="px-4 py-8 text-center text-dashboard-text-muted">
                         No errors logged today 🎉
                       </td>
                     </tr>
@@ -890,16 +890,16 @@ export default function AdminConsolePage() {
 function StatCard({ title, value, subtitle, color }: { title: string; value: number; subtitle?: string; color?: "green" | "blue" }) {
   const colorClasses = {
     green: "text-green-400",
-    blue: "text-apple-accent",
+    blue: "text-dashboard-accent",
   };
 
   return (
-    <div className="bg-apple-surface border border-apple-border rounded-xl p-6">
-      <p className="text-sm text-apple-text-muted mb-1">{title}</p>
-      <p className={`text-3xl font-bold ${color ? colorClasses[color] : "text-apple-text"}`}>
+    <div className="glass-card p-6">
+      <p className="text-sm text-dashboard-text-muted mb-1">{title}</p>
+      <p className={`text-3xl font-bold ${color ? colorClasses[color] : "text-dashboard-text"}`}>
         {value.toLocaleString()}
       </p>
-      {subtitle && <p className="text-sm text-apple-text-muted mt-1">{subtitle}</p>}
+      {subtitle && <p className="text-sm text-dashboard-text-muted mt-1">{subtitle}</p>}
     </div>
   );
 }
