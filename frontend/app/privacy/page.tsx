@@ -36,16 +36,10 @@ export default function PrivacyPage() {
                 BillionVerifier acts as the data controller for the personal information we collect from our users (account holders). For questions about this Privacy Policy or our data practices, please contact us:
               </p>
               <div className="bg-[#161A1F] border border-landing-border p-4 rounded-lg">
-                <p className="text-landing-text mb-2">
-                  <strong className="text-landing-heading">Email:</strong>{" "}
-                  <a href="mailto:privacy@billionverifier.io" className="text-landing-accent hover:underline">
-                    privacy@billionverifier.io
-                  </a>
-                </p>
                 <p className="text-landing-text">
-                  <strong className="text-landing-heading">Data Protection Inquiries:</strong>{" "}
-                  <a href="mailto:dpo@billionverifier.io" className="text-landing-accent hover:underline">
-                    dpo@billionverifier.io
+                  <strong className="text-landing-heading">Email:</strong>{" "}
+                  <a href="mailto:support@billionverifier.io" className="text-landing-accent hover:underline">
+                    support@billionverifier.io
                   </a>
                 </p>
               </div>
@@ -241,8 +235,8 @@ export default function PrivacyPage() {
               <div className="bg-[#161A1F] border border-landing-border p-4 rounded-lg">
                 <p className="text-landing-text">
                   <strong className="text-landing-heading">To Exercise Your Rights:</strong> Contact us at{" "}
-                  <a href="mailto:privacy@billionverifier.io" className="text-landing-accent hover:underline">
-                    privacy@billionverifier.io
+                  <a href="mailto:support@billionverifier.io" className="text-landing-accent hover:underline">
+                    support@billionverifier.io
                   </a>
                   . We will respond to verified requests within the timeframes required by applicable law (typically 30 days for GDPR, 45 days for CCPA).
                 </p>
@@ -335,8 +329,8 @@ export default function PrivacyPage() {
               </h2>
               <p className="text-landing-text leading-relaxed">
                 The Service is not intended for individuals under the age of 18. We do not knowingly collect personal information from children. If you believe we have inadvertently collected information from a child, please contact us immediately at{" "}
-                <a href="mailto:privacy@billionverifier.io" className="text-landing-accent hover:underline">
-                  privacy@billionverifier.io
+                <a href="mailto:support@billionverifier.io" className="text-landing-accent hover:underline">
+                  support@billionverifier.io
                 </a>
                 , and we will take steps to delete such information.
               </p>
@@ -360,23 +354,11 @@ export default function PrivacyPage() {
               <p className="text-landing-text leading-relaxed mb-4">
                 If you have any questions about this Privacy Policy or wish to exercise your privacy rights, please contact us:
               </p>
-              <div className="bg-[#161A1F] border border-landing-border p-4 rounded-lg space-y-2">
+              <div className="bg-[#161A1F] border border-landing-border p-4 rounded-lg">
                 <p className="text-landing-text">
-                  <strong className="text-landing-heading">General Inquiries:</strong>{" "}
-                  <a href="mailto:privacy@billionverifier.io" className="text-landing-accent hover:underline">
-                    privacy@billionverifier.io
-                  </a>
-                </p>
-                <p className="text-landing-text">
-                  <strong className="text-landing-heading">Data Protection Officer:</strong>{" "}
-                  <a href="mailto:dpo@billionverifier.io" className="text-landing-accent hover:underline">
-                    dpo@billionverifier.io
-                  </a>
-                </p>
-                <p className="text-landing-text">
-                  <strong className="text-landing-heading">Legal Inquiries:</strong>{" "}
-                  <a href="mailto:legal@billionverifier.io" className="text-landing-accent hover:underline">
-                    legal@billionverifier.io
+                  <strong className="text-landing-heading">Email:</strong>{" "}
+                  <a href="mailto:support@billionverifier.io" className="text-landing-accent hover:underline">
+                    support@billionverifier.io
                   </a>
                 </p>
               </div>

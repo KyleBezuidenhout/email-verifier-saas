@@ -240,8 +240,8 @@ export default function TermsPage() {
               <div className="bg-[#161A1F] border border-landing-border p-4 rounded-lg">
                 <p className="text-landing-text">
                   <strong className="text-landing-heading">Email:</strong>{" "}
-                  <a href="mailto:legal@billionverifier.io" className="text-landing-accent hover:underline">
-                    legal@billionverifier.io
+                  <a href="mailto:support@billionverifier.io" className="text-landing-accent hover:underline">
+                    support@billionverifier.io
                   </a>
                 </p>
               </div>
