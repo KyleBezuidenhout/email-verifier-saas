@@ -108,24 +108,24 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-[250px] bg-apple-bg border-r border-apple-border z-40">
+    <aside className="fixed left-0 top-0 h-screen w-[250px] bg-dashboard-surface border-r border-dashboard-border z-40">
       <div className="flex flex-col h-full">
         {/* Logo - Clickable to logout and go home */}
-        <div className="p-6 border-b border-apple-border">
+        <div className="p-6 border-b border-dashboard-border">
           <button 
             onClick={handleLogoClick}
             className="flex items-center justify-center gap-2 group w-full cursor-pointer"
           >
             <svg 
               className="w-6 h-6 transition-opacity group-hover:opacity-70" 
-              fill="#007AFF" 
+              fill="#0099FF" 
               viewBox="0 0 24 24" 
               xmlns="http://www.w3.org/2000/svg"
             >
               <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
             </svg>
             <span 
-              className="text-[#007AFF] font-bold text-lg tracking-tight group-hover:opacity-70 transition-opacity"
+              className="text-dashboard-accent font-bold text-lg tracking-tight group-hover:opacity-70 transition-opacity"
               style={{ fontFamily: '"Helvetica Neue", "Arial", sans-serif', fontWeight: 700 }}
             >
               Billion Verifier
@@ -140,7 +140,7 @@ export function Sidebar() {
               return (
                 <div
                   key={item.name}
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-dashbrd-text-muted/50 cursor-not-allowed opacity-60"
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-dashboard-text-muted/50 cursor-not-allowed opacity-60"
                   title="Coming soon"
                 >
                   {item.icon}
@@ -158,8 +158,8 @@ export function Sidebar() {
                 href={href}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative ${
                   isActive
-                    ? "bg-dashbrd-accent/10 text-dashbrd-accent font-medium border-l-2 border-dashbrd-accent"
-                    : "text-dashbrd-text-muted hover:bg-dashbrd-card hover:text-dashbrd-text"
+                    ? "bg-dashboard-accent/10 text-dashboard-accent font-medium border-l-2 border-dashboard-accent"
+                    : "text-dashboard-text-muted hover:bg-dashboard-card hover:text-dashboard-text"
                 }`}
               >
                 {item.icon}
@@ -172,7 +172,7 @@ export function Sidebar() {
           {user?.is_admin && (
             <Link
               href="/admin-console"
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative mt-4 border-t border-apple-border pt-4 ${
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative mt-4 border-t border-dashboard-border pt-4 ${
                 pathname === "/admin-console"
                   ? "bg-red-500/10 text-red-400 font-medium border-l-2 border-red-400"
                   : "text-red-400/70 hover:bg-red-500/10 hover:text-red-400"
@@ -188,32 +188,32 @@ export function Sidebar() {
 
         {/* Credit Balance & User Profile Section */}
         {user && (
-          <div className="p-4 border-t border-apple-border">
+          <div className="p-4 border-t border-dashboard-border">
             {/* Credit Balance */}
-            <div className="mb-3 px-3 py-2 rounded-lg bg-apple-accent/10 border border-apple-accent/20">
+            <div className="mb-3 px-3 py-2 rounded-lg bg-dashboard-accent/10 border border-dashboard-accent/20">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-apple-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-dashboard-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className="text-xs text-apple-text-muted">Credits</span>
+                  <span className="text-xs text-dashboard-text-muted">Credits</span>
                 </div>
-                <span className="text-sm font-bold text-apple-accent">
+                <span className="text-sm font-bold text-dashboard-accent">
                   {user.is_admin ? "∞" : (user.credits?.toLocaleString() || 0)}
                 </span>
               </div>
             </div>
 
             {/* User Profile */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-apple-surface border border-apple-border">
-              <div className="w-10 h-10 rounded-full bg-apple-accent/20 flex items-center justify-center text-apple-accent font-semibold text-sm">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-dashboard-card border border-dashboard-border">
+              <div className="w-10 h-10 rounded-full bg-dashboard-accent/20 flex items-center justify-center text-dashboard-accent font-semibold text-sm">
                 {getInitials(user.full_name, user.email)}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-apple-text truncate">
+                <p className="text-sm font-medium text-dashboard-text truncate">
                   {user.full_name || "User"}
                 </p>
-                <p className="text-xs text-apple-text-muted truncate">
+                <p className="text-xs text-dashboard-text-muted truncate">
                   {user.email}
                 </p>
               </div>

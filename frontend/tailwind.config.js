@@ -34,6 +34,19 @@ module.exports = {
           'warning': '#FF9500',       // Orange for warnings
           'error': '#FF3B30',         // System Red for errors
         },
+        // Dashboard Dark Theme - Matching landing page
+        'dashboard-dark': '#000000',
+        'dashboard': {
+          'bg': '#000000',            // Pure Black background
+          'surface': '#0D0F12',       // Near black for cards
+          'surface-alt': '#121418',   // Slightly lighter surface
+          'card': '#161A1F',          // Card backgrounds
+          'border': '#1E2228',        // Subtle border
+          'border-light': '#252A31',  // Lighter border
+          'accent': '#0099FF',        // Vibrant Blue
+          'text': '#F0F4F8',          // Off-White text
+          'text-muted': '#6B7280',    // Muted text
+        },
         // Legacy Dashbrd support (mapped to Apple colors for backward compatibility)
         'dashbrd': {
           'bg': '#1C1C1E',
