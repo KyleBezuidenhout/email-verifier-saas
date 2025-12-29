@@ -16,12 +16,12 @@ class UpdateSessionRequest(BaseModel):
 
 
 class CreditsResponse(BaseModel):
-    total_credits: int
-    available_credits: int
-    daily_limit: int
-    leads_scraped_today: int
-    leads_remaining_today: int
-    reset_time: str
+    # Fields that Vayne API actually returns
+    credit_available: int
+    daily_limit_leads: int
+    daily_limit_accounts: int
+    enrichment_credits: int
+    # Optional fields for backwards compatibility
     subscription_plan: Optional[str] = None
     subscription_expires: Optional[str] = None
 
