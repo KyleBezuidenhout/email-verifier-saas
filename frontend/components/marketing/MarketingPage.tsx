@@ -59,7 +59,6 @@ export function MarketingPage() {
       ],
       highlighted: false,
       extras: [],
-      checkoutUrl: "https://whop.com/checkout/plan_umRQyYI3wpbHI",
     },
     {
       name: "Starter",
@@ -75,7 +74,6 @@ export function MarketingPage() {
       ],
       highlighted: false,
       extras: ["Enterprise Sales Nav Seat"],
-      checkoutUrl: null,
     },
     {
       name: "Agency",
@@ -92,7 +90,6 @@ export function MarketingPage() {
       ],
       highlighted: true,
       extras: ["Enterprise Sales Nav Seat"],
-      checkoutUrl: null,
     },
     {
       name: "Enterprise",
@@ -109,7 +106,6 @@ export function MarketingPage() {
       ],
       highlighted: false,
       extras: ["Enterprise Sales Nav Seat", "Prewarmed LinkedIn Account"],
-      checkoutUrl: null,
     },
   ];
 
@@ -467,31 +463,16 @@ export function MarketingPage() {
                     </div>
 
                     {/* CTA Button */}
-                    {plan.checkoutUrl ? (
-                      <a
-                        href={plan.checkoutUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`w-full py-3 px-6 font-semibold text-center transition-all duration-300 mb-8 block ${
-                          plan.highlighted
-                            ? "bg-landing-accent text-landing-bg hover:bg-landing-accent/90 glow-accent"
-                            : "bg-transparent border border-landing-border text-landing-heading hover:border-landing-accent hover:text-landing-accent"
-                        }`}
-                      >
-                        Get started
-                      </a>
-                    ) : (
-                      <Link
-                        href="/register"
-                        className={`w-full py-3 px-6 font-semibold text-center transition-all duration-300 mb-8 ${
-                          plan.highlighted
-                            ? "bg-landing-accent text-landing-bg hover:bg-landing-accent/90 glow-accent"
-                            : "bg-transparent border border-landing-border text-landing-heading hover:border-landing-accent hover:text-landing-accent"
-                        }`}
-                      >
-                        Get started
-                      </Link>
-                    )}
+                    <Link
+                      href="/register"
+                      className={`w-full py-3 px-6 font-semibold text-center transition-all duration-300 mb-8 ${
+                        plan.highlighted
+                          ? "bg-landing-accent text-landing-bg hover:bg-landing-accent/90 glow-accent"
+                          : "bg-transparent border border-landing-border text-landing-heading hover:border-landing-accent hover:text-landing-accent"
+                      }`}
+                    >
+                      Get started
+                    </Link>
 
                     {/* Divider */}
                     <div className="border-t border-landing-border mb-6" />
