@@ -6,13 +6,11 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 interface SalesNavModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onStart: (url: string, autoEnrich: boolean, companySize?: string) => void;
+  onStart: (url: string) => void;
 }
 
 export function SalesNavModal({ isOpen, onClose, onStart }: SalesNavModalProps) {
   const [url, setUrl] = useState("");
-  const [autoEnrich, setAutoEnrich] = useState(true);
-  const [companySize, setCompanySize] = useState("");
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<{ count: number; leads: Array<{ name: string; company: string; title?: string }> } | null>(null);
 
@@ -30,7 +28,7 @@ export function SalesNavModal({ isOpen, onClose, onStart }: SalesNavModalProps) 
 
   const handleStart = () => {
     if (!url.trim()) return;
-    onStart(url, autoEnrich, companySize || undefined);
+    onStart(url);
     setUrl("");
     setPreview(null);
     onClose();
@@ -71,38 +69,6 @@ export function SalesNavModal({ isOpen, onClose, onStart }: SalesNavModalProps) 
               </p>
             </div>
 
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="auto-enrich"
-                checked={autoEnrich}
-                onChange={(e) => setAutoEnrich(e.target.checked)}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <label htmlFor="auto-enrich" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                Auto-enrich with verified emails
-              </label>
-            </div>
-
-            {autoEnrich && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Company Size (optional)
-                </label>
-                <select
-                  value={companySize}
-                  onChange={(e) => setCompanySize(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                >
-                  <option value="">Select company size</option>
-                  <option value="1-50">1-50 employees</option>
-                  <option value="51-200">51-200 employees</option>
-                  <option value="201-500">201-500 employees</option>
-                  <option value="500+">500+ employees</option>
-                </select>
-              </div>
-            )}
-
             {preview && (
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
                 <p className="text-sm font-medium text-green-800 dark:text-green-300">
@@ -124,7 +90,7 @@ export function SalesNavModal({ isOpen, onClose, onStart }: SalesNavModalProps) 
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
               >
                 {loading && <LoadingSpinner size="sm" />}
-                <span>Enrich & Verify</span>
+                <span>Start Scraping</span>
               </button>
             </div>
           </div>

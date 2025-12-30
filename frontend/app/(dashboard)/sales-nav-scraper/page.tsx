@@ -44,6 +44,7 @@ export default function SalesNavScraperPage() {
   const [loadingScrapeHistory, setLoadingScrapeHistory] = useState(false);
   const [deleteConfirmOrderId, setDeleteConfirmOrderId] = useState<string | null>(null);
   const [downloadingOrderId, setDownloadingOrderId] = useState<string | null>(null);
+  const [updatingAuth, setUpdatingAuth] = useState(false);
 
   // Load credits
   const loadCredits = useCallback(async () => {
@@ -559,23 +560,49 @@ export default function SalesNavScraperPage() {
             />
             <div className="flex gap-3">
               <button
-                onClick={() => {
-                  if (linkedinCookie.trim()) {
-                    setShowAuthModal(false);
-                  } else {
+                onClick={async () => {
+                  if (!linkedinCookie.trim()) {
                     setError("Please enter your LinkedIn session cookie");
                     setShowErrorModal(true);
+                    return;
+                  }
+                  
+                  // Update Vayne's LinkedIn session so URL validation works
+                  setUpdatingAuth(true);
+                  try {
+                    await apiClient.updateVayneAuth(linkedinCookie.trim());
+                    setShowAuthModal(false);
+                    
+                    // Re-validate URL if one was already entered
+                    if (salesNavUrl.trim()) {
+                      validateUrl(salesNavUrl);
+                    }
+                  } catch (err) {
+                    console.error("Failed to update LinkedIn auth:", err);
+                    setError("Failed to validate LinkedIn cookie. Please check that it's correct and try again.");
+                    setShowErrorModal(true);
+                  } finally {
+                    setUpdatingAuth(false);
                   }
                 }}
-                className="flex-1 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors"
+                disabled={updatingAuth}
+                className="flex-1 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50"
               >
-                Save Cookie
+                {updatingAuth ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <LoadingSpinner size="sm" />
+                    Validating...
+                  </span>
+                ) : (
+                  "Save Cookie"
+                )}
               </button>
               <button
                 onClick={() => {
                   setShowAuthModal(false);
                 }}
-                className="px-4 py-2 glass-card hover:bg-dashboard-card transition-colors"
+                disabled={updatingAuth}
+                className="px-4 py-2 glass-card hover:bg-dashboard-card transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>

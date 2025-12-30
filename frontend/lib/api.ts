@@ -521,10 +521,10 @@ class ApiClient {
     return this.request("/api/v1/vayne/auth");
   }
 
-  async updateVayneAuth(linkedin_cookie: string): Promise<{ message: string }> {
-    return this.request("/api/vayne/auth", {
+  async updateVayneAuth(session_cookie: string): Promise<{ authenticated: boolean; session_valid: boolean; message?: string }> {
+    return this.request("/api/v1/vayne/auth", {
       method: "PATCH",
-      body: JSON.stringify({ linkedin_cookie }),
+      body: JSON.stringify({ session_cookie }),
     });
   }
 

@@ -149,9 +149,9 @@ export default function FindValidEmailsPage() {
     }
   };
 
-  const handleSalesNavStart = async (url: string, autoEnrich: boolean, companySize?: string) => {
-    // TODO: Implement SalesNav import
-    console.log("SalesNav import:", { url, autoEnrich, companySize });
+  const handleSalesNavStart = async (url: string) => {
+    // TODO: Implement SalesNav import - scraping only, no auto-enrichment
+    console.log("SalesNav scraping:", { url });
   };
 
   // Real-time progress updates via SSE
@@ -206,7 +206,7 @@ export default function FindValidEmailsPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-dashboard-text">Find Valid Emails</h1>
         <p className="mt-2 text-dashboard-text-muted">
-          Manage and monitor your email verification jobs
+          Manage and monitor your email enrichment jobs
         </p>
       </div>
 

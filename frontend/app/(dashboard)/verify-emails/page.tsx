@@ -180,7 +180,7 @@ export default function VerifyEmailsPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-dashboard-text">Verify Emails</h1>
         <p className="mt-2 text-dashboard-text-muted">
-          Verify email addresses directly using our verification service (no permutation logic)
+          Manage and monitor your email verification jobs
         </p>
       </div>
 
