@@ -310,6 +310,34 @@ async def process_queued_order(order_row):
             )
             
             log(f"Order {order_id} successfully sent to Vayne (Vayne ID: {vayne_order_id_str}, Status: {db_status})", "success")
+            
+            # Deduct credits based on estimated_leads (now that job started successfully)
+            estimated_leads = order_row.estimated_leads or 0
+            if estimated_leads > 0:
+                # Get user and check if admin
+                user_result = db.execute(
+                    text("SELECT email, credits FROM users WHERE id = :user_id"),
+                    {"user_id": str(order_row.user_id)}
+                )
+                user = user_result.fetchone()
+                
+                ADMIN_EMAIL = "ben@superwave.io"
+                if user and user.email != ADMIN_EMAIL:
+                    # Deduct credits (never go below 0)
+                    db.execute(
+                        text("UPDATE users SET credits = GREATEST(0, credits - :amount) WHERE id = :user_id"),
+                        {"amount": estimated_leads, "user_id": str(order_row.user_id)}
+                    )
+                    # Record credits charged on the order
+                    db.execute(
+                        text("UPDATE vayne_orders SET credits_charged = :amount WHERE id = :order_id"),
+                        {"amount": estimated_leads, "order_id": str(order_id)}
+                    )
+                    db.commit()
+                    log(f"💰 Charged {estimated_leads} credits to user {user.email} (had {user.credits}, now has {user.credits - estimated_leads})", "success")
+                else:
+                    log(f"Admin user - skipping credit deduction for {estimated_leads} credits", "info")
+            
             return True
             
         except Exception as e:

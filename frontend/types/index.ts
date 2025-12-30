@@ -139,5 +139,6 @@ export interface VayneOrderCreate {
   sales_nav_url: string;
   linkedin_cookie: string;  // Required for each order
   targeting?: string;  // Job name/targeting description
+  estimated_leads?: number;  // Estimated lead count from URL validation (for credit deduction)
 }
 

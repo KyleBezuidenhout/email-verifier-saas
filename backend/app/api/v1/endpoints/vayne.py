@@ -245,6 +245,7 @@ async def create_order(
             url=payload.sales_nav_url,  # Also store in url for backwards compatibility
             linkedin_cookie=payload.linkedin_cookie,  # Store cookie for queue worker
             targeting=payload.targeting or "Untitled Order",
+            estimated_leads=payload.estimated_leads,  # Store estimated lead count for credit deduction
         )
         
         db.add(order)

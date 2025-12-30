@@ -256,6 +256,7 @@ export default function SalesNavScraperPage() {
         sales_nav_url: salesNavUrl,
         linkedin_cookie: linkedinCookie,
         targeting: jobName.trim(),
+        estimated_leads: urlValidation.estimated_results || undefined,  // Pass estimated leads for credit deduction
       };
       
       const response = await apiClient.createVayneOrder(orderData);
