@@ -17,6 +17,24 @@ const WORKER_MODE = process.env.WORKER_MODE || 'shared';
 const DEDICATED_CLIENT_ID = process.env.DEDICATED_CLIENT_ID || null;
 const VERIFICATION_QUEUE = process.env.VERIFICATION_QUEUE || 'simple-email-verification-queue';
 
+// ==============================================
+// JOB TYPE FILTER CONFIGURATION
+// ==============================================
+// JOB_TYPE_FILTER: 'enrichment', 'verification', or 'all' (default: 'all')
+// - enrichment: Worker only processes enrichment jobs
+// - verification: Worker only processes simple verification jobs
+// - all: Worker processes all job types (default behavior)
+//
+// USE_GLOBAL_LOCK: Whether to acquire a global lock before processing (default: true)
+// - When true, only one job can process at a time across all workers
+// - Prevents rate limit conflicts when workers share API keys
+// - Set to false when workers have dedicated API keys
+const JOB_TYPE_FILTER = process.env.JOB_TYPE_FILTER || 'all';
+const USE_GLOBAL_LOCK = process.env.USE_GLOBAL_LOCK !== 'false'; // Default true
+const GLOBAL_LOCK_KEY = 'global:job-processing-lock';
+const GLOBAL_LOCK_TTL_MS = 7200000; // 2 hours max (safety, released on job completion)
+const LOCK_RETRY_INTERVAL_MS = 2000; // Check for lock every 2 seconds
+
 // Log worker mode at startup
 if (WORKER_MODE === 'dedicated') {
   console.log(`\n🔒 DEDICATED WORKER MODE`);
@@ -28,6 +46,10 @@ if (WORKER_MODE === 'dedicated') {
   console.log(`   Queue: ${VERIFICATION_QUEUE}`);
   console.log(`   Rate limiting: Redis-coordinated across all workers\n`);
 }
+
+// Log job type filter configuration
+console.log(`📋 JOB TYPE FILTER: ${JOB_TYPE_FILTER}`);
+console.log(`🔐 GLOBAL LOCK: ${USE_GLOBAL_LOCK ? 'ENABLED (prevents rate limit conflicts)' : 'DISABLED (dedicated API keys)'}\n`);
 
 // Parse Redis connection
 const redisUrl = new URL(process.env.REDIS_URL);
@@ -79,6 +101,112 @@ const pgPool = new Pool({
   connectionTimeoutMillis: 10000, // Fail fast if can't connect in 10 seconds
   allowExitOnIdle: false,         // Keep pool alive for long-running worker
 });
+
+// ==============================================
+// GLOBAL JOB PROCESSING LOCK
+// ==============================================
+// Prevents multiple workers from processing jobs simultaneously
+// when they share the same API keys (prevents rate limit conflicts)
+
+/**
+ * Try to acquire the global job processing lock.
+ * Uses Redis SET NX (set if not exists) for atomic lock acquisition.
+ * @param {string} jobId - The job ID to store as lock value (for debugging)
+ * @returns {Promise<boolean>} - True if lock acquired, false if already held
+ */
+async function tryAcquireGlobalLock(jobId) {
+  if (!USE_GLOBAL_LOCK) return true; // Lock disabled, always succeed
+  
+  try {
+    const result = await redisClient.set(GLOBAL_LOCK_KEY, jobId, {
+      NX: true, // Only set if key doesn't exist
+      PX: GLOBAL_LOCK_TTL_MS // Expire after TTL (safety)
+    });
+    return result === 'OK';
+  } catch (error) {
+    console.error(`Error acquiring global lock:`, error.message);
+    return false;
+  }
+}
+
+/**
+ * Wait for and acquire the global job processing lock.
+ * Polls until the lock becomes available.
+ * @param {string} jobId - The job ID to store as lock value
+ * @param {number} maxWaitMs - Maximum time to wait (default: 30 minutes)
+ * @returns {Promise<boolean>} - True if lock acquired, false if timeout
+ */
+async function acquireGlobalLock(jobId, maxWaitMs = 1800000) {
+  if (!USE_GLOBAL_LOCK) return true; // Lock disabled, always succeed
+  
+  const startTime = Date.now();
+  let lastLogTime = 0;
+  
+  while (Date.now() - startTime < maxWaitMs) {
+    const acquired = await tryAcquireGlobalLock(jobId);
+    if (acquired) {
+      console.log(`🔐 Acquired global lock for job ${jobId}`);
+      return true;
+    }
+    
+    // Log waiting status every 10 seconds
+    const now = Date.now();
+    if (now - lastLogTime > 10000) {
+      const currentHolder = await redisClient.get(GLOBAL_LOCK_KEY);
+      console.log(`⏳ Waiting for global lock... (held by job ${currentHolder})`);
+      lastLogTime = now;
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, LOCK_RETRY_INTERVAL_MS));
+  }
+  
+  console.error(`❌ Timeout waiting for global lock after ${maxWaitMs}ms`);
+  return false;
+}
+
+/**
+ * Release the global job processing lock.
+ * @returns {Promise<void>}
+ */
+async function releaseGlobalLock() {
+  if (!USE_GLOBAL_LOCK) return; // Lock disabled, nothing to release
+  
+  try {
+    await redisClient.del(GLOBAL_LOCK_KEY);
+    console.log(`🔓 Released global lock`);
+  } catch (error) {
+    console.error(`Error releasing global lock:`, error.message);
+  }
+}
+
+/**
+ * Check the job type from the database.
+ * @param {string} jobId - The job ID to check
+ * @returns {Promise<string|null>} - The job type ('enrichment' or 'verification') or null if not found
+ */
+async function getJobType(jobId) {
+  try {
+    const result = await pgPool.query(
+      'SELECT job_type FROM jobs WHERE id = $1',
+      [jobId]
+    );
+    if (result.rows.length === 0) return null;
+    return result.rows[0].job_type || 'enrichment'; // Default for backward compatibility
+  } catch (error) {
+    console.error(`Error getting job type for ${jobId}:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * Check if this worker should process a job based on JOB_TYPE_FILTER.
+ * @param {string} jobType - The job type from the database
+ * @returns {boolean} - True if this worker should process the job
+ */
+function shouldProcessJob(jobType) {
+  if (JOB_TYPE_FILTER === 'all') return true;
+  return jobType === JOB_TYPE_FILTER;
+}
 
 // MailTester API configuration
 const MAILTESTER_BASE_URL = process.env.MAILTESTER_BASE_URL || 'https://happy.mailtester.ninja/ninja';
@@ -1704,6 +1832,8 @@ async function pollSimpleQueue() {
   let lastQueuePollLog = 0; // Track last time we logged "waiting for jobs"
   
   console.log(`\n[${new Date().toISOString()}] 🚀 Starting queue poller for: ${queueName}`);
+  console.log(`[${new Date().toISOString()}] 📋 Job type filter: ${JOB_TYPE_FILTER}`);
+  console.log(`[${new Date().toISOString()}] 🔐 Global lock: ${USE_GLOBAL_LOCK ? 'ENABLED' : 'DISABLED'}`);
   if (WORKER_MODE === 'dedicated') {
     console.log(`[${new Date().toISOString()}] 🔒 Dedicated mode - processing only jobs from this queue`);
   }
@@ -1717,19 +1847,60 @@ async function pollSimpleQueue() {
         const jobIdStr = result.element;
         console.log(`\n[${new Date().toISOString()}] 📥 DEQUEUED job ${jobIdStr} from queue '${queueName}'`);
         
+        // Check job type filter - if this worker shouldn't process this job type,
+        // push it back to the queue and continue
+        if (JOB_TYPE_FILTER !== 'all') {
+          const jobType = await getJobType(jobIdStr);
+          
+          if (jobType === null) {
+            console.log(`[${new Date().toISOString()}] ⚠️ Job ${jobIdStr} not found in database, skipping`);
+            continue;
+          }
+          
+          if (!shouldProcessJob(jobType)) {
+            console.log(`[${new Date().toISOString()}] ↩️ Job ${jobIdStr} is type '${jobType}', this worker handles '${JOB_TYPE_FILTER}' - returning to queue`);
+            // Push back to the front of the queue (LPUSH) so another worker can pick it up
+            await redisClient.lPush(queueName, jobIdStr);
+            // Small delay to avoid tight loop if we're the only worker
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
+          
+          console.log(`[${new Date().toISOString()}] ✓ Job ${jobIdStr} is type '${jobType}' - matches filter '${JOB_TYPE_FILTER}'`);
+        }
+        
+        // Acquire global lock before processing (if enabled)
+        let lockAcquired = false;
         try {
+          if (USE_GLOBAL_LOCK) {
+            console.log(`[${new Date().toISOString()}] 🔐 Acquiring global lock for job ${jobIdStr}...`);
+            lockAcquired = await acquireGlobalLock(jobIdStr);
+            
+            if (!lockAcquired) {
+              console.error(`[${new Date().toISOString()}] ❌ Failed to acquire global lock for job ${jobIdStr}, returning to queue`);
+              await redisClient.lPush(queueName, jobIdStr);
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              continue;
+            }
+          }
+          
           await processJobFromQueue(jobIdStr);
           console.log(`\n[${new Date().toISOString()}] ✅ Job ${jobIdStr} completed successfully`);
         } catch (error) {
           console.error(`\n[${new Date().toISOString()}] ❌ Error processing job ${jobIdStr}:`, error.message);
           console.error('Stack:', error.stack);
           // Job will remain in failed state, continue processing other jobs
+        } finally {
+          // Always release the global lock when done (if we acquired it)
+          if (USE_GLOBAL_LOCK && lockAcquired) {
+            await releaseGlobalLock();
+          }
         }
       } else {
         // No job available, log periodically (every 30 seconds) to show worker is alive
         const now = Date.now();
         if (!lastQueuePollLog || now - lastQueuePollLog > 30000) {
-          console.log(`[${new Date().toISOString()}] ⏳ Waiting for jobs in queue '${queueName}'...`);
+          console.log(`[${new Date().toISOString()}] ⏳ Waiting for jobs in queue '${queueName}'... (filter: ${JOB_TYPE_FILTER})`);
           lastQueuePollLog = now;
         }
       }
