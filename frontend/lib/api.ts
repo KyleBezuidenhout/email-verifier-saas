@@ -576,8 +576,8 @@ class ApiClient {
   }
 
   async downloadVayneOrderCSV(orderId: string): Promise<Blob> {
-    // This endpoint downloads CSV from R2 (matches specification GET /api/vayne/orders/:id/export)
-    const url = `${this.baseUrl}/api/vayne/orders/${orderId}/export`;
+    // This endpoint downloads CSV from R2 (GET /api/vayne/orders/:id/download)
+    const url = `${this.baseUrl}/api/vayne/orders/${orderId}/download`;
     const token = this.getToken();
     
     console.log(`[API] Downloading CSV for order ${orderId}`);
