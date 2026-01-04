@@ -625,7 +625,27 @@ class ApiClient {
     });
   }
 
-  async downloadVayneOrderCSV(orderId: string): Promise<void> {
+  // ============================================
+  // PAYMENT ENDPOINTS (Stripe)
+  // ============================================
+
+  async createCheckoutSession(amountDollars: number): Promise<{ checkout_url: string; session_id: string }> {
+    return this.request("/api/v1/payments/create-checkout", {
+      method: "POST",
+      body: JSON.stringify({ amount_dollars: amountDollars }),
+    });
+  }
+
+  async verifyCheckoutSession(sessionId: string): Promise<{
+    payment_status: string;
+    amount_dollars: number;
+    credits_purchased: number;
+    current_credits: number;
+  }> {
+    return this.request(`/api/v1/payments/verify-session/${sessionId}`);
+  }
+
+  async downloadVayneOrderCSVFile(orderId: string): Promise<void> {
     const url = `${this.baseUrl}/api/v1/vayne/orders/${orderId}/download`;
     const token = this.getToken();
     

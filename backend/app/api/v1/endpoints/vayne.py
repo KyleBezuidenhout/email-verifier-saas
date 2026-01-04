@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, Header
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import Optional
 from datetime import datetime
 import httpx
@@ -674,6 +675,9 @@ async def n8n_csv_callback(
             order.leads_found = leads_found
         if leads_qualified is not None:
             order.leads_qualified = leads_qualified
+        
+        # NOTE: Credits are charged when job STARTS (in vayne_queue_worker.py)
+        # based on estimated_leads, since leads_found is often NULL or inaccurate
         
         db.commit()
         db.refresh(order)

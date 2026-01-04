@@ -3,7 +3,96 @@ const axios = require('axios');
 const redis = require('redis');
 const { Pool } = require('pg');
 const http = require('http');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
+
+// ==============================================
+// GMAIL EMAIL NOTIFICATION CONFIG
+// ==============================================
+const GMAIL_USER = process.env.GMAIL_USER;
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
+const APP_URL = process.env.APP_URL || 'https://yourapp.com';
+
+// Gmail transporter (initialized lazily)
+let gmailTransporter = null;
+
+function getGmailTransporter() {
+  if (!gmailTransporter && GMAIL_USER && GMAIL_APP_PASSWORD) {
+    gmailTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: GMAIL_USER,
+        pass: GMAIL_APP_PASSWORD,
+      },
+    });
+  }
+  return gmailTransporter;
+}
+
+/**
+ * Send job completion notification email via Gmail
+ * @param {string} userEmail - Recipient email
+ * @param {string} jobType - 'verification', 'enrichment', or 'scraping'
+ * @param {string} jobId - Job UUID
+ * @param {object} results - Job results {validEmails, catchallEmails, totalLeads}
+ */
+async function sendJobCompletionEmail(userEmail, jobType, jobId, results) {
+  const transporter = getGmailTransporter();
+  
+  if (!transporter) {
+    console.log('⚠️ Gmail credentials not configured - skipping email notification');
+    return false;
+  }
+
+  const jobTypeDisplay = jobType === 'enrichment' ? 'Enrichment' : 'Verification';
+  const subject = `✅ ${jobTypeDisplay} complete: ${results.validEmails} valid emails found`;
+  
+  const htmlContent = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h2 style="margin: 0; font-size: 22px;">🎉 Your Job is Complete!</h2>
+      </div>
+      <div style="background: #f8fafc; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
+        <p style="color: #475569; font-size: 16px; margin-top: 0;">Great news! Your <strong>${jobTypeDisplay.toLowerCase()}</strong> job has finished processing.</p>
+        
+        <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
+          <h3 style="margin: 0 0 12px 0; color: #1e293b; font-size: 16px;">📊 Results Summary</h3>
+          <ul style="list-style: none; padding: 0; margin: 0; color: #475569;">
+            <li style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">✅ Valid emails: <strong>${results.validEmails}</strong></li>
+            <li style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">⚠️ Catchall emails: <strong>${results.catchallEmails}</strong></li>
+            <li style="padding: 8px 0;">📊 Total processed: <strong>${results.totalLeads}</strong></li>
+          </ul>
+        </div>
+        
+        <a href="${APP_URL}/dashboard" 
+           style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                  color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; 
+                  font-weight: 600; font-size: 15px;">
+          View & Download Results →
+        </a>
+        
+        <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; margin-bottom: 0;">
+          Job ID: ${jobId.substring(0, 8)}...
+        </p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: `"Email Verifier" <${GMAIL_USER}>`,
+      to: userEmail,
+      subject: subject,
+      html: htmlContent,
+    });
+    
+    console.log(`📧 Sent ${jobType} completion email to ${userEmail}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Failed to send completion email: ${error.message}`);
+    return false;
+  }
+}
 
 // ==============================================
 // WORKER MODE CONFIGURATION
@@ -1731,8 +1820,8 @@ async function processJob(jobId) {
       finalCatchallCount = finalResults.filter(r => r.verification_status === 'catchall').length;
     }
     
-    // Calculate cost (1 credit per lead processed)
-    const costInCredits = jobData.total_leads;
+    // Calculate cost (1 credit per lead actually processed, not total_leads)
+    const costInCredits = processedCount;
     
     // Mark job as completed
     await updateJobStatus(jobId, 'completed', {
@@ -1744,20 +1833,37 @@ async function processJob(jobId) {
     });
     
     // Deduct credits (skip for admin, ensure credits never go below 0)
+    let userEmailForNotification = null;
     if (costInCredits > 0) {
       // Check if user is admin
       const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-      const userEmail = userResult.rows[0]?.email;
+      userEmailForNotification = userResult.rows[0]?.email;
       
-      if (userEmail !== ADMIN_EMAIL) {
+      if (userEmailForNotification !== ADMIN_EMAIL) {
         // Use GREATEST to ensure credits never go below 0
         await pgPool.query(
           'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
           [costInCredits, jobData.user_id]
         );
-        console.log(`Deducted ${costInCredits} credits from user ${userEmail}`);
+        console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification}`);
       } else {
         console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
+      }
+    } else {
+      const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
+      userEmailForNotification = userResult.rows[0]?.email;
+    }
+    
+    // Send job completion email notification
+    if (userEmailForNotification) {
+      try {
+        await sendJobCompletionEmail(userEmailForNotification, 'verification', jobId, {
+          validEmails: finalValidCount,
+          catchallEmails: finalCatchallCount,
+          totalLeads: processedCount,
+        });
+      } catch (emailError) {
+        console.error(`Failed to send notification email: ${emailError.message}`);
       }
     }
     
@@ -2473,8 +2579,8 @@ async function processJobFromQueue(jobId) {
         );
       }
       
-      // Calculate cost (1 credit per lead processed)
-      const costInCredits = jobData.total_leads;
+      // Calculate cost (1 credit per lead actually processed, not total_leads)
+      const costInCredits = processedCount;
       
       // Mark job as completed
       await updateJobStatus(jobId, 'completed', {
@@ -2486,19 +2592,36 @@ async function processJobFromQueue(jobId) {
       });
       
       // Deduct credits (skip for admin, ensure credits never go below 0)
+      let userEmailForNotification = null;
       if (costInCredits > 0) {
         // Check if user is admin
         const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-        const userEmail = userResult.rows[0]?.email;
+        userEmailForNotification = userResult.rows[0]?.email;
         
-        if (userEmail !== ADMIN_EMAIL) {
+        if (userEmailForNotification !== ADMIN_EMAIL) {
           await pgPool.query(
             'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
             [costInCredits, jobData.user_id]
           );
-          console.log(`Deducted ${costInCredits} credits from user ${userEmail}`);
+          console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification}`);
         } else {
           console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
+        }
+      } else {
+        const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
+        userEmailForNotification = userResult.rows[0]?.email;
+      }
+      
+      // Send job completion email notification
+      if (userEmailForNotification) {
+        try {
+          await sendJobCompletionEmail(userEmailForNotification, 'verification', jobId, {
+            validEmails: validCount,
+            catchallEmails: catchallCount,
+            totalLeads: processedCount,
+          });
+        } catch (emailError) {
+          console.error(`Failed to send notification email: ${emailError.message}`);
         }
       }
       
@@ -2775,12 +2898,12 @@ async function processJobFromQueue(jobId) {
       );
     }
     
-    // Calculate cost (1 credit per unique person/lead)
-    const costInCredits = uniquePeopleCount;
+    // Calculate cost (1 credit per unique person/lead actually processed)
+    const costInCredits = completedPeopleCount;
     
     // Mark job as completed
     await updateJobStatus(jobId, 'completed', {
-      processed_leads: uniquePeopleCount,
+      processed_leads: completedPeopleCount,
       valid_emails_found: validCount,
       catchall_emails_found: catchallCount,
       cost_in_credits: costInCredits,
@@ -2788,33 +2911,52 @@ async function processJobFromQueue(jobId) {
     });
     
     // Deduct credits (skip for admin, ensure credits never go below 0)
+    let userEmailForNotification = null;
     if (costInCredits > 0) {
       // Check if user is admin
       const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-      const userEmail = userResult.rows[0]?.email;
+      userEmailForNotification = userResult.rows[0]?.email;
       
-      if (userEmail !== ADMIN_EMAIL) {
+      if (userEmailForNotification !== ADMIN_EMAIL) {
         await pgPool.query(
           'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
           [costInCredits, jobData.user_id]
         );
-        console.log(`Deducted ${costInCredits} credits from user ${userEmail}`);
+        console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification}`);
       } else {
         console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
+      }
+    } else {
+      // Still get user email for notification even if no credits charged
+      const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
+      userEmailForNotification = userResult.rows[0]?.email;
+    }
+    
+    // Send job completion email notification
+    if (userEmailForNotification) {
+      try {
+        await sendJobCompletionEmail(userEmailForNotification, jobData.job_type || 'enrichment', jobId, {
+          validEmails: validCount,
+          catchallEmails: catchallCount,
+          totalLeads: completedPeopleCount,
+        });
+      } catch (emailError) {
+        console.error(`Failed to send notification email: ${emailError.message}`);
+        // Don't fail the job for email errors
       }
     }
     
     // Calculate throughput statistics
     const jobDurationMs = Date.now() - jobStartTime;
     const jobDurationMin = jobDurationMs / 60000;
-    const peoplePerMinute = jobDurationMin > 0 ? Math.round(uniquePeopleCount / jobDurationMin) : 0;
+    const peoplePerMinute = jobDurationMin > 0 ? Math.round(completedPeopleCount / jobDurationMin) : 0;
     const apiCallsPerSecond = jobDurationMs > 0 ? Math.round((totalApiCalls / jobDurationMs) * 1000 * 10) / 10 : 0;
     
     console.log(`\n========================================`);
     console.log(`✅ Job ${jobId} completed successfully!`);
     console.log(`----------------------------------------`);
     console.log(`📊 RESULTS:`);
-    console.log(`   Valid: ${validCount} | Catchall: ${catchallCount} | Total: ${uniquePeopleCount}`);
+    console.log(`   Valid: ${validCount} | Catchall: ${catchallCount} | Total: ${completedPeopleCount}`);
     console.log(`----------------------------------------`);
     console.log(`⚡ PERFORMANCE (Streaming Pipeline):`);
     console.log(`   Duration: ${Math.round(jobDurationMin * 10) / 10} minutes`);

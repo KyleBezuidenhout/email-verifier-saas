@@ -19,6 +19,9 @@ import asyncio
 import os
 import sys
 import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import UUID
@@ -59,6 +62,73 @@ MAX_RETRIES = settings.VAYNE_WORKER_MAX_RETRIES
 BACKOFF_FACTOR = settings.VAYNE_WORKER_BACKOFF_FACTOR
 
 QUEUE_NAME = "vayne-order-processing"
+
+# Gmail configuration for notifications
+GMAIL_USER = os.getenv("GMAIL_USER")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+APP_URL = os.getenv("APP_URL", "https://yourapp.com")
+
+
+def send_scraping_completion_email(user_email: str, order_id: str, results: dict, targeting: str = None) -> bool:
+    """Send email notification when a scraping job completes."""
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        log("Gmail credentials not configured - skipping email notification", "info")
+        return False
+    
+    job_name = targeting or f"Order {order_id[:8]}"
+    leads_found = results.get("leads_found", 0)
+    leads_qualified = results.get("leads_qualified", 0)
+    
+    subject = f"✅ Scraping complete: {leads_found} leads found"
+    
+    html_content = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h2 style="margin: 0; font-size: 22px;">🎉 Your Scraping Job is Complete!</h2>
+      </div>
+      <div style="background: #f8fafc; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
+        <p style="color: #475569; font-size: 16px; margin-top: 0;">Great news! Your scraping job "<strong>{job_name}</strong>" has finished.</p>
+        
+        <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
+          <h3 style="margin: 0 0 12px 0; color: #1e293b; font-size: 16px;">📊 Results Summary</h3>
+          <ul style="list-style: none; padding: 0; margin: 0; color: #475569;">
+            <li style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">👥 Leads found: <strong>{leads_found}</strong></li>
+            <li style="padding: 8px 0;">✅ Qualified leads: <strong>{leads_qualified}</strong></li>
+          </ul>
+        </div>
+        
+        <a href="{APP_URL}/dashboard" 
+           style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                  color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; 
+                  font-weight: 600; font-size: 15px;">
+          View & Download Leads →
+        </a>
+        
+        <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; margin-bottom: 0;">
+          Order ID: {order_id[:8]}...
+        </p>
+      </div>
+    </div>
+    """
+    
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = f"Email Verifier <{GMAIL_USER}>"
+        msg['To'] = user_email
+        
+        msg.attach(MIMEText(html_content, 'html'))
+        
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, user_email, msg.as_string())
+        
+        log(f"Sent scraping completion email to {user_email}", "success")
+        return True
+        
+    except Exception as e:
+        log(f"Failed to send email: {e}", "error")
+        return False
 
 
 def log(message: str, level: str = "info"):
@@ -355,6 +425,32 @@ async def process_order(order_id: str):
             )
             
             log(f"Order {order_id} processing completed successfully", "success")
+            
+            # Send completion notification email
+            try:
+                user_result = db.execute(
+                    text("""
+                        SELECT u.email, vo.targeting, vo.leads_found, vo.leads_qualified 
+                        FROM users u 
+                        JOIN vayne_orders vo ON u.id = vo.user_id 
+                        WHERE vo.id = :order_id
+                    """),
+                    {"order_id": str(order_uuid)}
+                )
+                user_row = user_result.fetchone()
+                if user_row:
+                    send_scraping_completion_email(
+                        user_email=user_row[0],
+                        order_id=str(order_uuid),
+                        results={
+                            "leads_found": user_row[2] or 0,
+                            "leads_qualified": user_row[3] or 0,
+                        },
+                        targeting=user_row[1]
+                    )
+            except Exception as email_error:
+                log(f"Failed to send notification email: {email_error}", "error")
+                # Don't fail the job for email errors
             
             # Note: Enrichment is now a separate workflow - users must manually create enrichment jobs
             # from the completed scrape CSV file via the upload interface

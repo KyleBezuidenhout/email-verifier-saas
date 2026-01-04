@@ -312,6 +312,7 @@ async def process_queued_order(order_row):
             log(f"Order {order_id} successfully sent to Vayne (Vayne ID: {vayne_order_id_str}, Status: {db_status})", "success")
             
             # Deduct credits based on estimated_leads (now that job started successfully)
+            # Using estimated_leads because leads_found is often NULL or inaccurate
             estimated_leads = order_row.estimated_leads or 0
             if estimated_leads > 0:
                 # Get user and check if admin

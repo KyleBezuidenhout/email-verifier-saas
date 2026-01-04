@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Check } from "lucide-react";
+import { apiClient } from "@/lib/api";
 
 const pricingPlans = [
   {
@@ -72,6 +73,8 @@ const pricingPlans = [
 export default function GetCreditsPage() {
   const [isAnnual, setIsAnnual] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState(50);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const CREDIT_PRICE = 0.004; // $0.004 per credit
   
   // Calculate credits based on dollar amount
@@ -80,6 +83,21 @@ export default function GetCreditsPage() {
   // Slider values: $10 to $500
   const minAmount = 10;
   const maxAmount = 500;
+
+  // Handle purchase button click
+  const handlePurchase = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await apiClient.createCheckoutSession(topUpAmount);
+      // Redirect to Stripe Checkout
+      window.location.href = response.checkout_url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create checkout session");
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -171,9 +189,30 @@ export default function GetCreditsPage() {
                   </div>
                 </div>
 
+                {/* Error Message */}
+                {error && (
+                  <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+                    {error}
+                  </div>
+                )}
+
                 {/* Buy Button */}
-                <button className="w-full py-4 px-6 bg-dashboard-accent text-white font-semibold rounded-xl hover:bg-dashboard-accent/90 transition-all duration-300 shadow-lg shadow-dashboard-accent/20 hover:shadow-dashboard-accent/40">
-                  Purchase {creditsFromTopUp.toLocaleString()} Credits
+                <button 
+                  onClick={handlePurchase}
+                  disabled={isLoading}
+                  className="w-full py-4 px-6 bg-dashboard-accent text-white font-semibold rounded-xl hover:bg-dashboard-accent/90 transition-all duration-300 shadow-lg shadow-dashboard-accent/20 hover:shadow-dashboard-accent/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Redirecting to checkout...
+                    </span>
+                  ) : (
+                    `Purchase ${creditsFromTopUp.toLocaleString()} Credits`
+                  )}
                 </button>
               </div>
 
