@@ -117,7 +117,7 @@ def send_scraping_completion_email(user_email: str, order_id: str, results: dict
     try:
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
-        msg['From'] = f"Email Verifier <{GMAIL_USER}>"
+        msg['From'] = f"Billion Verifier <{GMAIL_USER}>"
         msg['To'] = user_email
         
         msg.attach(MIMEText(html_content, 'html'))

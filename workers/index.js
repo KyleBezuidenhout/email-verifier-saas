@@ -80,7 +80,7 @@ async function sendJobCompletionEmail(userEmail, jobType, jobId, results) {
 
   try {
     await transporter.sendMail({
-      from: `"Email Verifier" <${GMAIL_USER}>`,
+      from: `"Billion Verifier" <${GMAIL_USER}>`,
       to: userEmail,
       subject: subject,
       html: htmlContent,
