@@ -97,7 +97,7 @@ def send_scraping_completion_email(user_email: str, order_id: str, results: dict
           </ul>
         </div>
         
-        <a href="{APP_URL}/dashboard" 
+        <a href="{APP_URL}/sales-nav-scraper" 
            style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                   color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; 
                   font-weight: 600; font-size: 15px;">
