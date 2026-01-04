@@ -6,6 +6,34 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
+// Personal email domains that are blocked (except gmail.com which is allowed)
+const BLOCKED_EMAIL_DOMAINS = [
+  // Apple
+  "icloud.com", "me.com", "mac.com",
+  // Microsoft
+  "outlook.com", "hotmail.com", "live.com", "msn.com",
+  // Yahoo
+  "yahoo.com", "ymail.com",
+  // Other personal providers
+  "aol.com", "protonmail.com", "proton.me",
+  "zoho.com", "mail.com", "gmx.com", "gmx.net",
+  "inbox.com", "fastmail.com",
+  // ISP emails
+  "att.net", "verizon.net", "comcast.net", "cox.net",
+  "sbcglobal.net", "bellsouth.net", "earthlink.net",
+];
+
+const isEmailAllowed = (email: string): boolean => {
+  const domain = email.toLowerCase().split("@")[1];
+  if (!domain) return false;
+  
+  // Gmail is explicitly allowed
+  if (domain === "gmail.com") return true;
+  
+  // Check if domain is in blocked list
+  return !BLOCKED_EMAIL_DOMAINS.includes(domain);
+};
+
 export function RegisterForm() {
   const [formData, setFormData] = useState({
     email: "",
@@ -32,6 +60,11 @@ export function RegisterForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (!isEmailAllowed(formData.email)) {
+      setError("Please use a company email or Gmail address. Personal email providers like iCloud, Outlook, and Yahoo are not supported.");
+      return;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
@@ -99,7 +132,7 @@ export function RegisterForm() {
           value={formData.email}
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           className="w-full px-4 py-2 bg-apple-surface border border-apple-border text-apple-text placeholder-apple-text-muted rounded-lg focus:ring-2 focus:ring-apple-accent focus:border-apple-accent focus:outline-none"
-          placeholder="you@example.com"
+          placeholder="you@company.com"
         />
       </div>
 

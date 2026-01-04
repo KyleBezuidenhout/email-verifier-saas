@@ -1,6 +1,23 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from uuid import UUID
+
+# Personal email domains that are blocked (except gmail.com which is allowed)
+BLOCKED_EMAIL_DOMAINS = [
+    # Apple
+    "icloud.com", "me.com", "mac.com",
+    # Microsoft
+    "outlook.com", "hotmail.com", "live.com", "msn.com",
+    # Yahoo
+    "yahoo.com", "ymail.com",
+    # Other personal providers
+    "aol.com", "protonmail.com", "proton.me",
+    "zoho.com", "mail.com", "gmx.com", "gmx.net",
+    "inbox.com", "fastmail.com",
+    # ISP emails
+    "att.net", "verizon.net", "comcast.net", "cox.net",
+    "sbcglobal.net", "bellsouth.net", "earthlink.net",
+]
 
 
 class UserRegister(BaseModel):
@@ -8,6 +25,21 @@ class UserRegister(BaseModel):
     password: str
     full_name: str
     company_name: Optional[str] = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_domain(cls, v: str) -> str:
+        domain = v.lower().split("@")[1]
+        # Gmail is explicitly allowed
+        if domain == "gmail.com":
+            return v
+        # Check if domain is in blocked list
+        if domain in BLOCKED_EMAIL_DOMAINS:
+            raise ValueError(
+                "Please use a company email or Gmail address. "
+                "Personal email providers like iCloud, Outlook, and Yahoo are not supported."
+            )
+        return v
 
 
 class UserLogin(BaseModel):
