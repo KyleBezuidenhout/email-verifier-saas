@@ -384,7 +384,7 @@ export default function SalesNavScraperPage() {
   const handleDownloadCSV = async (orderId: string) => {
     setDownloadingOrderId(orderId);
     try {
-      await apiClient.downloadVayneOrderCSV(orderId);
+      await apiClient.downloadVayneOrderCSVFile(orderId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to download CSV");
       setShowErrorModal(true);
