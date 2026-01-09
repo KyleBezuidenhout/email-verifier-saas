@@ -142,3 +142,59 @@ export interface VayneOrderCreate {
   estimated_leads?: number;  // Estimated lead count from URL validation (for credit deduction)
 }
 
+// Local Lead Scraper Types (Google Maps via Botasaurus)
+export interface LocalScraperConfig {
+  business_types: string[];
+  search_method: 'city' | 'search_link' | 'geo_shape';
+  cities: string[];
+  search_links: string[];
+  extraction_method: 'detailed' | 'fast';
+  max_results: number | null;
+  enable_reviews_extraction: boolean;
+  max_reviews: number;
+  enable_photos_extraction: boolean;
+  max_photos: number;
+  lang: string | null;
+  // Advanced options
+  randomize_cities: boolean;
+  include_places_outside_city: boolean;
+  geo_shape: string;
+  point_coordinates: string;
+  polygons: string | null;
+  geo_zoom_level: string;
+  exclude_outside_shape: boolean;
+  reviews_sort: string;
+  reviews_query: string;
+  api_key: string;
+}
+
+export interface LocalScraperOrderCreate {
+  job_name: string;
+  config: LocalScraperConfig;
+}
+
+export interface LocalScraperOrder {
+  id: string;
+  user_id: string;
+  botasaurus_task_id: number | null;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'deleted';
+  job_name: string;
+  business_types: string | null;
+  search_method: string | null;
+  extraction_method: string | null;
+  max_results: number | null;
+  enable_reviews: boolean;
+  progress_percentage: number;
+  results_count: number;
+  file_url: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
+export interface LocalScraperHealthStatus {
+  botasaurus_api: 'connected' | 'disconnected';
+  message: string;
+}
+

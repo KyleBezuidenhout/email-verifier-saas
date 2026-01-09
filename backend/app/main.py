@@ -9,7 +9,7 @@ import logging
 from time import time
 
 from app.core.config import settings
-from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne, vayne_direct, payments
+from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne, vayne_direct, payments, local_scraper
 
 # Configure logging
 logging.basicConfig(
@@ -168,6 +168,8 @@ app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])
 app.include_router(vayne_direct.router, prefix="/api/vayne", tags=["vayne-direct"])
 # Payments router - Stripe checkout for credit top-up
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
+# Local Lead Scraper router - Google Maps scraping via Botasaurus
+app.include_router(local_scraper.router, prefix="/api/v1/local-scraper", tags=["local-scraper"])
 
 
 # Run migrations and log routes on startup
@@ -189,6 +191,7 @@ async def startup_tasks():
         from migrate_add_is_admin import run_migration as migrate_is_admin
         from migrate_add_job_source_and_vayne_orders import migrate as migrate_job_source_and_vayne_orders
         from migrate_vayne_orders_columns import run_migration as migrate_vayne_orders_columns
+        from migrate_add_local_scraper_orders import run_migration as migrate_local_scraper_orders
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -199,6 +202,7 @@ async def startup_tasks():
         migrate_is_admin()
         migrate_job_source_and_vayne_orders()
         migrate_vayne_orders_columns()  # Add missing columns to vayne_orders table
+        migrate_local_scraper_orders()  # Add local_scraper_orders table for Google Maps scraping
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)

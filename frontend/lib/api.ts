@@ -10,7 +10,10 @@ import {
   VayneCredits,
   VayneUrlCheck,
   VayneOrder,
-  VayneOrderCreate
+  VayneOrderCreate,
+  LocalScraperOrder,
+  LocalScraperOrderCreate,
+  LocalScraperHealthStatus
 } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
@@ -666,6 +669,98 @@ class ApiClient {
     // Get filename from Content-Disposition header or use default
     const contentDisposition = response.headers.get("Content-Disposition");
     let filename = "export.csv";
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (match) {
+        filename = match[1];
+      }
+    }
+
+    // Download the blob
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
+  }
+
+  // ============================================
+  // LOCAL LEAD SCRAPER ENDPOINTS (Google Maps via Botasaurus)
+  // ============================================
+
+  async getLocalScraperHealth(): Promise<LocalScraperHealthStatus> {
+    return this.request("/api/v1/local-scraper/health");
+  }
+
+  async createLocalScraperOrder(order: LocalScraperOrderCreate): Promise<LocalScraperOrder> {
+    return this.request("/api/v1/local-scraper/orders", {
+      method: "POST",
+      body: JSON.stringify(order),
+    });
+  }
+
+  async getLocalScraperOrders(limit = 100, offset = 0, status?: string): Promise<{
+    orders: LocalScraperOrder[];
+    total: number;
+  }> {
+    let url = `/api/v1/local-scraper/orders?limit=${limit}&offset=${offset}`;
+    if (status) url += `&status=${status}`;
+    return this.request(url);
+  }
+
+  async getLocalScraperOrder(orderId: string): Promise<LocalScraperOrder> {
+    return this.request(`/api/v1/local-scraper/orders/${orderId}`);
+  }
+
+  async pollLocalScraperOrderStatus(orderId: string): Promise<{
+    order_id: string;
+    botasaurus_task_id: number | null;
+    status: string;
+    progress_percentage: number;
+    results_count: number;
+    from_database: boolean;
+    error?: string;
+  }> {
+    return this.request(`/api/v1/local-scraper/orders/${orderId}/poll-status`);
+  }
+
+  async deleteLocalScraperOrder(orderId: string): Promise<{ message: string; order_id: string }> {
+    return this.request(`/api/v1/local-scraper/orders/${orderId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async cancelLocalScraperOrder(orderId: string): Promise<{ message: string; order_id: string; previous_status: string }> {
+    return this.request(`/api/v1/local-scraper/orders/${orderId}/cancel`, {
+      method: "POST",
+    });
+  }
+
+  async downloadLocalScraperOrderResults(orderId: string, format: 'csv' | 'json' | 'excel' = 'csv'): Promise<void> {
+    const url = `${this.baseUrl}/api/v1/local-scraper/orders/${orderId}/download?format=${format}`;
+    const token = this.getToken();
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        detail: response.statusText,
+      }));
+      throw new Error(error.detail || "Failed to download results");
+    }
+
+    // Get filename from Content-Disposition header or use default
+    const contentDisposition = response.headers.get("Content-Disposition");
+    let filename = `results.${format}`;
     if (contentDisposition) {
       const match = contentDisposition.match(/filename="?([^"]+)"?/);
       if (match) {

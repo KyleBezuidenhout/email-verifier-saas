@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     STRIPE_PUBLISHABLE_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""  # Optional for now, needed for production webhooks
     FRONTEND_URL: str = "http://localhost:3000"  # For redirect URLs
+    
+    # Botasaurus (Local Lead Scraper - Google Maps)
+    BOTASAURUS_API_URL: str = "http://localhost:8000"  # URL where Botasaurus Desktop API is running
+    
+    # Cloudflare R2 Public URL for file access
+    CLOUDFLARE_R2_PUBLIC_URL: str = ""  # Public URL for accessing R2 files
 
     # App
     APP_NAME: str = "Email Verifier SaaS"

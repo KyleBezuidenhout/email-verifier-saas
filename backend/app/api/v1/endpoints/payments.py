@@ -75,10 +75,16 @@ async def create_checkout_session(
             success_url=f"{settings.FRONTEND_URL}/get-credits/success?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{settings.FRONTEND_URL}/get-credits/cancel",
             customer_email=current_user.email,
+            # Send receipt to customer automatically
+            payment_intent_data={
+                "receipt_email": current_user.email,
+                "description": f"BillionVerifier - {credits_to_add:,} Credits Top-Up",
+            },
             metadata={
                 "user_id": str(current_user.id),
                 "credits_to_add": str(credits_to_add),
                 "amount_dollars": str(payload.amount_dollars),
+                "credits_added": "false",  # Track if credits have been added
             },
         )
         
@@ -134,6 +140,12 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     # Handle the checkout.session.completed event
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
+        session_id = session.get("id")
+        
+        # Check if we've already processed this session (prevent duplicates)
+        if session_id in _processed_sessions:
+            logger.info(f"Session {session_id} already processed, skipping webhook")
+            return {"status": "already_processed", "session_id": session_id}
         
         # Extract metadata
         user_id = session.get("metadata", {}).get("user_id")
@@ -141,7 +153,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         amount_dollars = session.get("metadata", {}).get("amount_dollars")
         
         if not user_id or not credits_to_add:
-            logger.error(f"Missing metadata in checkout session: {session.get('id')}")
+            logger.error(f"Missing metadata in checkout session: {session_id}")
             return {"status": "error", "message": "Missing metadata"}
         
         credits_to_add = int(credits_to_add)
@@ -152,13 +164,16 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             logger.error(f"User not found for checkout session: {user_id}")
             return {"status": "error", "message": "User not found"}
         
+        # Mark as processed BEFORE adding credits to prevent race conditions
+        _processed_sessions.add(session_id)
+        
         # Add credits
         old_credits = user.credits
         user.credits += credits_to_add
         db.commit()
         
         logger.info(
-            f"✅ Payment successful! User {user.email} - "
+            f"✅ Payment successful (webhook)! User {user.email} - "
             f"${amount_dollars} -> {credits_to_add} credits added. "
             f"Balance: {old_credits} -> {user.credits}"
         )
@@ -174,6 +189,11 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     return {"status": "received", "type": event["type"]}
 
 
+# Track processed sessions in memory (for simple duplicate prevention)
+# In production, you'd want to store this in Redis or a database table
+_processed_sessions: set = set()
+
+
 @router.get("/verify-session/{session_id}")
 async def verify_checkout_session(
     session_id: str,
@@ -183,6 +203,8 @@ async def verify_checkout_session(
     """
     Verify a checkout session and return payment status.
     Used by the success page to confirm payment and show updated credits.
+    
+    Also acts as a fallback to add credits if webhook hasn't processed yet.
     """
     try:
         session = stripe.checkout.Session.retrieve(session_id)
@@ -194,14 +216,36 @@ async def verify_checkout_session(
                 detail="Session does not belong to this user"
             )
         
+        credits_to_add = int(session.metadata.get("credits_to_add", 0))
+        amount_dollars = int(session.metadata.get("amount_dollars", 0))
+        credits_added_this_request = False
+        
+        # If payment is successful and we haven't processed this session yet, add credits
+        # This is a fallback in case the webhook hasn't fired or isn't configured
+        if session.payment_status == "paid" and session_id not in _processed_sessions:
+            _processed_sessions.add(session_id)
+            
+            # Add credits to user
+            old_credits = current_user.credits
+            current_user.credits += credits_to_add
+            db.commit()
+            credits_added_this_request = True
+            
+            logger.info(
+                f"✅ Credits added via verify-session fallback! User {current_user.email} - "
+                f"${amount_dollars} -> {credits_to_add} credits. "
+                f"Balance: {old_credits} -> {current_user.credits}"
+            )
+        
         # Refresh user to get updated credits
         db.refresh(current_user)
         
         return {
             "payment_status": session.payment_status,
-            "amount_dollars": int(session.metadata.get("amount_dollars", 0)),
-            "credits_purchased": int(session.metadata.get("credits_to_add", 0)),
+            "amount_dollars": amount_dollars,
+            "credits_purchased": credits_to_add,
             "current_credits": current_user.credits,
+            "credits_added": credits_added_this_request,
         }
         
     except stripe.error.StripeError as e:
