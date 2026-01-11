@@ -1,8 +1,7 @@
 """
-Botasaurus Desktop API Service
+Google Maps Scraper API Service
 
-This service communicates with the Botasaurus Desktop API for Google Maps scraping.
-The Botasaurus API must be running locally or on a configured server.
+This service communicates with the Google Maps Scraper API running on AWS.
 """
 
 import httpx
@@ -14,11 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 class BotasaurusService:
-    """Service for communicating with Botasaurus Desktop API"""
+    """Service for communicating with Google Maps Scraper API on AWS"""
     
     def __init__(self, base_url: str = None):
-        # Default to localhost:8000, can be configured via environment
-        self.base_url = base_url or getattr(settings, 'BOTASAURUS_API_URL', 'http://localhost:8000')
+        # Default to AWS instance, can be configured via environment
+        self.base_url = base_url or getattr(settings, 'BOTASAURUS_API_URL', 'http://16.16.4.71:8000')
         self.timeout = 120.0  # Longer timeout for scraping operations
     
     async def create_async_task(self, scraper_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -50,7 +49,7 @@ class BotasaurusService:
             raise Exception(f"Failed to create scraping task: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error creating task: {str(e)}")
-            raise Exception(f"Could not connect to Botasaurus API at {self.base_url}. Is it running?")
+            raise Exception(f"Could not connect to Google Maps Scraper API at {self.base_url}. Is it running?")
     
     async def create_sync_task(self, scraper_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -80,14 +79,14 @@ class BotasaurusService:
             raise Exception(f"Failed to create scraping task: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error creating sync task: {str(e)}")
-            raise Exception(f"Could not connect to Botasaurus API at {self.base_url}")
+            raise Exception(f"Could not connect to Google Maps Scraper API at {self.base_url}")
     
     async def get_task(self, task_id: int) -> Dict[str, Any]:
         """
         Get task status and details.
         
         Args:
-            task_id: The Botasaurus task ID
+            task_id: The task ID
             
         Returns:
             Task information including status
@@ -102,7 +101,7 @@ class BotasaurusService:
             raise Exception(f"Failed to get task status: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error getting task: {str(e)}")
-            raise Exception(f"Could not connect to Botasaurus API")
+            raise Exception(f"Could not connect to Google Maps Scraper API")
     
     async def get_tasks(self, page: int = 1, per_page: int = 100) -> Dict[str, Any]:
         """
@@ -128,7 +127,7 @@ class BotasaurusService:
             raise Exception(f"Failed to get tasks: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error getting tasks: {str(e)}")
-            raise Exception(f"Could not connect to Botasaurus API")
+            raise Exception(f"Could not connect to Google Maps Scraper API")
     
     async def get_task_results(
         self, 
@@ -143,7 +142,7 @@ class BotasaurusService:
         Get task results with optional pagination, view, sort, and filters.
         
         Args:
-            task_id: The Botasaurus task ID
+            task_id: The task ID
             page: Page number
             per_page: Results per page
             view: Optional view (overview, featured_reviews, detailed_reviews)
@@ -179,7 +178,7 @@ class BotasaurusService:
             raise Exception(f"Failed to get task results: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error getting task results: {str(e)}")
-            raise Exception(f"Could not connect to Botasaurus API")
+            raise Exception(f"Could not connect to Google Maps Scraper API")
     
     async def download_task_results(
         self, 
@@ -190,7 +189,7 @@ class BotasaurusService:
         Download task results in specified format.
         
         Args:
-            task_id: The Botasaurus task ID
+            task_id: The task ID
             format: Output format (csv, json, excel)
             
         Returns:
@@ -216,14 +215,14 @@ class BotasaurusService:
             raise Exception(f"Failed to download task results: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error downloading task results: {str(e)}")
-            raise Exception(f"Could not connect to Botasaurus API")
+            raise Exception(f"Could not connect to Google Maps Scraper API")
     
     async def abort_task(self, task_id: int) -> Dict[str, Any]:
         """
         Abort a running task.
         
         Args:
-            task_id: The Botasaurus task ID
+            task_id: The task ID
             
         Returns:
             Confirmation response
@@ -238,14 +237,14 @@ class BotasaurusService:
             raise Exception(f"Failed to abort task: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error aborting task: {str(e)}")
-            raise Exception(f"Could not connect to Botasaurus API")
+            raise Exception(f"Could not connect to Google Maps Scraper API")
     
     async def delete_task(self, task_id: int) -> Dict[str, Any]:
         """
         Delete a task.
         
         Args:
-            task_id: The Botasaurus task ID
+            task_id: The task ID
             
         Returns:
             Confirmation response
@@ -260,11 +259,11 @@ class BotasaurusService:
             raise Exception(f"Failed to delete task: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error deleting task: {str(e)}")
-            raise Exception(f"Could not connect to Botasaurus API")
+            raise Exception(f"Could not connect to Google Maps Scraper API")
     
     async def check_health(self) -> bool:
         """
-        Check if Botasaurus API is reachable.
+        Check if Google Maps Scraper API is reachable.
         
         Returns:
             True if API is reachable, False otherwise
@@ -272,8 +271,14 @@ class BotasaurusService:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(f"{self.base_url}/api/tasks")
-                return response.status_code == 200
-        except Exception:
+                is_healthy = response.status_code == 200
+                if is_healthy:
+                    logger.info(f"✅ Google Maps Scraper API health check: CONNECTED to {self.base_url}")
+                else:
+                    logger.warning(f"⚠️ Google Maps Scraper API returned status {response.status_code}")
+                return is_healthy
+        except Exception as e:
+            logger.error(f"❌ Google Maps Scraper API health check FAILED: {str(e)}")
             return False
     
     def build_google_maps_config(
@@ -295,7 +300,7 @@ class BotasaurusService:
         Build configuration object for Google Maps scraper.
         
         Returns:
-            Configuration dict ready for Botasaurus API
+            Configuration dict ready for the API
         """
         config = {
             "business_types": business_types,

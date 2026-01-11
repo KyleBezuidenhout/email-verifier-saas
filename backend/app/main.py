@@ -168,7 +168,7 @@ app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])
 app.include_router(vayne_direct.router, prefix="/api/vayne", tags=["vayne-direct"])
 # Payments router - Stripe checkout for credit top-up
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
-# Local Lead Scraper router - Google Maps scraping via Botasaurus
+# Google Maps Scraper router - scraping via AWS-hosted API
 app.include_router(local_scraper.router, prefix="/api/v1/local-scraper", tags=["local-scraper"])
 
 

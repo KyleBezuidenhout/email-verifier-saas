@@ -1,7 +1,7 @@
 """
-Local Lead Scraper API Endpoints
+Google Maps Scraper API Endpoints
 
-Provides endpoints for Google Maps scraping using Botasaurus Desktop API.
+Provides endpoints for Google Maps scraping using the AWS-hosted scraper API.
 This is completely separate from the Sales Nav, Enrichment, and Verification features.
 """
 
@@ -64,12 +64,13 @@ def order_to_response(order: LocalScraperOrder) -> dict:
 
 
 @router.get("/health")
-async def check_botasaurus_health():
-    """Check if Botasaurus API is reachable"""
+async def check_scraper_health():
+    """Check if Google Maps Scraper API on AWS is reachable"""
     is_healthy = await botasaurus_service.check_health()
     return {
-        "botasaurus_api": "connected" if is_healthy else "disconnected",
-        "message": "Botasaurus Desktop API is running" if is_healthy else "Could not connect to Botasaurus API. Please ensure it is running."
+        "google_maps_scraper_api": "connected" if is_healthy else "disconnected",
+        "api_url": botasaurus_service.base_url,
+        "message": "Google Maps Scraper API is running" if is_healthy else "Could not connect to Google Maps Scraper API. Please check the AWS instance."
     }
 
 
@@ -82,7 +83,7 @@ async def create_order(
     """
     Create a new local scraper order.
     
-    This creates an order in the database and sends it to Botasaurus for processing.
+    This creates an order in the database and sends it to the scraper API for processing.
     """
     try:
         config = payload.config
@@ -102,8 +103,8 @@ async def create_order(
         logger.info(f"   Business types: {config.business_types}")
         logger.info(f"   Search method: {config.search_method}")
         
-        # Build Botasaurus configuration
-        botasaurus_config = botasaurus_service.build_google_maps_config(
+        # Build scraper configuration
+        scraper_config = botasaurus_service.build_google_maps_config(
             business_types=config.business_types,
             search_method=config.search_method,
             cities=config.cities,
@@ -135,7 +136,7 @@ async def create_order(
             user_id=current_user.id,
             status="pending",
             job_name=payload.job_name,
-            scraper_config=botasaurus_config,
+            scraper_config=scraper_config,
             business_types=", ".join(config.business_types),
             search_method=config.search_method,
             search_locations=search_locations,
@@ -151,33 +152,33 @@ async def create_order(
         
         logger.info(f"✅ Order created in database: {order.id}")
         
-        # Try to create task in Botasaurus
+        # Try to create task in scraper API
         try:
             task_result = await botasaurus_service.create_async_task(
                 scraper_name="google_maps_scraper",
-                data=botasaurus_config
+                data=scraper_config
             )
             
-            # Update order with Botasaurus task ID
+            # Update order with task ID
             order.botasaurus_task_id = task_result.get("id")
             order.status = "processing"
             order.started_at = datetime.utcnow()
             db.commit()
             db.refresh(order)
             
-            logger.info(f"✅ Botasaurus task created: {order.botasaurus_task_id}")
+            logger.info(f"✅ Scraper task created: {order.botasaurus_task_id}")
             
-        except Exception as botasaurus_error:
-            # If Botasaurus fails, keep the order in database but mark as failed
-            logger.error(f"Failed to create Botasaurus task: {str(botasaurus_error)}")
+        except Exception as scraper_error:
+            # If scraper fails, keep the order in database but mark as failed
+            logger.error(f"Failed to create scraper task: {str(scraper_error)}")
             order.status = "failed"
-            order.error_message = str(botasaurus_error)
+            order.error_message = str(scraper_error)
             db.commit()
             db.refresh(order)
             
             raise HTTPException(
                 status_code=503,
-                detail=f"Could not start scraping task. Botasaurus API error: {str(botasaurus_error)}"
+                detail=f"Could not start scraping task. Scraper API error: {str(scraper_error)}"
             )
         
         return order_to_response(order)
@@ -252,7 +253,7 @@ async def poll_order_status(
     db: Session = Depends(get_db),
 ):
     """
-    Poll Botasaurus API for live task status.
+    Poll scraper API for live task status.
     Updates the database with the latest status.
     """
     try:
@@ -275,7 +276,7 @@ async def poll_order_status(
                 "from_database": True,
             }
         
-        # If no Botasaurus task ID, return pending status
+        # If no task ID, return pending status
         if not order.botasaurus_task_id:
             return {
                 "order_id": str(order.id),
@@ -286,22 +287,22 @@ async def poll_order_status(
                 "from_database": True,
             }
         
-        # Poll Botasaurus API
+        # Poll scraper API
         try:
             task_status = await botasaurus_service.get_task(order.botasaurus_task_id)
-            logger.info(f"Botasaurus task status for {order_id}: {task_status}")
+            logger.info(f"Scraper task status for {order_id}: {task_status}")
             
-            botasaurus_status = task_status.get("status", "unknown")
+            scraper_status = task_status.get("status", "unknown")
             result_count = task_status.get("result_count", 0) or 0
             
-            # Map Botasaurus status to our status
+            # Map scraper status to our status
             status_map = {
                 "pending": "pending",
                 "in_progress": "processing",
                 "completed": "completed",
                 "failed": "failed",
             }
-            new_status = status_map.get(botasaurus_status, "processing")
+            new_status = status_map.get(scraper_status, "processing")
             
             # Calculate progress
             if new_status == "completed":
@@ -358,8 +359,8 @@ async def poll_order_status(
                 "from_database": False,
             }
             
-        except Exception as botasaurus_error:
-            logger.error(f"Failed to poll Botasaurus: {str(botasaurus_error)}")
+        except Exception as scraper_error:
+            logger.error(f"Failed to poll scraper: {str(scraper_error)}")
             return {
                 "order_id": str(order.id),
                 "botasaurus_task_id": order.botasaurus_task_id,
@@ -367,7 +368,7 @@ async def poll_order_status(
                 "progress_percentage": order.progress_percentage or 0,
                 "results_count": order.results_count or 0,
                 "from_database": True,
-                "error": str(botasaurus_error),
+                "error": str(scraper_error),
             }
             
     except HTTPException:
@@ -397,13 +398,13 @@ async def delete_order(
         order.status = "deleted"
         db.commit()
         
-        # Try to abort Botasaurus task if it's running
+        # Try to abort scraper task if it's running
         if order.botasaurus_task_id and old_status in ["pending", "processing"]:
             try:
                 await botasaurus_service.abort_task(order.botasaurus_task_id)
-                logger.info(f"Aborted Botasaurus task {order.botasaurus_task_id}")
+                logger.info(f"Aborted scraper task {order.botasaurus_task_id}")
             except Exception as abort_error:
-                logger.warning(f"Could not abort Botasaurus task: {str(abort_error)}")
+                logger.warning(f"Could not abort scraper task: {str(abort_error)}")
         
         logger.info(f"Order {order_id} marked as deleted (was: {old_status})")
         
@@ -443,13 +444,13 @@ async def cancel_order(
         order.status = "cancelled"
         db.commit()
         
-        # Try to abort Botasaurus task
+        # Try to abort scraper task
         if order.botasaurus_task_id:
             try:
                 await botasaurus_service.abort_task(order.botasaurus_task_id)
-                logger.info(f"Aborted Botasaurus task {order.botasaurus_task_id}")
+                logger.info(f"Aborted scraper task {order.botasaurus_task_id}")
             except Exception as abort_error:
-                logger.warning(f"Could not abort Botasaurus task: {str(abort_error)}")
+                logger.warning(f"Could not abort scraper task: {str(abort_error)}")
         
         logger.info(f"Order {order_id} cancelled (was: {old_status})")
         
@@ -515,9 +516,9 @@ async def download_order_results(
                 )
             except Exception as r2_error:
                 logger.error(f"Failed to fetch from R2: {str(r2_error)}")
-                # Fall through to try Botasaurus directly
+                # Fall through to try scraper API directly
         
-        # Fallback: Download directly from Botasaurus
+        # Fallback: Download directly from scraper API
         if order.botasaurus_task_id:
             try:
                 file_bytes, original_filename = await botasaurus_service.download_task_results(
@@ -545,8 +546,8 @@ async def download_order_results(
                         "Content-Length": str(len(file_bytes)),
                     }
                 )
-            except Exception as botasaurus_error:
-                logger.error(f"Failed to download from Botasaurus: {str(botasaurus_error)}")
+            except Exception as scraper_error:
+                logger.error(f"Failed to download from scraper API: {str(scraper_error)}")
                 raise HTTPException(
                     status_code=404,
                     detail="Results file not available. Please try again later."
