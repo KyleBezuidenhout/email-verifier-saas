@@ -81,6 +81,69 @@ class BotasaurusService:
             logger.error(f"Request error creating sync task: {str(e)}")
             raise Exception(f"Could not connect to Google Maps Scraper API at {self.base_url}")
     
+    async def create_async_tasks(self, scraper_name: str, data_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Create multiple asynchronous scraping tasks at once.
+        
+        Args:
+            scraper_name: Name of the scraper (e.g., 'google_maps_scraper')
+            data_items: List of scraper configuration data dictionaries
+            
+        Returns:
+            Task information including task IDs
+        """
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/createAsyncTasks",
+                    json={
+                        "scraperName": scraper_name,
+                        "dataItems": data_items
+                    }
+                )
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Created {len(data_items)} async tasks: {result}")
+                return result
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error creating bulk async tasks: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Failed to create bulk scraping tasks: {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error creating bulk async tasks: {str(e)}")
+            raise Exception(f"Could not connect to Google Maps Scraper API at {self.base_url}. Is it running?")
+    
+    async def create_sync_tasks(self, scraper_name: str, data_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Create multiple synchronous scraping tasks at once.
+        Use with caution - can take a long time as it waits for all tasks to complete.
+        
+        Args:
+            scraper_name: Name of the scraper
+            data_items: List of scraper configuration data dictionaries
+            
+        Returns:
+            Task information with results for all tasks
+        """
+        try:
+            async with httpx.AsyncClient(timeout=600.0) as client:  # 10 min timeout for sync
+                response = await client.post(
+                    f"{self.base_url}/api/createSyncTasks",
+                    json={
+                        "scraperName": scraper_name,
+                        "dataItems": data_items
+                    }
+                )
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Created {len(data_items)} sync tasks: {result}")
+                return result
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error creating bulk sync tasks: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Failed to create bulk sync scraping tasks: {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error creating bulk sync tasks: {str(e)}")
+            raise Exception(f"Could not connect to Google Maps Scraper API at {self.base_url}")
+    
     async def get_task(self, task_id: int) -> Dict[str, Any]:
         """
         Get task status and details.
@@ -261,25 +324,135 @@ class BotasaurusService:
             logger.error(f"Request error deleting task: {str(e)}")
             raise Exception(f"Could not connect to Google Maps Scraper API")
     
+    async def abort_tasks(self, task_ids: List[int]) -> Dict[str, Any]:
+        """
+        Abort multiple running tasks at once.
+        
+        Args:
+            task_ids: List of task IDs to abort
+            
+        Returns:
+            Confirmation response
+        """
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/abortTasks",
+                    json={"taskIds": task_ids}
+                )
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Aborted {len(task_ids)} tasks: {result}")
+                return result
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error aborting bulk tasks: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Failed to abort tasks: {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error aborting bulk tasks: {str(e)}")
+            raise Exception(f"Could not connect to Google Maps Scraper API")
+    
+    async def delete_tasks(self, task_ids: List[int]) -> Dict[str, Any]:
+        """
+        Delete multiple tasks at once.
+        
+        Args:
+            task_ids: List of task IDs to delete
+            
+        Returns:
+            Confirmation response
+        """
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/deleteTasks",
+                    json={"taskIds": task_ids}
+                )
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Deleted {len(task_ids)} tasks: {result}")
+                return result
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error deleting bulk tasks: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Failed to delete tasks: {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error deleting bulk tasks: {str(e)}")
+            raise Exception(f"Could not connect to Google Maps Scraper API")
+    
+    async def direct_scrape(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Direct call to scraper endpoint, bypassing task system.
+        Executes immediately and returns results directly.
+        
+        This is useful for quick scrapes without task management overhead.
+        Note: Only 1 concurrent run of this scraper is allowed.
+        
+        Args:
+            data: Scraper configuration data (same format as task creation)
+            
+        Returns:
+            Scraping results directly (not wrapped in task object)
+        """
+        try:
+            async with httpx.AsyncClient(timeout=600.0) as client:  # Long timeout for direct scrape
+                # Convert data dict to query parameters for GET request
+                response = await client.get(
+                    f"{self.base_url}/google-maps-scraper",
+                    params=data
+                )
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Direct scrape completed: {len(result) if isinstance(result, list) else 'result received'}")
+                return result
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error in direct scrape: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Failed to execute direct scrape: {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error in direct scrape: {str(e)}")
+            raise Exception(f"Could not connect to Google Maps Scraper API at {self.base_url}")
+    
     async def check_health(self) -> bool:
         """
         Check if Google Maps Scraper API is reachable.
+        Tries multiple endpoints to determine health status.
         
         Returns:
             True if API is reachable, False otherwise
         """
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{self.base_url}/api/tasks")
-                is_healthy = response.status_code == 200
-                if is_healthy:
-                    logger.info(f"✅ Google Maps Scraper API health check: CONNECTED to {self.base_url}")
-                else:
-                    logger.warning(f"⚠️ Google Maps Scraper API returned status {response.status_code}")
-                return is_healthy
-        except Exception as e:
-            logger.error(f"❌ Google Maps Scraper API health check FAILED: {str(e)}")
-            return False
+        # Try root endpoint first as it's most likely to exist
+        endpoints_to_try = [
+            f"{self.base_url}/",
+            f"{self.base_url}/api/tasks",
+            f"{self.base_url}/api/tasks?page=1&perPage=1",
+        ]
+        
+        for endpoint in endpoints_to_try:
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(endpoint)
+                    # Accept 200 (OK) or 400 (Bad Request) as healthy - means API is responding
+                    if response.status_code in [200, 400]:
+                        logger.info(f"✅ Google Maps Scraper API health check: CONNECTED to {self.base_url}")
+                        return True
+                    elif response.status_code == 404:
+                        # 404 means endpoint doesn't exist, but API might be up - try next endpoint
+                        continue
+                    else:
+                        logger.warning(f"⚠️ Google Maps Scraper API returned status {response.status_code} from {endpoint}")
+                        # Still consider it healthy if we got a response (not a connection error)
+                        return True
+            except httpx.TimeoutException:
+                logger.warning(f"⚠️ Google Maps Scraper API health check timeout for {endpoint}")
+                continue
+            except httpx.ConnectError:
+                logger.warning(f"⚠️ Google Maps Scraper API connection error for {endpoint}")
+                continue
+            except Exception as e:
+                logger.debug(f"Health check error for {endpoint}: {str(e)}")
+                continue
+        
+        # If all endpoints failed, API is likely down
+        logger.error(f"❌ Google Maps Scraper API health check FAILED: Could not reach {self.base_url}")
+        return False
     
     def build_google_maps_config(
         self,
