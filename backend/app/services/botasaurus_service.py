@@ -24,6 +24,10 @@ class BotasaurusService:
         """
         Create an asynchronous scraping task.
         
+        Based on Botasaurus API documentation:
+        - Endpoint: POST /api/createAsyncTask
+        - Payload: { "scraperName": "google_maps_scraper", "data": {...} }
+        
         Args:
             scraper_name: Name of the scraper (e.g., 'google_maps_scraper')
             data: Scraper configuration data
@@ -42,7 +46,7 @@ class BotasaurusService:
                 )
                 response.raise_for_status()
                 result = response.json()
-                logger.info(f"Created async task: {result}")
+                logger.info(f"✅ Created async task: {result}")
                 return result
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error creating task: {e.response.status_code} - {e.response.text}")
@@ -148,6 +152,8 @@ class BotasaurusService:
         """
         Get task status and details.
         
+        Based on Botasaurus API: GET /api/tasks/{taskId}
+        
         Args:
             task_id: The task ID
             
@@ -160,7 +166,7 @@ class BotasaurusService:
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error getting task {task_id}: {e.response.status_code}")
+            logger.error(f"HTTP error getting task {task_id}: {e.response.status_code} - {e.response.text}")
             raise Exception(f"Failed to get task status: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error getting task: {str(e)}")
@@ -204,13 +210,15 @@ class BotasaurusService:
         """
         Get task results with optional pagination, view, sort, and filters.
         
+        Based on Botasaurus API: GET /api/tasks/{taskId}/results
+        
         Args:
             task_id: The task ID
             page: Page number
             per_page: Results per page
             view: Optional view (overview, featured_reviews, detailed_reviews)
             sort: Optional sort order
-            filters: Optional filters
+            filters: Optional filters (sent as POST body if provided)
             
         Returns:
             Task results
@@ -224,12 +232,14 @@ class BotasaurusService:
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 if filters:
+                    # If filters are provided, use POST with filters in body
                     response = await client.post(
                         f"{self.base_url}/api/tasks/{task_id}/results",
                         params=params,
                         json={"filters": filters}
                     )
                 else:
+                    # Otherwise use GET with query params
                     response = await client.get(
                         f"{self.base_url}/api/tasks/{task_id}/results",
                         params=params
@@ -237,7 +247,7 @@ class BotasaurusService:
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error getting task results: {e.response.status_code}")
+            logger.error(f"HTTP error getting task results: {e.response.status_code} - {e.response.text}")
             raise Exception(f"Failed to get task results: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error getting task results: {str(e)}")
@@ -250,6 +260,8 @@ class BotasaurusService:
     ) -> tuple[bytes, str]:
         """
         Download task results in specified format.
+        
+        Based on Botasaurus API: GET /api/tasks/{taskId}/download?format=csv
         
         Args:
             task_id: The task ID
@@ -274,7 +286,7 @@ class BotasaurusService:
                 
                 return response.content, filename
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error downloading task results: {e.response.status_code}")
+            logger.error(f"HTTP error downloading task results: {e.response.status_code} - {e.response.text}")
             raise Exception(f"Failed to download task results: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error downloading task results: {str(e)}")
@@ -283,6 +295,8 @@ class BotasaurusService:
     async def abort_task(self, task_id: int) -> Dict[str, Any]:
         """
         Abort a running task.
+        
+        Based on Botasaurus API: POST /api/tasks/{taskId}/abort
         
         Args:
             task_id: The task ID
@@ -296,7 +310,7 @@ class BotasaurusService:
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error aborting task: {e.response.status_code}")
+            logger.error(f"HTTP error aborting task: {e.response.status_code} - {e.response.text}")
             raise Exception(f"Failed to abort task: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error aborting task: {str(e)}")
@@ -305,6 +319,8 @@ class BotasaurusService:
     async def delete_task(self, task_id: int) -> Dict[str, Any]:
         """
         Delete a task.
+        
+        Based on Botasaurus API: DELETE /api/tasks/{taskId}
         
         Args:
             task_id: The task ID
@@ -318,7 +334,7 @@ class BotasaurusService:
                 response.raise_for_status()
                 return {"success": True, "message": f"Task {task_id} deleted"}
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error deleting task: {e.response.status_code}")
+            logger.error(f"HTTP error deleting task: {e.response.status_code} - {e.response.text}")
             raise Exception(f"Failed to delete task: {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Request error deleting task: {str(e)}")

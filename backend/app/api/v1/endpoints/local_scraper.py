@@ -5,7 +5,7 @@ Provides endpoints for Google Maps scraping using the AWS-hosted scraper API.
 This is completely separate from the Sales Nav, Enrichment, and Verification features.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -13,6 +13,8 @@ from datetime import datetime
 import logging
 import json
 import boto3
+import io
+import csv
 
 from app.db.session import get_db
 from app.models.user import User
@@ -74,9 +76,83 @@ async def check_scraper_health():
     }
 
 
+async def run_direct_scrape_task(order_id: str, scraper_config: dict):
+    """
+    Background task to run direct scraping (for AWS-hosted API that doesn't support async tasks).
+    """
+    from app.db.session import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        order = db.query(LocalScraperOrder).filter(LocalScraperOrder.id == order_id).first()
+        if not order:
+            logger.error(f"Order {order_id} not found for direct scraping")
+            return
+        
+        logger.info(f"🔄 Starting direct scrape for order {order_id}")
+        
+        try:
+            # Check if order was cancelled before starting scrape
+            db.refresh(order)
+            if order.status == "cancelled" or order.status == "deleted":
+                logger.info(f"Order {order_id} was cancelled/deleted, skipping scrape")
+                return
+            
+            # Run the direct scrape
+            results = await botasaurus_service.direct_scrape(scraper_config)
+            
+            # Check again if order was cancelled during scraping
+            db.refresh(order)
+            if order.status == "cancelled" or order.status == "deleted":
+                logger.info(f"Order {order_id} was cancelled/deleted during scrape, not storing results")
+                return
+            
+            # Update order with results
+            order.status = "completed"
+            order.completed_at = datetime.utcnow()
+            order.results_count = len(results) if isinstance(results, list) else 1
+            order.progress_percentage = 100
+            
+            # Store results in R2
+            csv_buffer = io.StringIO()
+            if results and isinstance(results, list) and len(results) > 0:
+                # Get fieldnames from first result
+                fieldnames = list(results[0].keys()) if results else []
+                writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(results)
+            
+            csv_bytes = csv_buffer.getvalue().encode('utf-8')
+            csv_file_path = f"local-scraper-orders/{order_id}/results.csv"
+            s3_client.put_object(
+                Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+                Key=csv_file_path,
+                Body=csv_bytes,
+                ContentType="text/csv"
+            )
+            
+            order.file_url = f"{settings.CLOUDFLARE_R2_PUBLIC_URL}/{csv_file_path}"
+            db.commit()
+            
+            logger.info(f"✅ Direct scraping completed for order {order_id}: {order.results_count} results")
+            
+        except Exception as scrape_error:
+            logger.error(f"❌ Direct scraping failed for order {order_id}: {str(scrape_error)}")
+            order.status = "failed"
+            order.error_message = str(scrape_error)
+            order.completed_at = datetime.utcnow()
+            db.commit()
+            
+    except Exception as e:
+        logger.error(f"Error in direct scraping task for order {order_id}: {str(e)}")
+    finally:
+        db.close()
+
+
 @router.post("/orders", response_model=LocalScraperOrderResponse)
 async def create_order(
     payload: CreateLocalScraperOrderRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -152,34 +228,22 @@ async def create_order(
         
         logger.info(f"✅ Order created in database: {order.id}")
         
-        # Try to create task in scraper API
-        try:
-            task_result = await botasaurus_service.create_async_task(
-                scraper_name="google_maps_scraper",
-                data=scraper_config
-            )
-            
-            # Update order with task ID
-            order.botasaurus_task_id = task_result.get("id")
-            order.status = "processing"
-            order.started_at = datetime.utcnow()
-            db.commit()
-            db.refresh(order)
-            
-            logger.info(f"✅ Scraper task created: {order.botasaurus_task_id}")
-            
-        except Exception as scraper_error:
-            # If scraper fails, keep the order in database but mark as failed
-            logger.error(f"Failed to create scraper task: {str(scraper_error)}")
-            order.status = "failed"
-            order.error_message = str(scraper_error)
-            db.commit()
-            db.refresh(order)
-            
-            raise HTTPException(
-                status_code=503,
-                detail=f"Could not start scraping task. Scraper API error: {str(scraper_error)}"
-            )
+        # AWS-hosted Botasaurus API only supports direct scraping (no async task endpoints)
+        # Schedule background task for direct scraping
+        order.status = "processing"
+        order.started_at = datetime.utcnow()
+        order.botasaurus_task_id = None  # Not used for direct scraping
+        db.commit()
+        db.refresh(order)
+        
+        # Schedule background task for direct scraping
+        background_tasks.add_task(
+            run_direct_scrape_task,
+            order_id=str(order.id),
+            scraper_config=scraper_config
+        )
+        
+        logger.info(f"✅ Scheduled direct scrape task for order {order.id}")
         
         return order_to_response(order)
         
@@ -253,8 +317,10 @@ async def poll_order_status(
     db: Session = Depends(get_db),
 ):
     """
-    Poll scraper API for live task status.
-    Updates the database with the latest status.
+    Poll order status from database.
+    
+    For AWS-hosted Botasaurus API, we use direct scraping in background tasks,
+    so we just return the current database status.
     """
     try:
         order = db.query(LocalScraperOrder).filter(
@@ -265,111 +331,16 @@ async def poll_order_status(
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
         
-        # If already completed or failed, return from database
-        if order.status in ["completed", "failed", "cancelled"]:
-            return {
-                "order_id": str(order.id),
-                "botasaurus_task_id": order.botasaurus_task_id,
-                "status": order.status,
-                "progress_percentage": order.progress_percentage or (100 if order.status == "completed" else 0),
-                "results_count": order.results_count or 0,
-                "from_database": True,
-            }
-        
-        # If no task ID, return pending status
-        if not order.botasaurus_task_id:
-            return {
-                "order_id": str(order.id),
-                "botasaurus_task_id": None,
-                "status": order.status,
-                "progress_percentage": 0,
-                "results_count": 0,
-                "from_database": True,
-            }
-        
-        # Poll scraper API
-        try:
-            task_status = await botasaurus_service.get_task(order.botasaurus_task_id)
-            logger.info(f"Scraper task status for {order_id}: {task_status}")
-            
-            scraper_status = task_status.get("status", "unknown")
-            result_count = task_status.get("result_count", 0) or 0
-            
-            # Map scraper status to our status
-            status_map = {
-                "pending": "pending",
-                "in_progress": "processing",
-                "completed": "completed",
-                "failed": "failed",
-            }
-            new_status = status_map.get(scraper_status, "processing")
-            
-            # Calculate progress
-            if new_status == "completed":
-                progress = 100
-            elif new_status == "processing":
-                progress = 50  # In progress
-            elif new_status == "failed":
-                progress = 0
-            else:
-                progress = 10  # Pending
-            
-            # Update database if status changed
-            if order.status != new_status or order.results_count != result_count:
-                order.status = new_status
-                order.results_count = result_count
-                order.progress_percentage = progress
-                
-                if new_status == "completed":
-                    order.completed_at = datetime.utcnow()
-                    
-                    # Download and store results in R2
-                    try:
-                        csv_bytes, filename = await botasaurus_service.download_task_results(
-                            order.botasaurus_task_id, 
-                            format="csv"
-                        )
-                        
-                        # Store in R2
-                        csv_file_path = f"local-scraper-orders/{order.id}/results.csv"
-                        s3_client.put_object(
-                            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-                            Key=csv_file_path,
-                            Body=csv_bytes,
-                            ContentType="text/csv"
-                        )
-                        
-                        # Store the R2 URL
-                        order.file_url = f"{settings.CLOUDFLARE_R2_PUBLIC_URL}/{csv_file_path}"
-                        logger.info(f"✅ Results stored in R2: {order.file_url}")
-                        
-                    except Exception as download_error:
-                        logger.error(f"Failed to download/store results: {str(download_error)}")
-                        order.error_message = f"Results download failed: {str(download_error)}"
-                
-                db.commit()
-                db.refresh(order)
-            
-            return {
-                "order_id": str(order.id),
-                "botasaurus_task_id": order.botasaurus_task_id,
-                "status": order.status,
-                "progress_percentage": order.progress_percentage,
-                "results_count": order.results_count,
-                "from_database": False,
-            }
-            
-        except Exception as scraper_error:
-            logger.error(f"Failed to poll scraper: {str(scraper_error)}")
-            return {
-                "order_id": str(order.id),
-                "botasaurus_task_id": order.botasaurus_task_id,
-                "status": order.status,
-                "progress_percentage": order.progress_percentage or 0,
-                "results_count": order.results_count or 0,
-                "from_database": True,
-                "error": str(scraper_error),
-            }
+        # Return current database status
+        # Background task will update this when scraping completes
+        return {
+            "order_id": str(order.id),
+            "botasaurus_task_id": order.botasaurus_task_id,
+            "status": order.status,
+            "progress_percentage": order.progress_percentage or (100 if order.status == "completed" else (50 if order.status == "processing" else 0)),
+            "results_count": order.results_count or 0,
+            "from_database": True,
+        }
             
     except HTTPException:
         raise
@@ -398,13 +369,9 @@ async def delete_order(
         order.status = "deleted"
         db.commit()
         
-        # Try to abort scraper task if it's running
-        if order.botasaurus_task_id and old_status in ["pending", "processing"]:
-            try:
-                await botasaurus_service.abort_task(order.botasaurus_task_id)
-                logger.info(f"Aborted scraper task {order.botasaurus_task_id}")
-            except Exception as abort_error:
-                logger.warning(f"Could not abort scraper task: {str(abort_error)}")
+        # Note: AWS-hosted Botasaurus API uses direct scraping in background tasks
+        # We can't abort running scrapes, but we've marked the order as deleted
+        # The background task will check the status before storing results
         
         logger.info(f"Order {order_id} marked as deleted (was: {old_status})")
         
@@ -442,15 +409,12 @@ async def cancel_order(
         
         old_status = order.status
         order.status = "cancelled"
+        order.completed_at = datetime.utcnow()
         db.commit()
         
-        # Try to abort scraper task
-        if order.botasaurus_task_id:
-            try:
-                await botasaurus_service.abort_task(order.botasaurus_task_id)
-                logger.info(f"Aborted scraper task {order.botasaurus_task_id}")
-            except Exception as abort_error:
-                logger.warning(f"Could not abort scraper task: {str(abort_error)}")
+        # Note: AWS-hosted Botasaurus API uses direct scraping in background tasks
+        # We can't abort running scrapes, but we've marked the order as cancelled
+        # The background task will check the status before storing results
         
         logger.info(f"Order {order_id} cancelled (was: {old_status})")
         
