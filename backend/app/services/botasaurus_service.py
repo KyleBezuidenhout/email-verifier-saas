@@ -429,29 +429,32 @@ class BotasaurusService:
             try:
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     response = await client.get(endpoint)
-                    # Accept 200 (OK) or 400 (Bad Request) as healthy - means API is responding
-                    if response.status_code in [200, 400]:
-                        logger.info(f"✅ Google Maps Scraper API health check: CONNECTED to {self.base_url}")
+                    # Any HTTP response (even 404) means the server is reachable and responding
+                    # This is better than a connection timeout/error
+                    if response.status_code == 200:
+                        logger.info(f"✅ Google Maps Scraper API health check: CONNECTED to {self.base_url} (endpoint: {endpoint})")
                         return True
                     elif response.status_code == 404:
-                        # 404 means endpoint doesn't exist, but API might be up - try next endpoint
-                        continue
+                        # 404 means endpoint doesn't exist, but server IS responding
+                        # This is still a successful health check - server is reachable
+                        logger.info(f"✅ Google Maps Scraper API health check: Server reachable at {self.base_url} (404 from {endpoint} - endpoint may not exist, but server is responding)")
+                        return True
                     else:
-                        logger.warning(f"⚠️ Google Maps Scraper API returned status {response.status_code} from {endpoint}")
-                        # Still consider it healthy if we got a response (not a connection error)
+                        # Any other HTTP status means server is reachable (400, 500, etc.)
+                        logger.info(f"✅ Google Maps Scraper API health check: Server reachable at {self.base_url} (status {response.status_code} from {endpoint})")
                         return True
             except httpx.TimeoutException:
                 logger.warning(f"⚠️ Google Maps Scraper API health check timeout for {endpoint}")
                 continue
-            except httpx.ConnectError:
-                logger.warning(f"⚠️ Google Maps Scraper API connection error for {endpoint}")
+            except httpx.ConnectError as e:
+                logger.warning(f"⚠️ Google Maps Scraper API connection error for {endpoint}: {str(e)}")
                 continue
             except Exception as e:
                 logger.debug(f"Health check error for {endpoint}: {str(e)}")
                 continue
         
-        # If all endpoints failed, API is likely down
-        logger.error(f"❌ Google Maps Scraper API health check FAILED: Could not reach {self.base_url}")
+        # If all endpoints failed with connection errors/timeouts, API is likely down
+        logger.error(f"❌ Google Maps Scraper API health check FAILED: Could not reach {self.base_url} (all endpoints timed out or connection refused)")
         return False
     
     def build_google_maps_config(

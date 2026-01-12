@@ -68,7 +68,7 @@ async def check_scraper_health():
     """Check if Google Maps Scraper API on AWS is reachable"""
     is_healthy = await botasaurus_service.check_health()
     return {
-        "google_maps_scraper_api": "connected" if is_healthy else "disconnected",
+        "botasaurus_api": "connected" if is_healthy else "disconnected",
         "api_url": botasaurus_service.base_url,
         "message": "Google Maps Scraper API is running" if is_healthy else "Could not connect to Google Maps Scraper API. Please check the AWS instance."
     }
