@@ -675,7 +675,6 @@ export default function LocalLeadScraperPage() {
           onClick={handleStartScraping}
           disabled={
             creatingOrder ||
-            healthStatus?.botasaurus_api !== "connected" ||
             config.business_types.length === 0 ||
             !jobName.trim()
           }
