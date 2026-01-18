@@ -130,6 +130,7 @@ export default function LocalLeadScraperPage() {
               status: result.status as LocalScraperOrder["status"],
               progress_percentage: result.progress_percentage,
               results_count: result.results_count,
+              error_message: result.error_message || null,
             };
           }
           return order;
@@ -771,7 +772,14 @@ export default function LocalLeadScraperPage() {
                           <span className="text-green-400">{order.results_count} results</span>
                         </div>
                       ) : order.status === "failed" ? (
-                        <span className="text-red-400">Failed</span>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-red-400">Failed</span>
+                          {order.error_message && (
+                            <span className="text-xs text-red-400/70 max-w-[300px] truncate" title={order.error_message}>
+                              {order.error_message}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <div className="flex items-center gap-2 min-w-[120px]">
                           <div className="flex-1 bg-dashboard-card rounded-full h-2 overflow-hidden">

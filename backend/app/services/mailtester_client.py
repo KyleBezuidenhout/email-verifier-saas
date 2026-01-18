@@ -27,14 +27,28 @@ class MailTesterClient:
 
             code = data.get("code", "ko")
             message = data.get("message", "")
+            message_lower = message.lower()
 
-            
+            # Check for API errors first - these should NOT be marked as invalid
+            # Common API error patterns: expired keys, auth failures, rate limits, timeouts
+            api_error_patterns = [
+                'expired', 'invalid key', 'invalid api', 'unauthorized',
+                'authentication', 'rate limit', 'too many', 'quota',
+                'timeout', 'timed out', 'api error', 'service unavailable',
+                'temporarily', 'try again', 'limit exceeded', 'access denied', 'forbidden'
+            ]
+            is_api_error = any(pattern in message_lower for pattern in api_error_patterns)
 
-            if code == "ok":
+            if is_api_error:
+                # API error - don't mark as invalid, mark as error so user knows verification failed
+                status = "error"
+                print(f"⚠️ API error for {email}: {message}")
+            elif code == "ok":
                 status = "valid"
-            elif code == "mb" or "catch" in message.lower():
+            elif code == "mb" or "catch" in message_lower:
                 status = "catchall"
             else:
+                # Legitimate "email doesn't exist" response
                 status = "invalid"
 
             

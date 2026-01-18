@@ -340,6 +340,7 @@ async def poll_order_status(
             "progress_percentage": order.progress_percentage or (100 if order.status == "completed" else (50 if order.status == "processing" else 0)),
             "results_count": order.results_count or 0,
             "from_database": True,
+            "error_message": order.error_message,
         }
             
     except HTTPException:

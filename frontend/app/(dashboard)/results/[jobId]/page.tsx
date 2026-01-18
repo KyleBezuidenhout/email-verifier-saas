@@ -86,6 +86,8 @@ export default function ResultsPage() {
       ? leads.filter((lead) => lead.verification_status === "valid" || lead.verification_tag === "valid-catchall" || lead.verification_tag === "catchall-verified")
       : filter === "invalid"
       ? leads.filter((lead) => lead.verification_status === "invalid" || lead.verification_status === "not_found")
+      : filter === "error"
+      ? leads.filter((lead) => lead.verification_status === "error")
       : leads.filter((lead) => lead.verification_status === filter);
   
   // Apply MX provider filter (if any selected)
@@ -109,6 +111,7 @@ export default function ResultsPage() {
     l.verification_tag !== "valid-catchall"
   );
   const notFoundLeads = leads.filter((l) => l.verification_status === "invalid" || l.verification_status === "not_found");
+  const errorLeads = leads.filter((l) => l.verification_status === "error");
   
   // Extract unique extra column names from all leads
   const extraColumns = useMemo(() => {
@@ -135,6 +138,7 @@ export default function ResultsPage() {
   const filteredNotFoundLeads = filteredLeads.filter((l) => 
     l.verification_status === "invalid" || l.verification_status === "not_found"
   );
+  const filteredErrorLeads = filteredLeads.filter((l) => l.verification_status === "error");
   
   // Check if user can verify catchalls (job has catchall leads)
   const canVerifyCatchalls = catchallLeads.length > 0;
@@ -259,7 +263,7 @@ export default function ResultsPage() {
       )}
 
       {/* Stats Blocks - Click to Filter */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div className={`grid grid-cols-1 gap-4 mb-8 ${errorLeads.length > 0 ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
         <button
           onClick={() => setFilter("all")}
           className={`text-left glass-card p-6 transition-all hover:border-dashboard-accent ${
@@ -302,6 +306,20 @@ export default function ResultsPage() {
             {notFoundLeads.length}
           </p>
         </button>
+        {errorLeads.length > 0 && (
+          <button
+            onClick={() => setFilter("error")}
+            className={`text-left glass-card p-6 transition-all hover:border-orange-500 ${
+              filter === "error" ? "border-orange-500 ring-2 ring-orange-500/20" : ""
+            }`}
+          >
+            <p className="text-sm text-dashboard-text-muted">API Errors</p>
+            <p className="text-2xl font-bold text-orange-500">
+              {errorLeads.length}
+            </p>
+            <p className="text-xs text-orange-400 mt-1">Needs re-verification</p>
+          </button>
+        )}
       </div>
 
       <div className="glass-card p-6">
@@ -450,6 +468,8 @@ export default function ResultsPage() {
                             ? "bg-green-500/20 text-green-400 border border-green-500/30"
                             : lead.verification_status === "catchall"
                             ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                            : lead.verification_status === "error"
+                            ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
                             : "bg-red-500/20 text-red-400 border border-red-500/30"
                         }`}
                       >

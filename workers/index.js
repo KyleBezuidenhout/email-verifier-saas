@@ -1421,11 +1421,39 @@ async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts =
     const mx = response.data?.mx || '';
     
     let status = 'invalid';
-    if (code === 'ok') {
+    const messageLower = message.toLowerCase();
+    
+    // Check for API errors first - these should NOT be marked as invalid
+    // Common API error patterns: expired keys, auth failures, rate limits, timeouts
+    const isApiError = 
+      messageLower.includes('expired') ||
+      messageLower.includes('invalid key') ||
+      messageLower.includes('invalid api') ||
+      messageLower.includes('unauthorized') ||
+      messageLower.includes('authentication') ||
+      messageLower.includes('rate limit') ||
+      messageLower.includes('too many') ||
+      messageLower.includes('quota') ||
+      messageLower.includes('timeout') ||
+      messageLower.includes('timed out') ||
+      messageLower.includes('api error') ||
+      messageLower.includes('service unavailable') ||
+      messageLower.includes('temporarily') ||
+      messageLower.includes('try again') ||
+      messageLower.includes('limit exceeded') ||
+      messageLower.includes('access denied') ||
+      messageLower.includes('forbidden');
+    
+    if (isApiError) {
+      // API error - don't mark as invalid, mark as error so user knows verification failed
+      status = 'error';
+      console.warn(`⚠️ API error for ${email}: ${message}`);
+    } else if (code === 'ok') {
       status = 'valid';
-    } else if (code === 'mb' || message.toLowerCase().includes('catch')) {
+    } else if (code === 'mb' || messageLower.includes('catch')) {
       status = 'catchall';
     }
+    // else status remains 'invalid' - this is a legitimate "email doesn't exist" response
     
     // Parse provider from MX record
     const provider = extractProviderFromMX(mx);

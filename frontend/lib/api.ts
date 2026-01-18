@@ -723,6 +723,7 @@ class ApiClient {
     progress_percentage: number;
     results_count: number;
     from_database: boolean;
+    error_message?: string | null;
     error?: string;
   }> {
     return this.request(`/api/v1/local-scraper/orders/${orderId}/poll-status`);
