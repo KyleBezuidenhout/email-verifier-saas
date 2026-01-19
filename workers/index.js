@@ -2089,9 +2089,11 @@ async function updateLeadWithExtendedCatchall(leadId, originalEmail, originalPat
 // 1. VALID: First valid email found = best result, skip remaining permutations
 // 2. CATCHALL: First catchall found = highest prevalence (leads sorted by prevalence), 
 //    all remaining permutations for this domain will also be catchalls with lower prevalence
+// 3. TIMEOUT: Mail server unresponsive = skip all remaining permutations (they'll all timeout too)
 async function processPersonWithEarlyExit(personKey, personLeads) {
   let foundValid = false;
   let bestCatchall = null;
+  let hitTimeout = false;  // Track if we hit a timeout (mail server unresponsive)
   let permutationsVerified = 0;
   let apiCalls = 0;
   let savedCalls = 0;
@@ -2106,6 +2108,29 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
       const result = await verifyEmail(lead.email);
       apiCalls++;
       permutationsVerified++;
+      
+      // Check for timeout - mail server is unresponsive, no point trying more permutations
+      const isTimeout = result.message && result.message.toLowerCase().includes('timeout');
+      if (isTimeout) {
+        // *** EARLY EXIT: Mail server timeout ***
+        // If the mail server doesn't respond, it won't respond for any permutation
+        hitTimeout = true;
+        finalLeadId = lead.id;
+        resultType = 'not_found';
+        
+        // Calculate saved calls (remaining primary + all 16 extended)
+        const remainingPrimary = personLeads.length - permutationsVerified;
+        const extendedPermutations = 16;  // Extended permutations that we'll skip
+        savedCalls = remainingPrimary + extendedPermutations;
+        
+        console.log(`  ⏱️ TIMEOUT for ${personKey} - mail server unresponsive, skipping ${remainingPrimary} primary + ${extendedPermutations} extended permutations`);
+        
+        // Mark remaining primary permutation leads as not_found (without making API calls)
+        for (let i = permutationsVerified; i < personLeads.length; i++) {
+          queueLeadUpdate(personLeads[i].id, 'not_found', '', '');
+        }
+        break; // Stop verifying this person's remaining permutations
+      }
       
       // Map 'unverified' to 'not_found' for enrichment jobs
       let finalStatus = result.status;
@@ -2156,8 +2181,9 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
   }
   
   // If no valid or catchall found in primary 16, try extended permutations (17-32)
-  // Note: Valid and catchall both early-exit in the loop above
-  if (!foundValid && !bestCatchall) {
+  // Note: Valid, catchall, and timeout all early-exit in the loop above
+  // Skip extended permutations entirely if we hit a timeout (mail server won't respond)
+  if (!foundValid && !bestCatchall && !hitTimeout) {
     // Get the first lead's info for extended permutation generation
     const firstLead = personLeads[0];
     const companySize = firstLead.company_size || 'default';
@@ -2188,6 +2214,21 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
         const result = await verifyEmail(extended.email);
         apiCalls++;
         extendedPermutationIndex++;
+        
+        // Check for timeout in extended permutations - early exit
+        const isTimeout = result.message && result.message.toLowerCase().includes('timeout');
+        if (isTimeout) {
+          // *** EARLY EXIT: Mail server timeout in extended permutations ***
+          hitTimeout = true;
+          finalLeadId = firstLead.id;
+          resultType = 'not_found';
+          
+          const remainingExtended = extendedEmails.length - extendedPermutationIndex;
+          savedCalls += remainingExtended;
+          
+          console.log(`  ⏱️ TIMEOUT for ${personKey} in extended permutation ${extendedPermutationIndex + 16}/32 - skipping ${remainingExtended} remaining`);
+          break;
+        }
         
         // Map 'unverified' to 'not_found' for enrichment jobs
         let finalStatus = result.status;
@@ -2259,10 +2300,12 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
         extendedCatchallProvider
       );
     } else {
-      // All 32 permutations exhausted - mark as not_found
+      // All 32 permutations exhausted OR timeout - mark as not_found
       finalLeadId = firstLead.id;
       resultType = 'not_found';
-      console.log(`  ✗ NOT_FOUND for ${personKey} (verified all 32 permutations including extended)`);
+      if (!hitTimeout) {
+        console.log(`  ✗ NOT_FOUND for ${personKey} (verified all 32 permutations including extended)`);
+      }
     }
   }
 
