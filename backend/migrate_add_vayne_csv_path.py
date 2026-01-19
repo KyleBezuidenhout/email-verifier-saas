@@ -51,3 +51,4 @@ def migrate_add_vayne_csv_path():
 if __name__ == "__main__":
     migrate_add_vayne_csv_path()
 
+

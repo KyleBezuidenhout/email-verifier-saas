@@ -7,3 +7,4 @@ The logo should be:
 - Blue checkmark badge overlapping top-right corner
 - "BILLION VERIFIER" text (BILLION in blue, VERIFIER in dark grey/black)
 
+

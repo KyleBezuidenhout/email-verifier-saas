@@ -50,3 +50,4 @@ def migrate_add_targeting_to_vayne_orders():
 
 if __name__ == "__main__":
     migrate_add_targeting_to_vayne_orders()
+

@@ -15,3 +15,4 @@ COPY workers/vayne_worker.py .
 # Run the worker
 CMD ["python3", "vayne_worker.py"]
 
+

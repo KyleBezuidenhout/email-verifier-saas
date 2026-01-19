@@ -16,3 +16,4 @@ COPY workers/vayne_worker.py .
 # Default to vayne_worker, but can be overridden via Railway start command
 CMD ["python3", "vayne_worker.py"]
 
+

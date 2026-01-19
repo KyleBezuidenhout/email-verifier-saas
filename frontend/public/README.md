@@ -30,3 +30,4 @@ All logo instances include:
 3. Save as `logo.png` in this directory
 4. The logo will automatically appear across all components
 
+

@@ -87,3 +87,4 @@ export function ErrorModal({ isOpen, onClose, message, title }: ErrorModalProps)
   );
 }
 
+
