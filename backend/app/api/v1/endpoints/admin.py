@@ -347,6 +347,14 @@ async def admin_delete_job(
     try:
         cancel_key = f"job:cancelled:{job_id}"
         redis_client.set(cancel_key, "true", ex=3600)  # 1 hour TTL
+        
+        # Release global lock if this job is holding it
+        # This prevents stale locks when jobs are deleted mid-processing
+        global_lock_key = "global:job-processing-lock"
+        lock_holder = redis_client.get(global_lock_key)
+        if lock_holder and lock_holder.decode('utf-8') == str(job_id):
+            redis_client.delete(global_lock_key)
+            print(f"🔓 Released global lock held by deleted job {job_id}")
     except Exception as e:
         # Don't fail the delete if Redis is unavailable - just log
         print(f"Warning: Could not notify workers via Redis: {e}")

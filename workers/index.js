@@ -121,7 +121,7 @@ const VERIFICATION_QUEUE = process.env.VERIFICATION_QUEUE || 'simple-email-verif
 const JOB_TYPE_FILTER = process.env.JOB_TYPE_FILTER || 'all';
 const USE_GLOBAL_LOCK = process.env.USE_GLOBAL_LOCK !== 'false'; // Default true
 const GLOBAL_LOCK_KEY = 'global:job-processing-lock';
-const GLOBAL_LOCK_TTL_MS = 7200000; // 2 hours max (safety, released on job completion)
+const GLOBAL_LOCK_TTL_MS = 86400000; // 24 hours max (safety, released on job completion or job deletion)
 const LOCK_RETRY_INTERVAL_MS = 2000; // Check for lock every 2 seconds
 
 // Log worker mode at startup
