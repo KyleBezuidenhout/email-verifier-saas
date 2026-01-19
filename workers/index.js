@@ -1359,19 +1359,49 @@ async function rateLimitForKey(apiKey) {
 
 // Verify email using MailTester API with multi-key support and failover
 // Uses per-key rate limiting with 250ms spacing between calls per key
-async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts = 0) {
-  const MAX_RETRIES = 3;
-  const MAX_KEY_ATTEMPTS = MAILTESTER_API_KEYS.length;
+async function verifyEmail(email, totalAttempts = 0, forceKey = null) {
+  const MAX_TOTAL_ATTEMPTS = 5;  // 5 total attempts across all keys
   
-  // Acquire a rate limit slot - acquireForKey now waits internally, so we just need to retry if it fails
-  // (which should be rare, but we handle it gracefully)
-  // Uses getNextKey() which automatically selects local vs global strategy based on WORKER_MODE
+  // Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s
+  const getBackoffMs = (attempt) => Math.pow(2, attempt) * 1000;
+  
+  // Helper function to retry with backoff and key rotation
+  const retryWithFallback = async (reason, currentKey) => {
+    if (totalAttempts < MAX_TOTAL_ATTEMPTS - 1) {
+      const backoffMs = getBackoffMs(totalAttempts);
+      console.log(`⚠️ ${reason} for ${email}, attempt ${totalAttempts + 1}/${MAX_TOTAL_ATTEMPTS}, retrying in ${backoffMs/1000}s...`);
+      
+      // Mark current key as unhealthy and try to get a different one
+      if (currentKey) {
+        await markKeyUnhealthy(currentKey);
+      }
+      const nextKey = await getNextHealthyKey(currentKey);
+      
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+      return verifyEmail(email, totalAttempts + 1, nextKey || null);
+    }
+    
+    // All 5 attempts exhausted - return 'unverified' (will be mapped by job type)
+    console.error(`All ${MAX_TOTAL_ATTEMPTS} attempts exhausted for ${email}: ${reason}`);
+    if (currentJobContext.jobId) {
+      await logVerificationError(
+        currentJobContext.userId,
+        currentJobContext.userEmail,
+        currentJobContext.jobId,
+        'max_retries_exhausted',
+        `${reason} - all retries exhausted`,
+        email
+      );
+    }
+    return { status: 'unverified', message: `${reason} - all retries exhausted`, mx: '', provider: '' };
+  };
+  
+  // Acquire a rate limit slot
   let apiKey = forceKey || await getNextKey();
   let acquired = false;
-  const MAX_ACQUIRE_ATTEMPTS = 10; // Safety limit (shouldn't be needed since acquireForKey waits)
+  const MAX_ACQUIRE_ATTEMPTS = 10;
   let acquireAttempts = 0;
   
-  // Try to acquire a slot - acquireForKey will wait internally for available slots
   while (!acquired && acquireAttempts < MAX_ACQUIRE_ATTEMPTS) {
     if (!apiKey) {
       apiKey = await getNextKey();
@@ -1379,29 +1409,22 @@ async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts =
     
     if (!apiKey) {
       console.error('No API keys configured!');
-      return { status: 'error', message: 'No API keys configured' };
+      return { status: 'unverified', message: 'No API keys configured', mx: '', provider: '' };
     }
     
-    // Acquire rate limit slot for this key (enforces 250ms spacing and waits if needed)
     acquired = await globalRateLimiter.acquireForKey(apiKey);
     
     if (!acquired) {
-      // This should be rare now (acquireForKey waits internally)
-      // But if it happens, try next key with a small delay
       acquireAttempts++;
       if (acquireAttempts < MAX_ACQUIRE_ATTEMPTS) {
-        // Wait a bit before trying next key (slots free up every 250ms)
         await new Promise(resolve => setTimeout(resolve, 100));
         apiKey = await getNextKey();
       }
     }
   }
   
-  // If we still don't have a slot after retries, something is seriously wrong
-  // But we should never get here with the new acquireForKey implementation
   if (!apiKey || !acquired) {
-    console.error(`Failed to acquire rate limit slot after ${acquireAttempts} attempts for ${email}`);
-    return { status: 'error', message: 'Failed to acquire rate limit slot' };
+    return retryWithFallback('Failed to acquire rate limit slot', apiKey);
   }
   
   try {
@@ -1410,21 +1433,17 @@ async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts =
         email: email,
         key: apiKey,
       },
-      timeout: 30000, // 30 second timeout
+      timeout: 30000,
     });
     
-    // Track API usage after successful call
     await trackApiUsage(apiKey);
     
     const code = response.data?.code || 'ko';
     const message = response.data?.message || '';
     const mx = response.data?.mx || '';
-    
-    let status = 'invalid';
     const messageLower = message.toLowerCase();
     
-    // Check for API errors first - these should NOT be marked as invalid
-    // Common API error patterns: expired keys, auth failures, rate limits, timeouts
+    // Check for API errors in response body - these need retry, not marking as invalid
     const isApiError = 
       messageLower.includes('expired') ||
       messageLower.includes('invalid key') ||
@@ -1445,17 +1464,20 @@ async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts =
       messageLower.includes('forbidden');
     
     if (isApiError) {
-      // API error - don't mark as invalid, mark as error so user knows verification failed
-      status = 'error';
-      console.warn(`⚠️ API error for ${email}: ${message}`);
-    } else if (code === 'ok') {
+      // API error in response - retry with fallback
+      await trackKeyError(apiKey);
+      return retryWithFallback(`API error: ${message}`, apiKey);
+    }
+    
+    // Definitive result from API
+    let status = 'invalid';
+    if (code === 'ok') {
       status = 'valid';
     } else if (code === 'mb' || messageLower.includes('catch')) {
       status = 'catchall';
     }
-    // else status remains 'invalid' - this is a legitimate "email doesn't exist" response
+    // else status remains 'invalid' - legitimate "email doesn't exist" response
     
-    // Parse provider from MX record
     const provider = extractProviderFromMX(mx);
     
     return {
@@ -1465,85 +1487,17 @@ async function verifyEmail(email, retryCount = 0, forceKey = null, keyAttempts =
       provider,
     };
   } catch (error) {
-    // Track usage even on error (API was still called)
     await trackApiUsage(apiKey);
-    
-    // Track error for this key
     await trackKeyError(apiKey);
     
-    // Handle 429 Too Many Requests - try key switch after retries
-    if (error.response?.status === 429) {
-      // After 2 retries with same key, try switching to different key
-      if (retryCount >= 2 && keyAttempts < MAX_KEY_ATTEMPTS - 1 && MAILTESTER_API_KEYS.length > 1) {
-        const nextKey = await getNextHealthyKey(apiKey);
-        if (nextKey && nextKey !== apiKey) {
-          console.log(`🔄 429 error - switching from key ...${apiKey.slice(-4)} to ...${nextKey.slice(-4)}`);
-          await markKeyUnhealthy(apiKey);
-          return verifyEmail(email, 0, nextKey, keyAttempts + 1); // Reset retry count with new key
-        }
-      }
-      
-      // Standard retry with same key
-      if (retryCount < MAX_RETRIES) {
-        const backoffMs = Math.pow(2, retryCount + 1) * 1000; // 2s, 4s, 8s
-        console.log(`429 rate limited for ${email}, retrying in ${backoffMs/1000}s (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
-        return verifyEmail(email, retryCount + 1, apiKey, keyAttempts);
-      }
-      
-      console.error(`Max retries exceeded for ${email}`);
-      // Log error for admin dashboard
-      if (currentJobContext.jobId) {
-        await logVerificationError(
-          currentJobContext.userId,
-          currentJobContext.userEmail,
-          currentJobContext.jobId,
-          'rate_limit_exceeded',
-          'Rate limited - max retries exceeded',
-          email
-        );
-      }
-      return {
-        status: 'error',
-        message: 'Rate limited - max retries exceeded',
-      };
-    }
+    // All HTTP errors (429, timeouts, network errors) trigger retry with fallback
+    const errorReason = error.response?.status === 429 
+      ? 'Rate limited (429)'
+      : error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET'
+      ? `Network error (${error.code})`
+      : `HTTP error: ${error.message}`;
     
-    // Handle network errors - try key switch after retries
-    if ((error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT')) {
-      // After 2 retries with same key, try switching
-      if (retryCount >= 2 && keyAttempts < MAX_KEY_ATTEMPTS - 1 && MAILTESTER_API_KEYS.length > 1) {
-        const nextKey = await getNextHealthyKey(apiKey);
-        if (nextKey && nextKey !== apiKey) {
-          console.log(`🔄 Network error - switching from key ...${apiKey.slice(-4)} to ...${nextKey.slice(-4)}`);
-          await markKeyUnhealthy(apiKey);
-          return verifyEmail(email, 0, nextKey, keyAttempts + 1);
-        }
-      }
-      
-      if (retryCount < MAX_RETRIES) {
-        console.log(`Network error for ${email}, retrying in 2s...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        return verifyEmail(email, retryCount + 1, apiKey, keyAttempts);
-      }
-    }
-    
-    console.error(`Error verifying ${email}:`, error.message);
-    // Log error for admin dashboard
-    if (currentJobContext.jobId) {
-      await logVerificationError(
-        currentJobContext.userId,
-        currentJobContext.userEmail,
-        currentJobContext.jobId,
-        'verification_error',
-        error.message,
-        email
-      );
-    }
-    return {
-      status: 'error',
-      message: error.message,
-    };
+    return retryWithFallback(errorReason, apiKey);
   }
 }
 
@@ -1743,11 +1697,20 @@ async function processJob(jobId) {
         try {
           const result = await verifyEmail(lead.email);
           
-          await updateLeadStatus(lead.id, result.status, result.message, result.mx, result.provider);
+          // Map 'unverified' status based on job type
+          // Verification jobs: unverified -> invalid
+          // Enrichment jobs: unverified -> not_found
+          let finalStatus = result.status;
+          if (result.status === 'unverified') {
+            finalStatus = jobType === 'verification' ? 'invalid' : 'not_found';
+            console.log(`Mapping unverified -> ${finalStatus} for ${lead.email} (job_type: ${jobType})`);
+          }
           
-          if (result.status === 'valid') {
+          await updateLeadStatus(lead.id, finalStatus, result.message, result.mx, result.provider);
+          
+          if (finalStatus === 'valid') {
             validCount++;
-          } else if (result.status === 'catchall') {
+          } else if (finalStatus === 'catchall') {
             catchallCount++;
           }
           
@@ -1765,7 +1728,9 @@ async function processJob(jobId) {
           }
         } catch (error) {
           console.error(`Error processing lead ${lead.id}:`, error.message);
-          await updateLeadStatus(lead.id, 'error', error.message);
+          // Map error to appropriate status based on job type
+          const fallbackStatus = jobType === 'verification' ? 'invalid' : 'not_found';
+          await updateLeadStatus(lead.id, fallbackStatus, error.message);
           processedCount++;
         }
       });
@@ -2121,9 +2086,15 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
       apiCalls++;
       permutationsVerified++;
       
-      queueLeadUpdate(lead.id, result.status, result.mx, result.provider);
+      // Map 'unverified' to 'not_found' for enrichment jobs
+      let finalStatus = result.status;
+      if (result.status === 'unverified') {
+        finalStatus = 'not_found';
+      }
       
-      if (result.status === 'valid') {
+      queueLeadUpdate(lead.id, finalStatus, result.mx, result.provider);
+      
+      if (finalStatus === 'valid') {
         // *** EARLY EXIT: Found valid email! ***
         finalLeadId = lead.id;
         validFound = 1;
@@ -2137,7 +2108,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
         console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/16 - skipping ${remainingPermutations} remaining`);
         break; // Stop verifying this person's remaining permutations
         
-      } else if (result.status === 'catchall') {
+      } else if (finalStatus === 'catchall') {
         // *** EARLY EXIT FOR CATCHALLS ***
         // Since leads are ordered by prevalence (highest first), the first catchall
         // we encounter is the best one. All remaining permutations for this catchall
@@ -2153,11 +2124,11 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
         console.log(`  ~ CATCHALL found for ${personKey} on permutation ${permutationsVerified}/16 - skipping ${remainingPermutations} remaining (highest prevalence)`);
         break; // Stop verifying this person's remaining permutations
       }
-      // If invalid or error, continue to next permutation
+      // If invalid/not_found, continue to next permutation
       
     } catch (error) {
       console.error(`Error processing lead ${lead.id}:`, error.message);
-      queueLeadUpdate(lead.id, 'error', '', '');
+      queueLeadUpdate(lead.id, 'not_found', '', '');  // Enrichment: map errors to not_found
       apiCalls++;
       permutationsVerified++;
     }
@@ -2197,7 +2168,13 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
         apiCalls++;
         extendedPermutationIndex++;
         
-        if (result.status === 'valid') {
+        // Map 'unverified' to 'not_found' for enrichment jobs
+        let finalStatus = result.status;
+        if (result.status === 'unverified') {
+          finalStatus = 'not_found';
+        }
+        
+        if (finalStatus === 'valid') {
           // *** EARLY EXIT: Found valid in extended set! ***
           extendedValidEmail = extended.email;
           extendedValidPattern = extended.pattern;
@@ -2214,7 +2191,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
           console.log(`  ✓ VALID found for ${personKey} in EXTENDED permutation ${extendedPermutationIndex + 16}/32 (${extended.pattern}) - skipping ${remainingExtended} remaining`);
           break;
           
-        } else if (result.status === 'catchall') {
+        } else if (finalStatus === 'catchall') {
           // *** EARLY EXIT: Catchall found in extended set ***
           // Use the original permutation 1's email (highest prevalence) as the result
           extendedCatchallEmail = firstLead.email;  // Original perm 1 email
@@ -2490,22 +2467,31 @@ async function processJobFromQueue(jobId) {
         try {
           // Skip leads with empty or null emails
           if (!lead.email || lead.email.trim() === '') {
-            queueLeadUpdate(lead.id, 'error', '', '');
+            // For verification jobs, empty emails are invalid
+            queueLeadUpdate(lead.id, 'invalid', '', '');
             processedCount++;
+            finalResultIds.push(lead.id);
           } else {
             // Verify email (uses rate limiting with round-robin)
             const result = await verifyEmail(lead.email);
             
-            queueLeadUpdate(lead.id, result.status, result.mx, result.provider);
+            // Map 'unverified' status based on job type
+            // This section handles verification jobs, so: unverified -> invalid
+            let finalStatus = result.status;
+            if (result.status === 'unverified') {
+              finalStatus = 'invalid';
+            }
+            
+            queueLeadUpdate(lead.id, finalStatus, result.mx, result.provider);
             processedCount++;
             
-            if (result.status === 'valid') {
+            if (finalStatus === 'valid') {
               validCount++;
               finalResultIds.push(lead.id);
-            } else if (result.status === 'catchall') {
+            } else if (finalStatus === 'catchall') {
               catchallCount++;
               finalResultIds.push(lead.id);
-            } else if (result.status === 'invalid') {
+            } else if (finalStatus === 'invalid') {
               finalResultIds.push(lead.id);
             }
           }
