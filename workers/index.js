@@ -1360,28 +1360,27 @@ async function rateLimitForKey(apiKey) {
 // Verify email using MailTester API with multi-key support and failover
 // Uses per-key rate limiting with 250ms spacing between calls per key
 async function verifyEmail(email, totalAttempts = 0, forceKey = null) {
-  const MAX_TOTAL_ATTEMPTS = 5;  // 5 total attempts across all keys
+  const MAX_TOTAL_ATTEMPTS = 3;  // 3 total attempts across all keys
   
-  // Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s
-  const getBackoffMs = (attempt) => Math.pow(2, attempt) * 1000;
+  // Calculate linear backoff: 1s, 2s, 3s
+  const getBackoffMs = (attempt) => (attempt + 1) * 1000;
   
-  // Helper function to retry with backoff and key rotation
+  // Helper function to retry with backoff and key rotation (only on first error)
   const retryWithFallback = async (reason, currentKey) => {
     if (totalAttempts < MAX_TOTAL_ATTEMPTS - 1) {
       const backoffMs = getBackoffMs(totalAttempts);
       console.log(`⚠️ ${reason} for ${email}, attempt ${totalAttempts + 1}/${MAX_TOTAL_ATTEMPTS}, retrying in ${backoffMs/1000}s...`);
       
-      // Mark current key as unhealthy and try to get a different one
-      if (currentKey) {
-        await markKeyUnhealthy(currentKey);
-      }
-      const nextKey = await getNextHealthyKey(currentKey);
+      // Only switch key on first error, keep same key for subsequent retries
+      const nextKey = totalAttempts === 0 
+        ? await getNextHealthyKey(currentKey)  // Switch key once on first error
+        : currentKey;  // Keep same key for subsequent retries
       
       await new Promise(resolve => setTimeout(resolve, backoffMs));
-      return verifyEmail(email, totalAttempts + 1, nextKey || null);
+      return verifyEmail(email, totalAttempts + 1, nextKey || currentKey || null);
     }
     
-    // All 5 attempts exhausted - return 'unverified' (will be mapped by job type)
+    // All 3 attempts exhausted - return 'unverified' (will be mapped by job type)
     console.error(`All ${MAX_TOTAL_ATTEMPTS} attempts exhausted for ${email}: ${reason}`);
     if (currentJobContext.jobId) {
       await logVerificationError(
@@ -1443,6 +1442,15 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null) {
     const mx = response.data?.mx || '';
     const messageLower = message.toLowerCase();
     
+    // Check for timeout responses - these indicate the mail server won't respond
+    // Don't retry timeouts - it's the destination server, not our API key
+    const isTimeout = messageLower.includes('timeout') || messageLower.includes('timed out');
+    
+    if (isTimeout) {
+      console.log(`⏱️ Timeout for ${email} - mail server unresponsive (no retry)`);
+      return { status: 'unverified', message: 'Email server timeout - unverifiable', mx: '', provider: '' };
+    }
+    
     // Check for API errors in response body - these need retry, not marking as invalid
     const isApiError = 
       messageLower.includes('expired') ||
@@ -1453,8 +1461,6 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null) {
       messageLower.includes('rate limit') ||
       messageLower.includes('too many') ||
       messageLower.includes('quota') ||
-      messageLower.includes('timeout') ||
-      messageLower.includes('timed out') ||
       messageLower.includes('api error') ||
       messageLower.includes('service unavailable') ||
       messageLower.includes('temporarily') ||
@@ -1488,12 +1494,27 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null) {
     };
   } catch (error) {
     await trackApiUsage(apiKey);
+    
+    // Check if this is an HTTP-level timeout (axios timeout or network timeout)
+    const isHttpTimeout = 
+      error.code === 'ECONNABORTED' ||  // axios timeout
+      error.code === 'ETIMEDOUT' ||      // TCP timeout
+      error.message?.toLowerCase().includes('timeout');
+    
+    if (isHttpTimeout) {
+      // Don't retry HTTP timeouts - mail server is unresponsive
+      // Don't mark key unhealthy - it's not the key's fault
+      console.log(`⏱️ HTTP timeout for ${email} - mail server unresponsive (no retry)`);
+      return { status: 'unverified', message: 'Email server timeout - unverifiable', mx: '', provider: '' };
+    }
+    
+    // Non-timeout errors: track key error and retry
     await trackKeyError(apiKey);
     
-    // All HTTP errors (429, timeouts, network errors) trigger retry with fallback
+    // Rate limits and network errors trigger retry with fallback
     const errorReason = error.response?.status === 429 
       ? 'Rate limited (429)'
-      : error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET'
+      : error.code === 'ECONNRESET'
       ? `Network error (${error.code})`
       : `HTTP error: ${error.message}`;
     

@@ -7,7 +7,7 @@ from app.core.config import settings
 
 
 class MailTesterClient:
-    MAX_TOTAL_ATTEMPTS = 5  # 5 total attempts with exponential backoff
+    MAX_TOTAL_ATTEMPTS = 3  # 3 total attempts with linear backoff (1s, 2s, 3s)
     
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or settings.MAILTESTER_API_KEY
@@ -18,12 +18,17 @@ class MailTesterClient:
         """
         Verify a single email address with retry logic.
         Returns status: valid, catchall, invalid, or unverified (if all retries exhausted).
+        
+        Note: Timeouts are NOT retried - they indicate the mail server won't respond.
         """
-        # API error patterns that should trigger retry
+        # Timeout patterns - these indicate unresponsive mail servers, don't retry
+        timeout_patterns = ['timeout', 'timed out']
+        
+        # API error patterns that should trigger retry (excludes timeouts)
         api_error_patterns = [
             'expired', 'invalid key', 'invalid api', 'unauthorized',
             'authentication', 'rate limit', 'too many', 'quota',
-            'timeout', 'timed out', 'api error', 'service unavailable',
+            'api error', 'service unavailable',
             'temporarily', 'try again', 'limit exceeded', 'access denied', 'forbidden'
         ]
         
@@ -39,13 +44,24 @@ class MailTesterClient:
             message = data.get("message", "")
             message_lower = message.lower()
 
+            # Check for timeout responses - mail server won't respond, don't retry
+            is_timeout = any(pattern in message_lower for pattern in timeout_patterns)
+            if is_timeout:
+                print(f"⏱️ Timeout for {email} - mail server unresponsive (no retry)")
+                return {
+                    "email": email,
+                    "status": "unverified",
+                    "message": "Email server timeout - unverifiable",
+                    "mx": "",
+                }
+
             # Check for API errors in response body - these need retry
             is_api_error = any(pattern in message_lower for pattern in api_error_patterns)
 
             if is_api_error:
-                # API error - retry with exponential backoff
+                # API error - retry with linear backoff
                 if attempt < self.MAX_TOTAL_ATTEMPTS - 1:
-                    backoff_seconds = 2 ** attempt  # 1s, 2s, 4s, 8s, 16s
+                    backoff_seconds = attempt + 1  # 1s, 2s, 3s
                     print(f"⚠️ API error for {email}: {message} - retrying in {backoff_seconds}s (attempt {attempt + 1}/{self.MAX_TOTAL_ATTEMPTS})")
                     await asyncio.sleep(backoff_seconds)
                     return await self.verify_email(email, attempt + 1)
@@ -74,10 +90,31 @@ class MailTesterClient:
                 "mx": data.get("mx", ""),
             }
 
+        except httpx.TimeoutException:
+            # HTTP-level timeout - mail server unresponsive, don't retry
+            print(f"⏱️ HTTP timeout for {email} - mail server unresponsive (no retry)")
+            return {
+                "email": email,
+                "status": "unverified",
+                "message": "Email server timeout - unverifiable",
+                "mx": "",
+            }
+
         except Exception as e:
-            # HTTP/network error - retry with exponential backoff
+            # Check if the error message indicates a timeout
+            error_str = str(e).lower()
+            if 'timeout' in error_str or 'timed out' in error_str:
+                print(f"⏱️ Timeout error for {email} - mail server unresponsive (no retry)")
+                return {
+                    "email": email,
+                    "status": "unverified",
+                    "message": "Email server timeout - unverifiable",
+                    "mx": "",
+                }
+            
+            # Other HTTP/network errors - retry with linear backoff
             if attempt < self.MAX_TOTAL_ATTEMPTS - 1:
-                backoff_seconds = 2 ** attempt
+                backoff_seconds = attempt + 1  # 1s, 2s, 3s
                 print(f"⚠️ Error verifying {email}: {e} - retrying in {backoff_seconds}s (attempt {attempt + 1}/{self.MAX_TOTAL_ATTEMPTS})")
                 await asyncio.sleep(backoff_seconds)
                 return await self.verify_email(email, attempt + 1)
