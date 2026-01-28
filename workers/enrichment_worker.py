@@ -309,9 +309,15 @@ def auto_detect_column(actual_columns: list, normalized_headers: list, target: s
     return None
 
 
-def parse_csv_from_r2(csv_data: bytes) -> list:
+def parse_csv_from_r2(
+    csv_data: bytes,
+    column_first_name: Optional[str] = None,
+    column_last_name: Optional[str] = None,
+    column_website: Optional[str] = None,
+    column_company_size: Optional[str] = None,
+) -> list:
     """
-    Parse CSV data and auto-detect columns.
+    Parse CSV data using manual column mappings (if provided) or auto-detect columns.
     Returns list of remapped rows with standard column names.
     
     Applies comprehensive data cleaning:
@@ -321,6 +327,13 @@ def parse_csv_from_r2(csv_data: bytes) -> list:
     4. Cleans emojis and special characters from fields
     5. Filters out rows with invisible/zero-width characters
     6. Filters out rows where required fields contain only special chars
+    
+    Args:
+        csv_data: Raw CSV bytes
+        column_first_name: Manual mapping for first name column (bypasses auto-detection)
+        column_last_name: Manual mapping for last name column (bypasses auto-detection)
+        column_website: Manual mapping for website column (bypasses auto-detection)
+        column_company_size: Manual mapping for company size column (bypasses auto-detection)
     """
     # Handle BOM in UTF-8 files
     csv_content = csv_data.decode('utf-8-sig')
@@ -334,12 +347,13 @@ def parse_csv_from_r2(csv_data: bytes) -> list:
     total_rows = len(rows)
     logger.info(f"📊 CSV contains {total_rows} total rows")
     
-    # Auto-detect column mappings
+    # Get actual column names from CSV
     actual_columns = list(rows[0].keys())
     normalized_headers = [normalize_header(h) for h in actual_columns]
     
     logger.info(f"📋 Detected columns: {actual_columns}")
     
+    # Column variations for auto-detection (fallback when manual mapping not provided)
     COLUMN_VARIATIONS = {
         'firstname': ['firstname', 'first', 'fname', 'givenname', 'first_name'],
         'lastname': ['lastname', 'last', 'lname', 'surname', 'familyname', 'last_name'],
@@ -347,12 +361,40 @@ def parse_csv_from_r2(csv_data: bytes) -> list:
         'companysize': ['companysize', 'company_size', 'size', 'employees', 'employeecount', 'headcount', 'organizationsize', 'organization_size', 'orgsize', 'org_size', 'teamsize', 'team_size', 'staffcount', 'staff_count', 'numberofemployees', 'num_employees', 'employeesnumber', 'linkedincompanyemployeecount', 'linkedin_company_employee_count', 'linkedin-company-employee-count', 'linkedincompanyemployee', 'linkedin_company_employee', 'linkedin-company-employee'],
     }
     
-    first_name_col = auto_detect_column(actual_columns, normalized_headers, 'firstname', COLUMN_VARIATIONS['firstname']) or 'first_name'
-    last_name_col = auto_detect_column(actual_columns, normalized_headers, 'lastname', COLUMN_VARIATIONS['lastname']) or 'last_name'
-    website_col = auto_detect_column(actual_columns, normalized_headers, 'website', COLUMN_VARIATIONS['website']) or 'website'
-    company_size_col = auto_detect_column(actual_columns, normalized_headers, 'companysize', COLUMN_VARIATIONS['companysize'])
+    # Use manual mapping if provided AND column exists in CSV, otherwise auto-detect
+    if column_first_name and column_first_name in actual_columns:
+        first_name_col = column_first_name
+        logger.info(f"📋 Using manual mapping for first_name: '{first_name_col}'")
+    else:
+        first_name_col = auto_detect_column(actual_columns, normalized_headers, 'firstname', COLUMN_VARIATIONS['firstname']) or 'first_name'
+        if column_first_name:
+            logger.warning(f"⚠️ Manual mapping '{column_first_name}' not found in CSV, falling back to auto-detect: '{first_name_col}'")
     
-    logger.info(f"🔗 Column mapping: first_name='{first_name_col}', last_name='{last_name_col}', website='{website_col}', company_size='{company_size_col}'")
+    if column_last_name and column_last_name in actual_columns:
+        last_name_col = column_last_name
+        logger.info(f"📋 Using manual mapping for last_name: '{last_name_col}'")
+    else:
+        last_name_col = auto_detect_column(actual_columns, normalized_headers, 'lastname', COLUMN_VARIATIONS['lastname']) or 'last_name'
+        if column_last_name:
+            logger.warning(f"⚠️ Manual mapping '{column_last_name}' not found in CSV, falling back to auto-detect: '{last_name_col}'")
+    
+    if column_website and column_website in actual_columns:
+        website_col = column_website
+        logger.info(f"📋 Using manual mapping for website: '{website_col}'")
+    else:
+        website_col = auto_detect_column(actual_columns, normalized_headers, 'website', COLUMN_VARIATIONS['website']) or 'website'
+        if column_website:
+            logger.warning(f"⚠️ Manual mapping '{column_website}' not found in CSV, falling back to auto-detect: '{website_col}'")
+    
+    if column_company_size and column_company_size in actual_columns:
+        company_size_col = column_company_size
+        logger.info(f"📋 Using manual mapping for company_size: '{company_size_col}'")
+    else:
+        company_size_col = auto_detect_column(actual_columns, normalized_headers, 'companysize', COLUMN_VARIATIONS['companysize'])
+        if column_company_size:
+            logger.warning(f"⚠️ Manual mapping '{column_company_size}' not found in CSV, falling back to auto-detect: '{company_size_col}'")
+    
+    logger.info(f"🔗 Final column mapping: first_name='{first_name_col}', last_name='{last_name_col}', website='{website_col}', company_size='{company_size_col}'")
     
     # Track skip reasons for logging
     skip_reasons = {
@@ -484,8 +526,14 @@ def process_enrichment_job(job_id: str) -> bool:
             db.commit()
             return False
         
-        # Parse CSV
-        remapped_rows = parse_csv_from_r2(csv_data)
+        # Parse CSV - pass stored column mappings if they exist
+        remapped_rows = parse_csv_from_r2(
+            csv_data,
+            column_first_name=getattr(job, 'column_first_name', None),
+            column_last_name=getattr(job, 'column_last_name', None),
+            column_website=getattr(job, 'column_website', None),
+            column_company_size=getattr(job, 'column_company_size', None),
+        )
         if not remapped_rows:
             logger.error(f"No valid rows found in CSV for job {job_id}")
             job.status = "failed"

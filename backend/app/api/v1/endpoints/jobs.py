@@ -464,6 +464,11 @@ async def upload_file(
         cost_in_credits=0,
         source=source,  # Tag job with source (e.g., "Sales Nav")
         company_size=company_size,  # Store dropdown selection for enrichment worker
+        # Store manual column mappings for enrichment worker
+        column_first_name=column_first_name,
+        column_last_name=column_last_name,
+        column_website=column_website,
+        column_company_size=column_company_size,
     )
     db.add(job)
     db.commit()

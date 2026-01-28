@@ -15,6 +15,11 @@ class Job(Base):
     job_type = Column(String(50), default="enrichment", index=True)  # enrichment or verification
     source = Column(String(50))  # e.g., "Sales Nav"
     company_size = Column(String(50))  # Default company size for permutation ranking
+    # Manual column mappings from user (if provided, bypasses auto-detection in enrichment worker)
+    column_first_name = Column(String(255), nullable=True)
+    column_last_name = Column(String(255), nullable=True)
+    column_website = Column(String(255), nullable=True)
+    column_company_size = Column(String(255), nullable=True)
     original_filename = Column(Text)
     total_leads = Column(Integer, nullable=False)
     processed_leads = Column(Integer, default=0)
