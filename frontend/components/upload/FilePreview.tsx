@@ -14,7 +14,7 @@ interface ColumnMapping {
 interface FilePreviewProps {
   file: File;
   onMappingChange?: (mapping: ColumnMapping, isValid: boolean) => void;
-  mode?: 'enrichment' | 'verification'; // 'enrichment' requires first_name, last_name, website; 'verification' requires email
+  mode?: 'enrichment' | 'verification' | 'website-scraper'; // 'enrichment' requires first_name, last_name, website; 'verification' requires email; 'website-scraper' requires website only
 }
 
 // Column variations for auto-detection
@@ -26,9 +26,12 @@ const COLUMN_VARIATIONS: Record<keyof ColumnMapping, string[]> = {
   company_size: [], // Disabled auto-detection - users must select from dropdown
 };
 
-const getRequiredColumns = (mode?: 'enrichment' | 'verification'): (keyof ColumnMapping)[] => {
+const getRequiredColumns = (mode?: 'enrichment' | 'verification' | 'website-scraper'): (keyof ColumnMapping)[] => {
   if (mode === 'verification') {
     return ['email'];
+  }
+  if (mode === 'website-scraper') {
+    return ['website']; // Only requires website column
   }
   return ['first_name', 'last_name', 'website'];
 };
@@ -208,6 +211,13 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
               <div className="text-dashboard-text-muted">Last Name →</div>
               <div className={mapping.last_name ? "text-green-400 font-medium" : "text-dashboard-text-muted"}>
                 {mapping.last_name || "Not mapped (optional)"}
+              </div>
+            </>
+          ) : mode === 'website-scraper' ? (
+            <>
+              <div className="text-dashboard-text-muted">Website →</div>
+              <div className={mapping.website ? "text-green-400 font-medium" : "text-red-400"}>
+                {mapping.website || "Not mapped (required)"}
               </div>
             </>
           ) : (

@@ -5,6 +5,7 @@ import { apiClient } from "@/lib/api";
 import { WebsiteScraperJob, WebsiteScraperHealthStatus } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { FilePreview, ColumnMapping } from "@/components/upload/FilePreview";
 
 export default function WebsiteScraperPage() {
   // Health check state
@@ -27,6 +28,10 @@ export default function WebsiteScraperPage() {
   const [downloadingJobId, setDownloadingJobId] = useState<string | null>(null);
   const [deleteConfirmJobId, setDeleteConfirmJobId] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  
+  // Column mapping state
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
+  const [isMappingValid, setIsMappingValid] = useState(false);
 
   // Check Crawl4AI health
   const checkHealth = useCallback(async () => {
@@ -151,6 +156,9 @@ export default function WebsiteScraperPage() {
       const file = e.target.files[0];
       if (file.name.endsWith(".csv")) {
         setSelectedFile(file);
+        // Reset mapping when new file is selected
+        setColumnMapping(null);
+        setIsMappingValid(false);
       } else {
         setError("Only CSV files are supported");
         setShowErrorModal(true);
@@ -158,9 +166,22 @@ export default function WebsiteScraperPage() {
     }
   };
 
+  // Handle mapping change
+  const handleMappingChange = useCallback((mapping: ColumnMapping, isValid: boolean) => {
+    setColumnMapping(mapping);
+    setIsMappingValid(isValid);
+  }, []);
+
   // Upload file
   const handleUpload = async () => {
     if (!selectedFile) return;
+
+    // Validate column mapping
+    if (!isMappingValid || !columnMapping || !columnMapping.website) {
+      setError("Please map the website column before uploading");
+      setShowErrorModal(true);
+      return;
+    }
 
     // Validate file size (250MB max)
     const MAX_SIZE = 250 * 1024 * 1024;
@@ -172,10 +193,14 @@ export default function WebsiteScraperPage() {
 
     setUploading(true);
     try {
-      const result = await apiClient.uploadWebsiteScraperFile(selectedFile);
+      const result = await apiClient.uploadWebsiteScraperFile(selectedFile, {
+        column_website: columnMapping.website,
+      });
       
-      // Clear file selection
+      // Clear file selection and mapping
       setSelectedFile(null);
+      setColumnMapping(null);
+      setIsMappingValid(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -335,10 +360,18 @@ export default function WebsiteScraperPage() {
               <p className="text-sm text-dashboard-text-muted">
                 {formatFileSize(selectedFile.size)}
               </p>
+              
+              {/* File Preview with Column Mapping */}
+              <FilePreview 
+                file={selectedFile} 
+                mode="website-scraper"
+                onMappingChange={handleMappingChange}
+              />
+              
               <div className="flex items-center justify-center gap-3">
                 <button
                   onClick={handleUpload}
-                  disabled={uploading}
+                  disabled={uploading || !isMappingValid}
                   className="px-6 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50"
                 >
                   {uploading ? (
@@ -353,6 +386,8 @@ export default function WebsiteScraperPage() {
                 <button
                   onClick={() => {
                     setSelectedFile(null);
+                    setColumnMapping(null);
+                    setIsMappingValid(false);
                     if (fileInputRef.current) fileInputRef.current.value = "";
                   }}
                   className="px-4 py-2 text-dashboard-text-muted hover:text-dashboard-text transition-colors"
@@ -379,7 +414,7 @@ export default function WebsiteScraperPage() {
         </div>
         
         <p className="mt-3 text-xs text-dashboard-text-muted">
-          Your CSV should contain a column with website URLs (auto-detected: website, url, domain, etc.)
+          Your CSV should contain a column with website URLs. Please map the column after selecting your file.
         </p>
       </div>
 
@@ -556,7 +591,7 @@ export default function WebsiteScraperPage() {
             },
             {
               q: "What format should my CSV be in?",
-              a: "Your CSV should contain a column with website URLs. The system auto-detects common column names like 'website', 'url', 'domain', etc. All other columns in your CSV will be preserved in the output.",
+              a: "Your CSV should contain a column with website URLs. After uploading, you'll be asked to map the website column if it's not auto-detected. All other columns in your CSV will be preserved in the output.",
             },
             {
               q: "What data is extracted?",
