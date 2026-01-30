@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { apiClient } from "@/lib/api";
-import { WebsiteScraperJob, WebsiteScraperHealthStatus } from "@/types";
+import { WebsiteScraperJob, WebsiteScraperHealthStatus, WebsiteScraperPreviewResponse } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { FilePreview, ColumnMapping } from "@/components/upload/FilePreview";
@@ -32,6 +32,12 @@ export default function WebsiteScraperPage() {
   // Column mapping state
   const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
   const [isMappingValid, setIsMappingValid] = useState(false);
+  
+  // Preview modal state
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState<WebsiteScraperPreviewResponse | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewJobId, setPreviewJobId] = useState<string | null>(null);
 
   // Check Crawl4AI health
   const checkHealth = useCallback(async () => {
@@ -247,6 +253,36 @@ export default function WebsiteScraperPage() {
     }
   };
 
+  // Preview results
+  const handlePreviewResults = async (jobId: string) => {
+    setPreviewJobId(jobId);
+    setPreviewLoading(true);
+    setShowPreviewModal(true);
+    try {
+      const data = await apiClient.getWebsiteScraperPreview(jobId);
+      setPreviewData(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load preview");
+      setShowErrorModal(true);
+      setShowPreviewModal(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Handle row click for preview
+  const handleRowClick = (job: WebsiteScraperJob, e: React.MouseEvent) => {
+    // Don't navigate if clicking on action buttons
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) {
+      return;
+    }
+    // Only allow preview for completed jobs
+    if (job.status === "completed") {
+      handlePreviewResults(job.id);
+    }
+  };
+
   // Format date
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -322,6 +358,136 @@ export default function WebsiteScraperPage() {
         message={error}
         onClose={() => setShowErrorModal(false)}
       />
+
+      {/* Results Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => {
+              setShowPreviewModal(false);
+              setPreviewData(null);
+              setPreviewJobId(null);
+            }}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-dashboard-surface border border-dashboard-border rounded-2xl p-6 max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-dashboard-text">Results Preview</h2>
+                {previewData && (
+                  <p className="text-sm text-dashboard-text-muted mt-1">
+                    Showing {previewData.preview_count} of {previewData.total_rows.toLocaleString()} results
+                    {previewData.hit_rate_percentage > 0 && (
+                      <span className="ml-2">
+                        • Hit Rate: <span className={`font-medium ${
+                          previewData.hit_rate_percentage >= 50 ? "text-green-400" :
+                          previewData.hit_rate_percentage >= 25 ? "text-yellow-400" :
+                          "text-red-400"
+                        }`}>{previewData.hit_rate_percentage.toFixed(1)}%</span>
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setShowPreviewModal(false);
+                  setPreviewData(null);
+                  setPreviewJobId(null);
+                }}
+                className="p-2 hover:bg-dashboard-card rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            {previewLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <LoadingSpinner size="lg" />
+              </div>
+            ) : previewData && previewData.rows.length > 0 ? (
+              <div className="flex-1 overflow-auto">
+                <table className="min-w-full divide-y divide-dashboard-border">
+                  <thead style={{ background: "rgba(13, 15, 18, 0.5)" }} className="sticky top-0">
+                    <tr>
+                      {previewData.columns.map((col) => (
+                        <th 
+                          key={col} 
+                          className="px-4 py-2 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider whitespace-nowrap"
+                        >
+                          {col.replace(/_/g, ' ')}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody style={{ background: "rgba(13, 15, 18, 0.3)" }} className="divide-y divide-dashboard-border">
+                    {previewData.rows.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-dashboard-card/30">
+                        {previewData.columns.map((col) => (
+                          <td 
+                            key={col} 
+                            className={`px-4 py-2 text-sm whitespace-nowrap max-w-[200px] truncate ${
+                              col === 'email_1' || col === 'email_2' 
+                                ? row[col] ? 'text-green-400' : 'text-dashboard-text-muted'
+                                : col === 'phone_1' || col === 'phone_2'
+                                ? row[col] ? 'text-blue-400' : 'text-dashboard-text-muted'
+                                : col === 'extraction_status'
+                                ? row[col] === 'success' ? 'text-green-400' 
+                                  : row[col] === 'error' ? 'text-red-400'
+                                  : row[col] === 'not_found' ? 'text-yellow-400'
+                                  : 'text-dashboard-text-muted'
+                                : 'text-dashboard-text'
+                            }`}
+                            title={row[col] || '-'}
+                          >
+                            {row[col] || '-'}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-12">
+                <p className="text-dashboard-text-muted">No results available</p>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-dashboard-border">
+              <button
+                onClick={() => {
+                  setShowPreviewModal(false);
+                  setPreviewData(null);
+                  setPreviewJobId(null);
+                }}
+                className="px-4 py-2 bg-dashboard-card text-dashboard-text rounded-lg hover:bg-dashboard-border transition-colors"
+              >
+                Close
+              </button>
+              {previewJobId && (
+                <button
+                  onClick={() => {
+                    handleDownloadResults(previewJobId);
+                  }}
+                  disabled={downloadingJobId === previewJobId}
+                  className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50"
+                >
+                  {downloadingJobId === previewJobId ? "Downloading..." : "Download Full CSV"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* File Upload */}
       <div className="glass-card p-6 mb-6">
@@ -470,7 +636,16 @@ export default function WebsiteScraperPage() {
               </thead>
               <tbody style={{ background: "rgba(13, 15, 18, 0.3)" }} className="divide-y divide-dashboard-border">
                 {jobs.map((job) => (
-                  <tr key={job.id}>
+                  <tr 
+                    key={job.id}
+                    onClick={(e) => handleRowClick(job, e)}
+                    className={`transition-colors ${
+                      job.status === "completed" 
+                        ? "hover:bg-dashboard-card/50 cursor-pointer" 
+                        : ""
+                    }`}
+                    title={job.status === "completed" ? "Click to preview results" : undefined}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text">
                       <span title={job.id}>{job.id.slice(0, 8)}...</span>
                     </td>

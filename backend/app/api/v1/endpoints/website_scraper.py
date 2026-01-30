@@ -509,3 +509,79 @@ async def download_results(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to download results file"
         )
+
+
+@router.get("/jobs/{job_id}/preview")
+async def preview_results(
+    job_id: str,
+    limit: int = Query(25, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Preview first N rows of results for a completed job.
+    
+    Returns JSON array of rows with all columns including extracted contacts.
+    Default limit is 25 rows.
+    """
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
+    job = db.query(WebsiteScraperJob).filter(
+        WebsiteScraperJob.id == job_uuid,
+        WebsiteScraperJob.user_id == current_user.id
+    ).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Job is not completed (status: {job.status})"
+        )
+    
+    if not job.output_file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Output file not found"
+        )
+    
+    try:
+        response = s3_client.get_object(
+            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+            Key=job.output_file_path
+        )
+        csv_content = response['Body'].read().decode('utf-8-sig')
+        
+        # Parse CSV and get first N rows
+        csv_reader = csv.DictReader(io.StringIO(csv_content))
+        rows = []
+        for i, row in enumerate(csv_reader):
+            if i >= limit:
+                break
+            rows.append(dict(row))
+        
+        # Get column names
+        columns = list(rows[0].keys()) if rows else []
+        
+        return {
+            "job_id": job_id,
+            "total_rows": job.total_leads or 0,
+            "preview_count": len(rows),
+            "columns": columns,
+            "rows": rows,
+            "hit_rate_percentage": float(job.hit_rate_percentage or 0),
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to preview from R2: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to load results preview"
+        )

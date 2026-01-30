@@ -16,7 +16,8 @@ import {
   LocalScraperHealthStatus,
   WebsiteScraperJob,
   WebsiteScraperHealthStatus,
-  WebsiteScraperUploadResponse
+  WebsiteScraperUploadResponse,
+  WebsiteScraperPreviewResponse,
 } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
@@ -869,6 +870,10 @@ class ApiClient {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(downloadUrl);
+  }
+
+  async getWebsiteScraperPreview(jobId: string, limit = 25): Promise<WebsiteScraperPreviewResponse> {
+    return this.request(`/api/v1/website-scraper/jobs/${jobId}/preview?limit=${limit}`);
   }
 }
 

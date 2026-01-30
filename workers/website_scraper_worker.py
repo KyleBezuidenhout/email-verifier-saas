@@ -457,7 +457,12 @@ async def crawl_batch_streaming(
                     
                     # Extract result data
                     success = result.get('success', False)
-                    markdown = result.get('markdown', '')
+                    markdown_raw = result.get('markdown', '')
+                    # Handle Crawl4AI returning markdown as dict (MarkdownGenerationResult)
+                    if isinstance(markdown_raw, dict):
+                        markdown = markdown_raw.get('raw_markdown', '') or markdown_raw.get('fit_markdown', '') or ''
+                    else:
+                        markdown = markdown_raw if markdown_raw else ''
                     error_msg = result.get('error_message')
                     
                     if success:
@@ -687,8 +692,13 @@ async def process_job(job_id: str, website_col: str) -> bool:
             nonlocal total_processed, total_with_contacts
             
             if result['success'] and result['markdown']:
+                # Ensure markdown is a string (defensive check)
+                markdown = result['markdown']
+                if isinstance(markdown, dict):
+                    markdown = markdown.get('raw_markdown', '') or markdown.get('fit_markdown', '') or ''
+                
                 # Extract contacts from markdown
-                contacts = extract_contacts(result['markdown'])
+                contacts = extract_contacts(markdown)
                 
                 output_rows[idx]['email_1'] = contacts['email_1']
                 output_rows[idx]['email_2'] = contacts['email_2']

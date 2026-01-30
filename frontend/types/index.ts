@@ -227,3 +227,16 @@ export interface WebsiteScraperUploadResponse {
   total_websites: number;
 }
 
+export interface WebsiteScraperPreviewRow {
+  [key: string]: string;  // Dynamic columns from original CSV + extracted contacts
+}
+
+export interface WebsiteScraperPreviewResponse {
+  job_id: string;
+  total_rows: number;
+  preview_count: number;
+  columns: string[];
+  rows: WebsiteScraperPreviewRow[];
+  hit_rate_percentage: number;
+}
+
