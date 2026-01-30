@@ -6,6 +6,18 @@ from typing import Optional
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
 import logging
 import json
+import sys
+
+# Configure logging to stdout/stderr
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.StreamHandler(sys.stderr)
+    ],
+    force=True
+)
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
@@ -39,13 +51,27 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             except:
                 pass
     except Exception as e:
-        logger.error(f"Failed to read request body: {e}")
+        error_msg = f"Failed to read request body: {e}"
+        print(error_msg, flush=True)
+        logger.error(error_msg)
     
-    logger.error(f"========== VALIDATION ERROR ==========")
-    logger.error(f"Validation errors: {json.dumps(errors, indent=2)}")
+    error_header = "========== VALIDATION ERROR =========="
+    print(error_header, flush=True)
+    logger.error(error_header)
+    
+    errors_json = json.dumps(errors, indent=2)
+    print(f"Validation errors: {errors_json}", flush=True)
+    logger.error(f"Validation errors: {errors_json}")
+    
+    print(f"Request body: {body}", flush=True)
     logger.error(f"Request body: {body}")
+    
+    print(f"Request URL: {request.url}", flush=True)
     logger.error(f"Request URL: {request.url}")
-    logger.error(f"======================================")
+    
+    error_footer = "======================================"
+    print(error_footer, flush=True)
+    logger.error(error_footer)
     
     return JSONResponse(
         status_code=422,

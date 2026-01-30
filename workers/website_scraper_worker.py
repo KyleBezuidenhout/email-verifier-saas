@@ -35,10 +35,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 from app.core.config import settings
 from app.models.website_scraper_job import WebsiteScraperJob
 
-# Configure logging
+# Configure logging - ensure unbuffered output for Railway
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True  # Override any existing configuration
 )
 logger = logging.getLogger(__name__)
 
