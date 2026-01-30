@@ -13,7 +13,10 @@ import {
   VayneOrderCreate,
   LocalScraperOrder,
   LocalScraperOrderCreate,
-  LocalScraperHealthStatus
+  LocalScraperHealthStatus,
+  WebsiteScraperJob,
+  WebsiteScraperHealthStatus,
+  WebsiteScraperUploadResponse
 } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
@@ -762,6 +765,89 @@ class ApiClient {
     // Get filename from Content-Disposition header or use default
     const contentDisposition = response.headers.get("Content-Disposition");
     let filename = `results.${format}`;
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (match) {
+        filename = match[1];
+      }
+    }
+
+    // Download the blob
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
+  }
+
+  // ============================================
+  // WEBSITE CONTACT SCRAPER ENDPOINTS (Crawl4AI for email/phone extraction)
+  // ============================================
+
+  async getWebsiteScraperHealth(): Promise<WebsiteScraperHealthStatus> {
+    return this.request("/api/v1/website-scraper/health");
+  }
+
+  async uploadWebsiteScraperFile(file: File, options?: { column_website?: string }): Promise<WebsiteScraperUploadResponse> {
+    return this.requestWithFile<WebsiteScraperUploadResponse>("/api/v1/website-scraper/upload", file, options);
+  }
+
+  async getWebsiteScraperJobs(limit = 100, offset = 0, status?: string): Promise<{
+    jobs: WebsiteScraperJob[];
+    total: number;
+  }> {
+    let url = `/api/v1/website-scraper/jobs?limit=${limit}&offset=${offset}`;
+    if (status) url += `&status=${status}`;
+    return this.request(url);
+  }
+
+  async getWebsiteScraperJob(jobId: string): Promise<WebsiteScraperJob> {
+    return this.request(`/api/v1/website-scraper/jobs/${jobId}`);
+  }
+
+  async pollWebsiteScraperJobStatus(jobId: string): Promise<{
+    job_id: string;
+    status: string;
+    total_leads: number;
+    completed_leads: number;
+    progress_percentage: number;
+    hit_rate_percentage: number;
+    error_message?: string;
+  }> {
+    return this.request(`/api/v1/website-scraper/jobs/${jobId}/status`);
+  }
+
+  async deleteWebsiteScraperJob(jobId: string): Promise<{ message: string; job_id: string }> {
+    return this.request(`/api/v1/website-scraper/jobs/${jobId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async downloadWebsiteScraperResults(jobId: string): Promise<void> {
+    const url = `${this.baseUrl}/api/v1/website-scraper/jobs/${jobId}/download`;
+    const token = this.getToken();
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        detail: response.statusText,
+      }));
+      throw new Error(error.detail || "Failed to download results");
+    }
+
+    // Get filename from Content-Disposition header or use default
+    const contentDisposition = response.headers.get("Content-Disposition");
+    let filename = "results_with_contacts.csv";
     if (contentDisposition) {
       const match = contentDisposition.match(/filename="?([^"]+)"?/);
       if (match) {

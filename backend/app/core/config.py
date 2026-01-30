@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # Google Maps Scraper API (AWS instance)
     BOTASAURUS_API_URL: str = "http://16.16.4.71:8000"  # AWS-hosted Google Maps Scraper API
     
+    # Crawl4AI Service (Railway deployment for website contact scraping)
+    CRAWL4AI_URL: str = "http://crawl4ai.railway.internal:11235"  # Crawl4AI Docker service URL on Railway
+    
     # Cloudflare R2 Public URL for file access
     CLOUDFLARE_R2_PUBLIC_URL: str = ""  # Public URL for accessing R2 files
 

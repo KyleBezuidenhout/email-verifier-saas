@@ -198,3 +198,32 @@ export interface LocalScraperHealthStatus {
   message: string;
 }
 
+// Website Contact Scraper Types (Crawl4AI for email/phone extraction)
+export interface WebsiteScraperJob {
+  id: string;
+  user_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  original_filename?: string;
+  total_leads: number;
+  completed_leads: number;
+  progress_percentage: number;
+  hit_rate_percentage: number;
+  input_file_path?: string;
+  output_file_path?: string;
+  created_at: string;
+  completed_at?: string;
+  error_message?: string;
+}
+
+export interface WebsiteScraperHealthStatus {
+  crawl4ai_api: 'connected' | 'disconnected';
+  api_url?: string;
+  message: string;
+}
+
+export interface WebsiteScraperUploadResponse {
+  job_id: string;
+  message: string;
+  total_websites: number;
+}
+

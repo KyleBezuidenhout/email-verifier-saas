@@ -1,0 +1,466 @@
+"""
+Website Contact Scraper API Endpoints
+
+Provides endpoints for website contact extraction using Crawl4AI service.
+This is completely separate from the Sales Nav, Enrichment, and Verification features.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
+from typing import Optional
+from datetime import datetime
+import logging
+import csv
+import io
+import uuid
+import httpx
+import boto3
+
+from app.db.session import get_db
+from app.models.user import User
+from app.models.website_scraper_job import WebsiteScraperJob
+from app.api.dependencies import get_current_user
+from app.schemas.website_scraper import (
+    WebsiteScraperJobResponse,
+    WebsiteScraperJobListResponse,
+    WebsiteScraperUploadResponse,
+    WebsiteScraperHealthResponse,
+    WebsiteScraperJobStatusResponse,
+)
+from app.core.config import settings
+import redis
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+# Initialize Redis connection for job queue
+redis_client = redis.from_url(settings.REDIS_URL)
+
+# Queue name for website scraper jobs
+WEBSITE_SCRAPER_QUEUE = "website-scraper-queue"
+
+# Initialize S3 client for Cloudflare R2
+s3_client = boto3.client(
+    's3',
+    endpoint_url=settings.CLOUDFLARE_R2_ENDPOINT_URL,
+    aws_access_key_id=settings.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    region_name='auto'
+)
+
+# Max file size: 250MB
+MAX_FILE_SIZE_BYTES = 250 * 1024 * 1024
+# Max rows: 50K
+MAX_ROWS = 50000
+
+
+def job_to_response(job: WebsiteScraperJob) -> dict:
+    """Convert a WebsiteScraperJob to a response dict"""
+    return {
+        "id": str(job.id),
+        "user_id": str(job.user_id),
+        "status": job.status,
+        "original_filename": job.original_filename,
+        "total_leads": job.total_leads or 0,
+        "completed_leads": job.completed_leads or 0,
+        "progress_percentage": job.progress_percentage or 0,
+        "hit_rate_percentage": float(job.hit_rate_percentage or 0),
+        "input_file_path": job.input_file_path,
+        "output_file_path": job.output_file_path,
+        "created_at": job.created_at,
+        "completed_at": job.completed_at,
+        "error_message": job.error_message,
+    }
+
+
+def normalize_header(h: str) -> str:
+    """Normalize header for column detection."""
+    return h.lower().replace(' ', '').replace('_', '').replace('-', '')
+
+
+def auto_detect_website_column(actual_columns: list, normalized_headers: list) -> Optional[str]:
+    """Auto-detect the website/URL column."""
+    # Common variations for website column
+    website_variations = [
+        'website', 'url', 'domain', 'companywebsite', 'companydomain', 
+        'companyurl', 'company_website', 'corporatewebsite', 'corporate_website',
+        'primarydomain', 'organization_primary_domain', 'organizationprimarydomain',
+        'site', 'webpage', 'web', 'link', 'siteurl', 'websiteurl'
+    ]
+    
+    for i, norm_header in enumerate(normalized_headers):
+        if norm_header in website_variations:
+            return actual_columns[i]
+    return None
+
+
+@router.get("/health", response_model=WebsiteScraperHealthResponse)
+async def check_health():
+    """Check if Crawl4AI service is reachable"""
+    if not settings.CRAWL4AI_URL:
+        return WebsiteScraperHealthResponse(
+            crawl4ai_api="disconnected",
+            api_url=None,
+            message="CRAWL4AI_URL not configured. Please set the environment variable."
+        )
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{settings.CRAWL4AI_URL}/health")
+            if response.status_code == 200:
+                return WebsiteScraperHealthResponse(
+                    crawl4ai_api="connected",
+                    api_url=settings.CRAWL4AI_URL,
+                    message="Crawl4AI service is running"
+                )
+            else:
+                return WebsiteScraperHealthResponse(
+                    crawl4ai_api="disconnected",
+                    api_url=settings.CRAWL4AI_URL,
+                    message=f"Crawl4AI service returned status {response.status_code}"
+                )
+    except Exception as e:
+        logger.error(f"Failed to connect to Crawl4AI: {str(e)}")
+        return WebsiteScraperHealthResponse(
+            crawl4ai_api="disconnected",
+            api_url=settings.CRAWL4AI_URL,
+            message=f"Could not connect to Crawl4AI service: {str(e)}"
+        )
+
+
+@router.post("/upload", response_model=WebsiteScraperUploadResponse)
+async def upload_csv(
+    file: UploadFile = File(...),
+    column_website: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload a CSV file with website URLs for contact extraction.
+    
+    The CSV must contain a column with website URLs.
+    Column detection is automatic but can be overridden with column_website parameter.
+    
+    Max file size: 250MB
+    Max rows: 50,000
+    """
+    # Validate file type
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only CSV files are allowed"
+        )
+    
+    # Read file contents
+    contents = await file.read()
+    
+    # Check file size
+    if len(contents) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File too large. Maximum size is 250MB."
+        )
+    
+    # Parse CSV (handle UTF-8 BOM)
+    try:
+        csv_content = contents.decode('utf-8-sig')
+        csv_reader = csv.DictReader(io.StringIO(csv_content))
+        rows = list(csv_reader)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to parse CSV: {str(e)}"
+        )
+    
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV file is empty"
+        )
+    
+    # Check row count
+    if len(rows) > MAX_ROWS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too many rows. Maximum is {MAX_ROWS:,} rows. Your file has {len(rows):,} rows."
+        )
+    
+    # Get actual column names
+    actual_columns = list(rows[0].keys())
+    normalized_headers = [normalize_header(h) for h in actual_columns]
+    
+    logger.info(f"📋 Website Scraper - Detected columns: {actual_columns}")
+    
+    # Detect or use provided website column
+    if column_website and column_website in actual_columns:
+        website_col = column_website
+        logger.info(f"📋 Using provided website column: '{website_col}'")
+    else:
+        website_col = auto_detect_website_column(actual_columns, normalized_headers)
+        if not website_col:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Could not auto-detect website column. Available columns: {', '.join(actual_columns)}. Please provide column_website parameter."
+            )
+        logger.info(f"📋 Auto-detected website column: '{website_col}'")
+    
+    # Count valid website rows
+    valid_rows = 0
+    for row in rows:
+        website = row.get(website_col, '').strip()
+        if website:
+            valid_rows += 1
+    
+    if valid_rows == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No valid website URLs found in column '{website_col}'"
+        )
+    
+    logger.info(f"✅ Found {valid_rows} valid website URLs out of {len(rows)} rows")
+    
+    # Create job record
+    job = WebsiteScraperJob(
+        user_id=current_user.id,
+        status="pending",
+        original_filename=file.filename,
+        total_leads=valid_rows,
+        completed_leads=0,
+        progress_percentage=0,
+        hit_rate_percentage=0.00,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    
+    # Upload file to R2
+    input_file_path = f"website-scraper-jobs/{job.id}/input/{file.filename}"
+    try:
+        s3_client.put_object(
+            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+            Key=input_file_path,
+            Body=contents,
+            ContentType="text/csv"
+        )
+        job.input_file_path = input_file_path
+        db.commit()
+        logger.info(f"✅ Uploaded CSV to R2: {input_file_path}")
+    except Exception as e:
+        db.delete(job)
+        db.commit()
+        logger.error(f"❌ Failed to upload to R2: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload file: {str(e)}"
+        )
+    
+    # Queue job for processing
+    try:
+        job_data = f"{job.id}|{website_col}"  # Pass job ID and detected column
+        redis_client.lpush(WEBSITE_SCRAPER_QUEUE, job_data)
+        queue_length = redis_client.llen(WEBSITE_SCRAPER_QUEUE)
+        logger.info(f"📤 QUEUED website scraper job {job.id} (queue length: {queue_length})")
+    except Exception as e:
+        logger.error(f"❌ Failed to queue job {job.id}: {e}")
+        # Job will remain in pending state - can be manually processed later
+    
+    return WebsiteScraperUploadResponse(
+        job_id=str(job.id),
+        message="File uploaded successfully. Processing started.",
+        total_websites=valid_rows
+    )
+
+
+@router.get("/jobs", response_model=WebsiteScraperJobListResponse)
+async def list_jobs(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all website scraper jobs for the current user"""
+    try:
+        query = db.query(WebsiteScraperJob).filter(WebsiteScraperJob.user_id == current_user.id)
+        
+        if status_filter:
+            query = query.filter(WebsiteScraperJob.status == status_filter)
+        
+        # Get total count
+        total = query.count()
+        
+        # Get paginated results, newest first
+        jobs = query.order_by(desc(WebsiteScraperJob.created_at)).offset(offset).limit(limit).all()
+        
+        return WebsiteScraperJobListResponse(
+            jobs=[job_to_response(job) for job in jobs],
+            total=total,
+        )
+    except Exception as e:
+        logger.error(f"Error listing website scraper jobs: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/jobs/{job_id}", response_model=WebsiteScraperJobResponse)
+async def get_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get a specific website scraper job"""
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
+    job = db.query(WebsiteScraperJob).filter(
+        WebsiteScraperJob.id == job_uuid,
+        WebsiteScraperJob.user_id == current_user.id
+    ).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return job_to_response(job)
+
+
+@router.get("/jobs/{job_id}/status", response_model=WebsiteScraperJobStatusResponse)
+async def get_job_status(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get real-time status for a job (for polling)"""
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
+    job = db.query(WebsiteScraperJob).filter(
+        WebsiteScraperJob.id == job_uuid,
+        WebsiteScraperJob.user_id == current_user.id
+    ).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return WebsiteScraperJobStatusResponse(
+        job_id=str(job.id),
+        status=job.status,
+        total_leads=job.total_leads or 0,
+        completed_leads=job.completed_leads or 0,
+        progress_percentage=job.progress_percentage or 0,
+        hit_rate_percentage=float(job.hit_rate_percentage or 0),
+        error_message=job.error_message,
+    )
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a website scraper job"""
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
+    job = db.query(WebsiteScraperJob).filter(
+        WebsiteScraperJob.id == job_uuid,
+        WebsiteScraperJob.user_id == current_user.id
+    ).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Mark job as cancelled in Redis if processing
+    try:
+        cancel_key = f"website-scraper:cancelled:{job_id}"
+        redis_client.set(cancel_key, "true", ex=3600)  # 1 hour TTL
+    except Exception as e:
+        logger.warning(f"Could not set cancel flag in Redis: {e}")
+    
+    db.delete(job)
+    db.commit()
+    
+    logger.info(f"Deleted website scraper job {job_id}")
+    
+    return {"message": "Job deleted successfully", "job_id": job_id}
+
+
+@router.get("/jobs/{job_id}/download")
+async def download_results(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Download results CSV for a completed job"""
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID format"
+        )
+    
+    job = db.query(WebsiteScraperJob).filter(
+        WebsiteScraperJob.id == job_uuid,
+        WebsiteScraperJob.user_id == current_user.id
+    ).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Job is not completed (status: {job.status})"
+        )
+    
+    if not job.output_file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Output file not found"
+        )
+    
+    try:
+        response = s3_client.get_object(
+            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+            Key=job.output_file_path
+        )
+        csv_content = response['Body'].read()
+        
+        # Generate filename
+        original_name = job.original_filename or "results"
+        if original_name.endswith('.csv'):
+            original_name = original_name[:-4]
+        filename = f"{original_name}_with_contacts.csv"
+        
+        return StreamingResponse(
+            iter([csv_content]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(csv_content)),
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to download from R2: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to download results file"
+        )
