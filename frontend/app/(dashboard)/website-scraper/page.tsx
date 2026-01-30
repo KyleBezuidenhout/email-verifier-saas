@@ -414,7 +414,8 @@ export default function WebsiteScraperPage() {
         </div>
         
         <p className="mt-3 text-xs text-dashboard-text-muted">
-          Your CSV should contain a column with website URLs. Please map the column after selecting your file.
+          Your CSV should contain a column with website URLs. Duplicate domains are automatically 
+          removed to prevent extracting the same contacts multiple times.
         </p>
       </div>
 
@@ -595,7 +596,7 @@ export default function WebsiteScraperPage() {
             },
             {
               q: "What data is extracted?",
-              a: "The scraper extracts up to 2 email addresses and 2 phone numbers per website. It prioritizes mailto: and tel: links over plain text, and filters out generic emails like noreply@ or webmaster@.",
+              a: "The scraper extracts up to 2 email addresses and 2 phone numbers per website. It prioritizes mailto: and tel: links over plain text, filters out generic emails like noreply@ or webmaster@, and automatically deduplicates websites to prevent duplicate contacts.",
             },
             {
               q: "What does 'Hit Rate' mean?",

@@ -19,7 +19,8 @@ import re
 import logging
 import asyncio
 import json
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, AsyncGenerator
+from urllib.parse import urlparse
 from uuid import UUID
 from decimal import Decimal
 
@@ -136,6 +137,117 @@ def clean_phone(phone: str) -> str:
     return phone
 
 
+# ============================================
+# URL NORMALIZATION & MATCHING UTILITIES
+# ============================================
+
+def normalize_url(url: str) -> str:
+    """Normalize URL for matching (lowercase, strip protocol/trailing slash)."""
+    url = url.lower().strip()
+    url = url.replace('http://', '').replace('https://', '')
+    url = url.rstrip('/')
+    return url
+
+
+def extract_domain(url: str) -> str:
+    """Extract root domain from URL (without www prefix)."""
+    try:
+        # Add protocol if missing for proper parsing
+        if '://' not in url:
+            url = f'https://{url}'
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        # Remove www. prefix for consistent matching
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        return domain
+    except Exception:
+        return url.lower().strip()
+
+
+def build_url_lookup(urls: List[str], indices: List[int]) -> Dict[str, Dict[str, int]]:
+    """
+    Build lookup maps for hybrid URL matching.
+    
+    Returns dict with 'normalized' and 'domain' sub-dicts mapping to row indices.
+    """
+    normalized_map = {}
+    domain_map = {}
+    
+    for url, idx in zip(urls, indices):
+        norm = normalize_url(url)
+        domain = extract_domain(url)
+        
+        # Store normalized URL -> index
+        if norm not in normalized_map:
+            normalized_map[norm] = idx
+        
+        # Store domain -> index (first occurrence wins for duplicates)
+        if domain not in domain_map:
+            domain_map[domain] = idx
+    
+    return {'normalized': normalized_map, 'domain': domain_map}
+
+
+def match_result_to_index(result_url: str, lookup: Dict[str, Dict[str, int]]) -> Optional[int]:
+    """
+    Hybrid matching: try normalized URL first, fall back to domain.
+    
+    Returns the row index or None if no match found.
+    """
+    if not result_url:
+        return None
+    
+    # Try exact normalized match first (handles most cases)
+    norm = normalize_url(result_url)
+    if norm in lookup['normalized']:
+        return lookup['normalized'][norm]
+    
+    # Fall back to domain-only match (handles redirects that change path)
+    domain = extract_domain(result_url)
+    return lookup['domain'].get(domain)
+
+
+def deduplicate_urls_by_domain(rows: List[Dict], website_col: str) -> Tuple[List[str], List[int], Dict[int, int]]:
+    """
+    Remove duplicate domains from URL list within a job.
+    
+    Returns:
+        - unique_urls: List of unique URLs to crawl
+        - unique_indices: List of row indices for unique URLs
+        - duplicate_map: Dict mapping duplicate row index -> first occurrence index
+    """
+    domain_to_first_index = {}
+    duplicate_map = {}  # Maps duplicate row index -> first occurrence row index
+    unique_urls = []
+    unique_indices = []
+    
+    for i, row in enumerate(rows):
+        url = row.get(website_col, '').strip()
+        # Clean URL
+        url = url.replace('\n', '').replace('\r', '').replace('\t', ' ').strip()
+        
+        if not url:
+            continue
+        
+        domain = extract_domain(url)
+        
+        if domain in domain_to_first_index:
+            # This is a duplicate - map to first occurrence
+            duplicate_map[i] = domain_to_first_index[domain]
+            logger.debug(f"Duplicate domain '{domain}' at row {i}, maps to row {domain_to_first_index[domain]}")
+        else:
+            # First occurrence of this domain
+            domain_to_first_index[domain] = i
+            unique_urls.append(url)
+            unique_indices.append(i)
+    
+    if duplicate_map:
+        logger.info(f"Deduplicated {len(duplicate_map)} duplicate domains, {len(unique_urls)} unique URLs to crawl")
+    
+    return unique_urls, unique_indices, duplicate_map
+
+
 def extract_contacts(markdown: str) -> Dict[str, str]:
     """
     Extract emails and phone numbers from markdown content.
@@ -223,9 +335,161 @@ def extract_contacts(markdown: str) -> Dict[str, str]:
 # CRAWL4AI INTEGRATION
 # ============================================
 
+# Streaming batch timeout (10 minutes for large batches)
+STREAMING_BATCH_TIMEOUT = 600
+
+
+def prepare_urls_for_crawl(urls: List[str]) -> List[str]:
+    """
+    Clean and prepare URLs for crawling.
+    
+    Returns list of cleaned URLs with protocol added if missing.
+    """
+    prepared = []
+    for url in urls:
+        url = url.strip()
+        if not url:
+            continue
+        # Remove newlines, carriage returns, tabs
+        url = url.replace('\n', '').replace('\r', '').replace('\t', ' ').strip()
+        # Add protocol if missing
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+        prepared.append(url)
+    return prepared
+
+
+async def crawl_batch_streaming(
+    urls: List[str], 
+    indices: List[int],
+    on_result: callable
+) -> Dict[str, int]:
+    """
+    Stream crawl results from Crawl4AI batch endpoint.
+    
+    Uses /crawl/stream for true concurrent batch processing with SSE streaming.
+    Results are processed via callback as they arrive (out of order).
+    
+    Args:
+        urls: List of URLs to crawl
+        indices: Corresponding row indices in the output
+        on_result: Callback function(index, result_dict) called for each result
+        
+    Returns:
+        Dict with stats: {'processed': N, 'success': N, 'failed': N, 'unmatched': N}
+    """
+    if not settings.CRAWL4AI_URL:
+        logger.error("CRAWL4AI_URL not configured")
+        return {'processed': 0, 'success': 0, 'failed': 0, 'unmatched': 0}
+    
+    # Prepare URLs (clean and add protocol)
+    prepared_urls = prepare_urls_for_crawl(urls)
+    
+    if not prepared_urls:
+        logger.warning("No valid URLs to crawl after preparation")
+        return {'processed': 0, 'success': 0, 'failed': 0, 'unmatched': 0}
+    
+    # Build lookup map for hybrid URL matching
+    lookup = build_url_lookup(urls, indices)
+    
+    # Prepare request payload for Crawl4AI batch endpoint
+    request_payload = {
+        "urls": prepared_urls,
+        "crawler_config": {
+            "type": "CrawlerRunConfig",
+            "params": {
+                "stream": True,
+                "cache_mode": "BYPASS"
+            }
+        }
+    }
+    
+    logger.info(f"🌐 Sending batch of {len(prepared_urls)} URLs to Crawl4AI /crawl/stream")
+    
+    stats = {'processed': 0, 'success': 0, 'failed': 0, 'unmatched': 0}
+    
+    try:
+        async with httpx.AsyncClient(timeout=STREAMING_BATCH_TIMEOUT) as client:
+            async with client.stream(
+                "POST",
+                f"{settings.CRAWL4AI_URL}/crawl/stream",
+                json=request_payload,
+                timeout=STREAMING_BATCH_TIMEOUT
+            ) as response:
+                if response.status_code != 200:
+                    error_text = await response.aread()
+                    logger.error(f"❌ Crawl4AI returned status {response.status_code}: {error_text[:500]}")
+                    return stats
+                
+                # Process SSE stream - each line is a JSON result
+                async for line in response.aiter_lines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    # Skip SSE event markers if present
+                    if line.startswith('event:') or line.startswith(':'):
+                        continue
+                    
+                    # Handle SSE data: prefix
+                    if line.startswith('data:'):
+                        line = line[5:].strip()
+                    
+                    if not line:
+                        continue
+                    
+                    try:
+                        result = json.loads(line)
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse streaming result: {e}")
+                        continue
+                    
+                    stats['processed'] += 1
+                    
+                    # Match result back to original row index using hybrid matching
+                    result_url = result.get('url', '')
+                    idx = match_result_to_index(result_url, lookup)
+                    
+                    if idx is None:
+                        stats['unmatched'] += 1
+                        logger.warning(f"Could not match result URL '{result_url}' to any input row")
+                        continue
+                    
+                    # Extract result data
+                    success = result.get('success', False)
+                    markdown = result.get('markdown', '')
+                    error_msg = result.get('error_message')
+                    
+                    if success:
+                        stats['success'] += 1
+                    else:
+                        stats['failed'] += 1
+                    
+                    # Call the result handler
+                    on_result(idx, {
+                        'url': result_url,
+                        'success': success,
+                        'markdown': markdown,
+                        'error': error_msg
+                    })
+                    
+    except httpx.TimeoutException:
+        logger.error(f"❌ Streaming batch timed out after {STREAMING_BATCH_TIMEOUT}s")
+    except Exception as e:
+        logger.error(f"❌ Error during streaming batch crawl: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    logger.info(f"📊 Batch complete: {stats['processed']} processed, {stats['success']} success, {stats['failed']} failed, {stats['unmatched']} unmatched")
+    return stats
+
+
+# Legacy single-URL crawl (kept for fallback if needed)
 async def crawl_url(url: str) -> Tuple[bool, str, Optional[str]]:
     """
     Crawl a single URL using Crawl4AI service.
+    
+    NOTE: For batch operations, use crawl_batch_streaming instead for better performance.
     
     Returns:
         Tuple of (success, markdown_content, error_message)
@@ -233,165 +497,42 @@ async def crawl_url(url: str) -> Tuple[bool, str, Optional[str]]:
     if not settings.CRAWL4AI_URL:
         return False, '', 'CRAWL4AI_URL not configured'
     
-    # Clean and validate URL
-    original_url = url
+    # Clean URL
     url = url.strip()
-    
-    # Check for empty or invalid URLs
-    if not url or len(url) == 0:
-        logger.error(f"🔍 DEBUG: Empty URL received, cannot crawl")
+    if not url:
         return False, '', 'Empty URL'
     
-    # Remove any newlines, carriage returns, or tabs
     url = url.replace('\n', '').replace('\r', '').replace('\t', ' ').strip()
-    
-    # Ensure URL has protocol
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     
-    # Validate URL format (basic check)
-    if ' ' in url or '\n' in url or '\r' in url:
-        logger.error(f"🔍 DEBUG: URL contains invalid characters (spaces/newlines): '{url[:100]}'")
-        return False, '', 'Invalid URL format'
-    
-        # #region agent log
-        log_data = {
-            "location": "website_scraper_worker.py:236",
-            "message": "About to call crawl4ai",
-            "data": {
-                "original_url": original_url,
-                "final_url": url,
-                "crawl4ai_url": settings.CRAWL4AI_URL
-            },
-            "timestamp": int(time.time() * 1000),
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "D"
-        }
-        try:
-            with open("/Users/kylebezuidenhout/Downloads/Cold-Email-SaaS/.cursor/debug.log", "a") as f:
-                f.write(json.dumps(log_data) + "\n")
-        except Exception as e:
-            logger.error(f"🔍 DEBUG: Failed to write log file: {e}")
-        # #endregion
-    
     try:
-        # Final validation before sending
-        if not url or url is None:
-            logger.error(f"🔍 DEBUG: URL is None or empty before sending to crawl4ai")
-            return False, '', 'URL is None or empty'
+        # Use the correct payload format for Railway Crawl4AI
+        request_payload = {"urls": [url]}
         
-        # Log request details using existing logger (will definitely execute)
-        logger.info(f"🔍 DEBUG: About to call crawl4ai with URL: '{url}' (original: '{original_url}')")
-        logger.info(f"🔍 DEBUG: URL type: {type(url)}, length: {len(url)}, repr: {repr(url)}")
-        
-        # Ensure we're sending a valid string, not None
-        request_payload = {"url": str(url) if url else ""}
-        logger.info(f"🔍 DEBUG: Request payload: {json.dumps(request_payload)}")
-        
-        async with httpx.AsyncClient(timeout=CRAWL_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 f"{settings.CRAWL4AI_URL}/crawl",
                 json=request_payload
             )
             
-            # Log response details
-            logger.info(f"🔍 DEBUG: crawl4ai response - status: {response.status_code}, url_sent: '{url}'")
-            
-            # #region agent log
-            try:
-                response_text = response.text[:500]  # Truncate response
-                log_data = {
-                    "location": "website_scraper_worker.py:268",
-                    "message": "crawl4ai response received",
-                    "data": {
-                        "status_code": response.status_code,
-                        "url_sent": url,
-                        "original_url": original_url,
-                        "response_preview": response_text,
-                        "headers": dict(response.headers)
-                    },
-                    "timestamp": int(time.time() * 1000),
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "E"
-                }
-                with open("/Users/kylebezuidenhout/Downloads/Cold-Email-SaaS/.cursor/debug.log", "a") as f:
-                    f.write(json.dumps(log_data) + "\n")
-            except Exception as e:
-                logger.error(f"🔍 DEBUG: Failed to write log: {e}")
-            # #endregion
-            
             if response.status_code == 200:
-                data = response.json()
-                if data.get('success'):
-                    markdown = data.get('markdown', '')
-                    return True, markdown, None
-                else:
-                    error_msg = data.get('error_message', 'Crawl failed')
-                    logger.error(f"🔍 DEBUG: crawl4ai returned success=false: {error_msg}")
-                    return False, '', error_msg
+                results = response.json()
+                # Response is a list of results
+                if results and len(results) > 0:
+                    result = results[0]
+                    if result.get('success'):
+                        return True, result.get('markdown', ''), None
+                    else:
+                        return False, '', result.get('error_message', 'Crawl failed')
+                return False, '', 'Empty response'
             else:
-                # Log detailed error for 422 or any non-200 status
-                try:
-                    error_detail = response.text[:2000] if hasattr(response, 'text') else 'No response text'
-                    logger.error(f"🔍 DEBUG: ========== CRAWL4AI ERROR DETAILS ==========")
-                    logger.error(f"🔍 DEBUG: Status code: {response.status_code}")
-                    logger.error(f"🔍 DEBUG: URL sent to crawl4ai: '{url}'")
-                    logger.error(f"🔍 DEBUG: Original URL from CSV: '{original_url}'")
-                    logger.error(f"🔍 DEBUG: URL length: {len(url)}, Original length: {len(original_url)}")
-                    logger.error(f"🔍 DEBUG: URL repr (shows hidden chars): {repr(url)}")
-                    logger.error(f"🔍 DEBUG: Response content-type: {response.headers.get('content-type', 'unknown')}")
-                    
-                    # Try to parse as JSON first
-                    try:
-                        error_json = response.json()
-                        logger.error(f"🔍 DEBUG: Response JSON: {json.dumps(error_json, indent=2)}")
-                    except:
-                        logger.error(f"🔍 DEBUG: Response text (not JSON): {error_detail}")
-                    
-                    logger.error(f"🔍 DEBUG: ===========================================")
-                except Exception as e:
-                    logger.error(f"🔍 DEBUG: Failed to parse error response: {e}")
-                    import traceback
-                    logger.error(f"🔍 DEBUG: Traceback: {traceback.format_exc()}")
                 return False, '', f'HTTP {response.status_code}'
                 
     except httpx.TimeoutException:
         return False, '', 'Timeout'
     except Exception as e:
         return False, '', str(e)
-
-
-async def crawl_batch(urls: List[str]) -> List[Dict]:
-    """
-    Crawl a batch of URLs concurrently.
-    
-    Returns list of dicts with url, success, markdown, error keys.
-    """
-    tasks = [crawl_url(url) for url in urls]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    batch_results = []
-    for i, url in enumerate(urls):
-        result = results[i]
-        if isinstance(result, Exception):
-            batch_results.append({
-                'url': url,
-                'success': False,
-                'markdown': '',
-                'error': str(result)
-            })
-        else:
-            success, markdown, error = result
-            batch_results.append({
-                'url': url,
-                'success': success,
-                'markdown': markdown,
-                'error': error
-            })
-    
-    return batch_results
 
 
 # ============================================
@@ -494,66 +635,10 @@ async def process_job(job_id: str, website_col: str) -> bool:
             db.commit()
             return False
         
-        # #region agent log
-        sample_urls = [row.get(website_col, '').strip()[:50] for row in rows[:5]]  # First 5 URLs, truncated
-        log_data = {
-            "location": "website_scraper_worker.py:385",
-            "message": "Worker extracted URLs from CSV",
-            "data": {
-                "website_col": website_col,
-                "total_rows": len(rows),
-                "sample_urls": sample_urls,
-                "original_columns": original_columns
-            },
-            "timestamp": int(time.time() * 1000),
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "C"
-        }
-        try:
-            with open("/Users/kylebezuidenhout/Downloads/Cold-Email-SaaS/.cursor/debug.log", "a") as f:
-                f.write(json.dumps(log_data) + "\n")
-        except Exception as e:
-            logger.error(f"🔍 DEBUG: Failed to write log file: {e}")
-        # #endregion
-        
         logger.info(f"📊 Processing {len(rows)} rows with website column '{website_col}'")
-        logger.info(f"🔍 DEBUG: Sample URLs from column '{website_col}': {sample_urls}")
-        
-        # Process rows in batches
-        output_rows = []
-        total_processed = 0
-        total_with_contacts = 0
-        
-        # Create batches
-        batches = []
-        current_batch = []
-        current_batch_indices = []
-        
-        for i, row in enumerate(rows):
-            website = row.get(website_col, '').strip()
-            # Clean URL: remove whitespace, newlines, and invalid characters
-            website = website.replace('\n', '').replace('\r', '').replace('\t', ' ').strip()
-            if website:
-                # Log problematic URLs for debugging
-                if not website or len(website) == 0 or website.isspace():
-                    logger.warning(f"🔍 DEBUG: Row {i} has empty/whitespace-only website in column '{website_col}'")
-                    continue
-                if any(char in website for char in ['\n', '\r', '\t']):
-                    logger.warning(f"🔍 DEBUG: Row {i} website contains newlines/tabs: '{website[:50]}'")
-                current_batch.append(website)
-                current_batch_indices.append(i)
-            
-            if len(current_batch) >= BATCH_SIZE:
-                batches.append((current_batch, current_batch_indices))
-                current_batch = []
-                current_batch_indices = []
-        
-        # Don't forget the last batch
-        if current_batch:
-            batches.append((current_batch, current_batch_indices))
         
         # Initialize output with original data
+        output_rows = []
         for row in rows:
             output_row = dict(row)
             output_row['email_1'] = ''
@@ -569,7 +654,61 @@ async def process_job(job_id: str, website_col: str) -> bool:
             if not website:
                 output_rows[i]['extraction_status'] = 'no_website'
         
-        # Process each batch
+        # Deduplicate URLs by domain to prevent duplicate contacts
+        unique_urls, unique_indices, duplicate_map = deduplicate_urls_by_domain(rows, website_col)
+        
+        if not unique_urls:
+            logger.error(f"No valid URLs found in CSV for job {job_id}")
+            job.status = "failed"
+            job.error_message = "No valid website URLs found in the selected column"
+            db.commit()
+            return False
+        
+        # Mark duplicate rows
+        for dup_idx in duplicate_map:
+            output_rows[dup_idx]['extraction_status'] = 'duplicate'
+        
+        logger.info(f"📊 Found {len(unique_urls)} unique domains to crawl ({len(duplicate_map)} duplicates)")
+        
+        # Split unique URLs into batches
+        batches = []
+        for i in range(0, len(unique_urls), BATCH_SIZE):
+            batch_urls = unique_urls[i:i + BATCH_SIZE]
+            batch_indices = unique_indices[i:i + BATCH_SIZE]
+            batches.append((batch_urls, batch_indices))
+        
+        # Track progress
+        total_processed = 0
+        total_with_contacts = 0
+        total_unique = len(unique_urls)
+        
+        # Result handler callback for streaming
+        def handle_crawl_result(idx: int, result: Dict):
+            nonlocal total_processed, total_with_contacts
+            
+            if result['success'] and result['markdown']:
+                # Extract contacts from markdown
+                contacts = extract_contacts(result['markdown'])
+                
+                output_rows[idx]['email_1'] = contacts['email_1']
+                output_rows[idx]['email_2'] = contacts['email_2']
+                output_rows[idx]['phone_1'] = contacts['phone_1']
+                output_rows[idx]['phone_2'] = contacts['phone_2']
+                
+                # Determine status based on whether contacts were found
+                has_contacts = bool(contacts['email_1'] or contacts['email_2'] or 
+                                   contacts['phone_1'] or contacts['phone_2'])
+                if has_contacts:
+                    output_rows[idx]['extraction_status'] = 'success'
+                    total_with_contacts += 1
+                else:
+                    output_rows[idx]['extraction_status'] = 'not_found'
+            else:
+                output_rows[idx]['extraction_status'] = 'error'
+            
+            total_processed += 1
+        
+        # Process each batch using streaming
         for batch_num, (batch_urls, batch_indices) in enumerate(batches):
             # Check if cancelled
             if is_job_cancelled(job_id):
@@ -580,44 +719,21 @@ async def process_job(job_id: str, website_col: str) -> bool:
             
             logger.info(f"🌐 Crawling batch {batch_num + 1}/{len(batches)} ({len(batch_urls)} URLs)")
             
-            # Crawl batch
+            # Crawl batch using streaming endpoint
             try:
-                crawl_results = await crawl_batch(batch_urls)
+                await crawl_batch_streaming(batch_urls, batch_indices, handle_crawl_result)
             except Exception as e:
                 logger.error(f"❌ Batch {batch_num + 1} crawl failed: {e}")
+                import traceback
+                traceback.print_exc()
                 # Mark all in batch as error
                 for idx in batch_indices:
-                    output_rows[idx]['extraction_status'] = 'error'
-                continue
+                    if output_rows[idx]['extraction_status'] == 'not_found':
+                        output_rows[idx]['extraction_status'] = 'error'
+                        total_processed += 1
             
-            # Process results
-            for j, (url, idx) in enumerate(zip(batch_urls, batch_indices)):
-                crawl_result = crawl_results[j]
-                
-                if crawl_result['success'] and crawl_result['markdown']:
-                    # Extract contacts
-                    contacts = extract_contacts(crawl_result['markdown'])
-                    
-                    output_rows[idx]['email_1'] = contacts['email_1']
-                    output_rows[idx]['email_2'] = contacts['email_2']
-                    output_rows[idx]['phone_1'] = contacts['phone_1']
-                    output_rows[idx]['phone_2'] = contacts['phone_2']
-                    
-                    # Determine status
-                    has_contacts = bool(contacts['email_1'] or contacts['email_2'] or 
-                                       contacts['phone_1'] or contacts['phone_2'])
-                    if has_contacts:
-                        output_rows[idx]['extraction_status'] = 'success'
-                        total_with_contacts += 1
-                    else:
-                        output_rows[idx]['extraction_status'] = 'not_found'
-                else:
-                    output_rows[idx]['extraction_status'] = 'error'
-                
-                total_processed += 1
-            
-            # Update progress
-            progress = int((total_processed / job.total_leads) * 100) if job.total_leads > 0 else 0
+            # Update progress after each batch
+            progress = int((total_processed / total_unique) * 100) if total_unique > 0 else 0
             hit_rate = (total_with_contacts / total_processed * 100) if total_processed > 0 else 0
             
             job.completed_leads = total_processed
@@ -625,7 +741,22 @@ async def process_job(job_id: str, website_col: str) -> bool:
             job.hit_rate_percentage = Decimal(str(round(hit_rate, 2)))
             db.commit()
             
-            logger.info(f"📊 Progress: {progress}% ({total_processed}/{job.total_leads}), Hit rate: {hit_rate:.1f}%")
+            logger.info(f"📊 Progress: {progress}% ({total_processed}/{total_unique}), Hit rate: {hit_rate:.1f}%")
+        
+        # Copy contacts from first occurrence to duplicate rows
+        if duplicate_map:
+            logger.info(f"📋 Copying contacts to {len(duplicate_map)} duplicate rows")
+            for dup_idx, first_idx in duplicate_map.items():
+                # Copy contact data from first occurrence
+                output_rows[dup_idx]['email_1'] = output_rows[first_idx]['email_1']
+                output_rows[dup_idx]['email_2'] = output_rows[first_idx]['email_2']
+                output_rows[dup_idx]['phone_1'] = output_rows[first_idx]['phone_1']
+                output_rows[dup_idx]['phone_2'] = output_rows[first_idx]['phone_2']
+                # Keep status as 'duplicate' but copy success info
+                if output_rows[first_idx]['extraction_status'] == 'success':
+                    output_rows[dup_idx]['extraction_status'] = 'duplicate_success'
+                elif output_rows[first_idx]['extraction_status'] == 'error':
+                    output_rows[dup_idx]['extraction_status'] = 'duplicate_error'
         
         # Generate output CSV
         output_columns = original_columns + ['email_1', 'email_2', 'phone_1', 'phone_2', 'extraction_status']
@@ -709,29 +840,7 @@ def main():
                     job_id = job_data
                     website_col = 'website'  # Default
                 
-                # #region agent log
-                log_data = {
-                    "location": "website_scraper_worker.py:570",
-                    "message": "Worker received job from queue",
-                    "data": {
-                        "job_id": job_id,
-                        "website_col": website_col,
-                        "raw_queue_data": job_data
-                    },
-                    "timestamp": int(time.time() * 1000),
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "B"
-                }
-                try:
-                    with open("/Users/kylebezuidenhout/Downloads/Cold-Email-SaaS/.cursor/debug.log", "a") as f:
-                        f.write(json.dumps(log_data) + "\n")
-                except Exception as e:
-                    logger.error(f"🔍 DEBUG: Failed to write log file: {e}")
-                # #endregion
-                
                 logger.info(f"📥 Received job {job_id} from queue (website_col: {website_col})")
-                logger.info(f"🔍 DEBUG: Queue data parsed - job_id: '{job_id}', website_col: '{website_col}', raw: '{job_data}'")
                 
                 # Process job (run async)
                 success = asyncio.run(process_job(job_id, website_col))
