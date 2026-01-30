@@ -17,6 +17,8 @@ import io
 import uuid
 import httpx
 import boto3
+import time
+import json
 
 from app.db.session import get_db
 from app.models.user import User
@@ -194,6 +196,27 @@ async def upload_csv(
     
     logger.info(f"📋 Website Scraper - Detected columns: {actual_columns}")
     
+    # #region agent log
+    log_data = {
+        "location": "website_scraper.py:195",
+        "message": "Backend received column_website parameter",
+        "data": {
+            "column_website_param": column_website,
+            "actual_columns": actual_columns,
+            "column_website_in_columns": column_website in actual_columns if column_website else False
+        },
+        "timestamp": int(time.time() * 1000),
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "A"
+    }
+    try:
+        with open("/Users/kylebezuidenhout/Downloads/Cold-Email-SaaS/.cursor/debug.log", "a") as f:
+            f.write(json.dumps(log_data) + "\n")
+    except:
+        pass
+    # #endregion
+    
     # Detect or use provided website column
     if column_website and column_website in actual_columns:
         website_col = column_website
@@ -260,6 +283,28 @@ async def upload_csv(
     # Queue job for processing
     try:
         job_data = f"{job.id}|{website_col}"  # Pass job ID and detected column
+        
+        # #region agent log
+        log_data = {
+            "location": "website_scraper.py:262",
+            "message": "Backend queuing job with column",
+            "data": {
+                "job_id": str(job.id),
+                "website_col": website_col,
+                "queue_data": job_data
+            },
+            "timestamp": int(time.time() * 1000),
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "B"
+        }
+        try:
+            with open("/Users/kylebezuidenhout/Downloads/Cold-Email-SaaS/.cursor/debug.log", "a") as f:
+                f.write(json.dumps(log_data) + "\n")
+        except:
+            pass
+        # #endregion
+        
         redis_client.lpush(WEBSITE_SCRAPER_QUEUE, job_data)
         queue_length = redis_client.llen(WEBSITE_SCRAPER_QUEUE)
         logger.info(f"📤 QUEUED website scraper job {job.id} (queue length: {queue_length})")

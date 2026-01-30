@@ -125,6 +125,10 @@ class ApiClient {
       });
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/fd1ac76c-6edf-44e6-a6e9-e1aa6c49e1fb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:126',message:'FormData before send',data:{endpoint,fileName:file.name,fileSize:file.size,additionalDataKeys:additionalData?Object.keys(additionalData):[],additionalDataValues:additionalData?Object.values(additionalData).map(v=>String(v)):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     const headers: Record<string, string> = {};
     if (token) {
       headers.Authorization = `Bearer ${token}`;

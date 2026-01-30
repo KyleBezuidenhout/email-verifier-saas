@@ -18,6 +18,7 @@ import time
 import re
 import logging
 import asyncio
+import json
 from typing import Optional, List, Dict, Tuple
 from uuid import UUID
 from decimal import Decimal
@@ -231,16 +232,94 @@ async def crawl_url(url: str) -> Tuple[bool, str, Optional[str]]:
     if not settings.CRAWL4AI_URL:
         return False, '', 'CRAWL4AI_URL not configured'
     
+    # Clean and validate URL
+    original_url = url
+    url = url.strip()
+    
+    # Check for empty or invalid URLs
+    if not url or len(url) == 0:
+        logger.error(f"🔍 DEBUG: Empty URL received, cannot crawl")
+        return False, '', 'Empty URL'
+    
+    # Remove any newlines, carriage returns, or tabs
+    url = url.replace('\n', '').replace('\r', '').replace('\t', ' ').strip()
+    
     # Ensure URL has protocol
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     
+    # Validate URL format (basic check)
+    if ' ' in url or '\n' in url or '\r' in url:
+        logger.error(f"🔍 DEBUG: URL contains invalid characters (spaces/newlines): '{url[:100]}'")
+        return False, '', 'Invalid URL format'
+    
+        # #region agent log
+        log_data = {
+            "location": "website_scraper_worker.py:236",
+            "message": "About to call crawl4ai",
+            "data": {
+                "original_url": original_url,
+                "final_url": url,
+                "crawl4ai_url": settings.CRAWL4AI_URL
+            },
+            "timestamp": int(time.time() * 1000),
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "D"
+        }
+        try:
+            with open("/Users/kylebezuidenhout/Downloads/Cold-Email-SaaS/.cursor/debug.log", "a") as f:
+                f.write(json.dumps(log_data) + "\n")
+        except Exception as e:
+            logger.error(f"🔍 DEBUG: Failed to write log file: {e}")
+        # #endregion
+    
     try:
+        # Final validation before sending
+        if not url or url is None:
+            logger.error(f"🔍 DEBUG: URL is None or empty before sending to crawl4ai")
+            return False, '', 'URL is None or empty'
+        
+        # Log request details using existing logger (will definitely execute)
+        logger.info(f"🔍 DEBUG: About to call crawl4ai with URL: '{url}' (original: '{original_url}')")
+        logger.info(f"🔍 DEBUG: URL type: {type(url)}, length: {len(url)}, repr: {repr(url)}")
+        
+        # Ensure we're sending a valid string, not None
+        request_payload = {"url": str(url) if url else ""}
+        logger.info(f"🔍 DEBUG: Request payload: {json.dumps(request_payload)}")
+        
         async with httpx.AsyncClient(timeout=CRAWL_TIMEOUT) as client:
             response = await client.post(
                 f"{settings.CRAWL4AI_URL}/crawl",
-                json={"url": url}
+                json=request_payload
             )
+            
+            # Log response details
+            logger.info(f"🔍 DEBUG: crawl4ai response - status: {response.status_code}, url_sent: '{url}'")
+            
+            # #region agent log
+            try:
+                response_text = response.text[:500]  # Truncate response
+                log_data = {
+                    "location": "website_scraper_worker.py:268",
+                    "message": "crawl4ai response received",
+                    "data": {
+                        "status_code": response.status_code,
+                        "url_sent": url,
+                        "original_url": original_url,
+                        "response_preview": response_text,
+                        "headers": dict(response.headers)
+                    },
+                    "timestamp": int(time.time() * 1000),
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "E"
+                }
+                with open("/Users/kylebezuidenhout/Downloads/Cold-Email-SaaS/.cursor/debug.log", "a") as f:
+                    f.write(json.dumps(log_data) + "\n")
+            except Exception as e:
+                logger.error(f"🔍 DEBUG: Failed to write log: {e}")
+            # #endregion
             
             if response.status_code == 200:
                 data = response.json()
@@ -248,8 +327,33 @@ async def crawl_url(url: str) -> Tuple[bool, str, Optional[str]]:
                     markdown = data.get('markdown', '')
                     return True, markdown, None
                 else:
-                    return False, '', data.get('error_message', 'Crawl failed')
+                    error_msg = data.get('error_message', 'Crawl failed')
+                    logger.error(f"🔍 DEBUG: crawl4ai returned success=false: {error_msg}")
+                    return False, '', error_msg
             else:
+                # Log detailed error for 422 or any non-200 status
+                try:
+                    error_detail = response.text[:2000] if hasattr(response, 'text') else 'No response text'
+                    logger.error(f"🔍 DEBUG: ========== CRAWL4AI ERROR DETAILS ==========")
+                    logger.error(f"🔍 DEBUG: Status code: {response.status_code}")
+                    logger.error(f"🔍 DEBUG: URL sent to crawl4ai: '{url}'")
+                    logger.error(f"🔍 DEBUG: Original URL from CSV: '{original_url}'")
+                    logger.error(f"🔍 DEBUG: URL length: {len(url)}, Original length: {len(original_url)}")
+                    logger.error(f"🔍 DEBUG: URL repr (shows hidden chars): {repr(url)}")
+                    logger.error(f"🔍 DEBUG: Response content-type: {response.headers.get('content-type', 'unknown')}")
+                    
+                    # Try to parse as JSON first
+                    try:
+                        error_json = response.json()
+                        logger.error(f"🔍 DEBUG: Response JSON: {json.dumps(error_json, indent=2)}")
+                    except:
+                        logger.error(f"🔍 DEBUG: Response text (not JSON): {error_detail}")
+                    
+                    logger.error(f"🔍 DEBUG: ===========================================")
+                except Exception as e:
+                    logger.error(f"🔍 DEBUG: Failed to parse error response: {e}")
+                    import traceback
+                    logger.error(f"🔍 DEBUG: Traceback: {traceback.format_exc()}")
                 return False, '', f'HTTP {response.status_code}'
                 
     except httpx.TimeoutException:
@@ -389,7 +493,31 @@ async def process_job(job_id: str, website_col: str) -> bool:
             db.commit()
             return False
         
+        # #region agent log
+        sample_urls = [row.get(website_col, '').strip()[:50] for row in rows[:5]]  # First 5 URLs, truncated
+        log_data = {
+            "location": "website_scraper_worker.py:385",
+            "message": "Worker extracted URLs from CSV",
+            "data": {
+                "website_col": website_col,
+                "total_rows": len(rows),
+                "sample_urls": sample_urls,
+                "original_columns": original_columns
+            },
+            "timestamp": int(time.time() * 1000),
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "C"
+        }
+        try:
+            with open("/Users/kylebezuidenhout/Downloads/Cold-Email-SaaS/.cursor/debug.log", "a") as f:
+                f.write(json.dumps(log_data) + "\n")
+        except Exception as e:
+            logger.error(f"🔍 DEBUG: Failed to write log file: {e}")
+        # #endregion
+        
         logger.info(f"📊 Processing {len(rows)} rows with website column '{website_col}'")
+        logger.info(f"🔍 DEBUG: Sample URLs from column '{website_col}': {sample_urls}")
         
         # Process rows in batches
         output_rows = []
@@ -403,7 +531,15 @@ async def process_job(job_id: str, website_col: str) -> bool:
         
         for i, row in enumerate(rows):
             website = row.get(website_col, '').strip()
+            # Clean URL: remove whitespace, newlines, and invalid characters
+            website = website.replace('\n', '').replace('\r', '').replace('\t', ' ').strip()
             if website:
+                # Log problematic URLs for debugging
+                if not website or len(website) == 0 or website.isspace():
+                    logger.warning(f"🔍 DEBUG: Row {i} has empty/whitespace-only website in column '{website_col}'")
+                    continue
+                if any(char in website for char in ['\n', '\r', '\t']):
+                    logger.warning(f"🔍 DEBUG: Row {i} website contains newlines/tabs: '{website[:50]}'")
                 current_batch.append(website)
                 current_batch_indices.append(i)
             
@@ -572,7 +708,29 @@ def main():
                     job_id = job_data
                     website_col = 'website'  # Default
                 
+                # #region agent log
+                log_data = {
+                    "location": "website_scraper_worker.py:570",
+                    "message": "Worker received job from queue",
+                    "data": {
+                        "job_id": job_id,
+                        "website_col": website_col,
+                        "raw_queue_data": job_data
+                    },
+                    "timestamp": int(time.time() * 1000),
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "B"
+                }
+                try:
+                    with open("/Users/kylebezuidenhout/Downloads/Cold-Email-SaaS/.cursor/debug.log", "a") as f:
+                        f.write(json.dumps(log_data) + "\n")
+                except Exception as e:
+                    logger.error(f"🔍 DEBUG: Failed to write log file: {e}")
+                # #endregion
+                
                 logger.info(f"📥 Received job {job_id} from queue (website_col: {website_col})")
+                logger.info(f"🔍 DEBUG: Queue data parsed - job_id: '{job_id}', website_col: '{website_col}', raw: '{job_data}'")
                 
                 # Process job (run async)
                 success = asyncio.run(process_job(job_id, website_col))
