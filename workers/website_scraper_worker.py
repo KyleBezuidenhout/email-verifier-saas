@@ -64,11 +64,33 @@ s3_client = boto3.client(
 # Queue name
 WEBSITE_SCRAPER_QUEUE = "website-scraper-queue"
 
-# Batch size for crawling (reduced from 100 to align with Crawl4AI MAX_CONCURRENT_TASKS)
-BATCH_SIZE = 25
+# Batch size for crawling - should match Crawl4AI MAX_CONCURRENT_TASKS
+BATCH_SIZE = 20
 
 # Crawl4AI timeout per URL (seconds)
 CRAWL_TIMEOUT = 30
+
+# ============================================
+# BATCH PROCESSING CONFIGURATION
+# ============================================
+
+# Cooldown between batches (seconds) - allows Crawl4AI browser pool to recover
+BATCH_COOLDOWN_SECONDS = 3
+
+# Adaptive cooldown: if failure rate exceeds this threshold, double the cooldown
+ADAPTIVE_COOLDOWN_THRESHOLD = 0.4  # 40% failure rate triggers longer cooldown
+
+# Maximum cooldown (seconds) to prevent excessively long waits
+MAX_COOLDOWN_SECONDS = 15
+
+# Consecutive batch failure threshold - pause longer if multiple batches fail badly
+CONSECUTIVE_FAILURE_THRESHOLD = 3
+HEALTH_PAUSE_SECONDS = 30
+
+# Retry configuration for failed URLs
+ENABLE_RETRY = True
+RETRY_BATCH_SIZE = 10  # Smaller batches for retries
+MAX_RETRY_ATTEMPTS = 1  # Number of retry rounds
 
 
 # ============================================
@@ -829,6 +851,10 @@ async def process_job(job_id: str, website_col: str) -> bool:
             
             total_processed += 1
         
+        # Track failed URLs for retry
+        failed_urls_for_retry = []  # List of (url, index) tuples
+        consecutive_bad_batches = 0
+        
         # Process each batch using streaming
         for batch_num, (batch_urls, batch_indices) in enumerate(batches):
             # Check if cancelled
@@ -840,15 +866,37 @@ async def process_job(job_id: str, website_col: str) -> bool:
             
             logger.info(f"🌐 Crawling batch {batch_num + 1}/{len(batches)} ({len(batch_urls)} URLs)")
             
+            # Track which URLs failed in this batch for potential retry
+            batch_failed_urls = []
+            
+            def handle_crawl_result_with_retry(idx: int, result: Dict):
+                """Wrapper to track failures for retry."""
+                handle_crawl_result(idx, result)
+                if not result['success'] and ENABLE_RETRY:
+                    # Find the URL for this index
+                    for url, i in zip(batch_urls, batch_indices):
+                        if i == idx:
+                            batch_failed_urls.append((url, idx))
+                            break
+            
             # Crawl batch using streaming endpoint
+            batch_failure_rate = 0
             try:
-                batch_stats = await crawl_batch_streaming(batch_urls, batch_indices, handle_crawl_result)
+                batch_stats = await crawl_batch_streaming(batch_urls, batch_indices, handle_crawl_result_with_retry)
                 
                 # Accumulate batch stats into overall stats
                 crawl_stats.urls_with_content += batch_stats.get('with_content', 0)
                 crawl_stats.urls_empty_content += batch_stats.get('empty_content', 0)
                 crawl_stats.urls_failed += batch_stats.get('failed', 0)
                 crawl_stats.urls_malformed += batch_stats.get('malformed', 0)
+                
+                # Calculate batch failure rate for adaptive cooldown
+                batch_processed = batch_stats.get('processed', 0)
+                batch_failed = batch_stats.get('failed', 0)
+                batch_failure_rate = (batch_failed / batch_processed) if batch_processed > 0 else 0
+                
+                # Collect failed URLs for retry
+                failed_urls_for_retry.extend(batch_failed_urls)
                 
             except Exception as e:
                 logger.error(f"❌ Batch {batch_num + 1} crawl failed: {e}")
@@ -860,6 +908,10 @@ async def process_job(job_id: str, website_col: str) -> bool:
                         output_rows[idx]['extraction_status'] = 'error'
                         total_processed += 1
                         crawl_stats.urls_failed += 1
+                batch_failure_rate = 1.0  # Complete failure
+                # Add all URLs to retry queue
+                if ENABLE_RETRY:
+                    failed_urls_for_retry.extend(zip(batch_urls, batch_indices))
             
             # Update progress after each batch
             progress = int((total_processed / total_unique) * 100) if total_unique > 0 else 0
@@ -871,6 +923,118 @@ async def process_job(job_id: str, website_col: str) -> bool:
             db.commit()
             
             logger.info(f"📊 Progress: {progress}% ({total_processed}/{total_unique}), Hit rate: {hit_rate:.1f}%")
+            
+            # === ADAPTIVE COOLDOWN LOGIC ===
+            
+            # Track consecutive bad batches for health monitoring
+            if batch_failure_rate > 0.7:  # >70% failure
+                consecutive_bad_batches += 1
+                if consecutive_bad_batches >= CONSECUTIVE_FAILURE_THRESHOLD:
+                    logger.warning(f"⚠️ {consecutive_bad_batches} consecutive bad batches - Crawl4AI may be unhealthy, pausing for {HEALTH_PAUSE_SECONDS}s")
+                    await asyncio.sleep(HEALTH_PAUSE_SECONDS)
+                    consecutive_bad_batches = 0
+            else:
+                consecutive_bad_batches = 0
+            
+            # Apply cooldown between batches (skip after last batch)
+            if batch_num < len(batches) - 1:
+                cooldown = BATCH_COOLDOWN_SECONDS
+                
+                # Adaptive: increase cooldown if failure rate is high
+                if batch_failure_rate > ADAPTIVE_COOLDOWN_THRESHOLD:
+                    cooldown = min(BATCH_COOLDOWN_SECONDS * 2, MAX_COOLDOWN_SECONDS)
+                    logger.info(f"⏳ High failure rate ({batch_failure_rate:.1%}), extended cooldown: {cooldown}s")
+                else:
+                    logger.debug(f"⏳ Batch cooldown: {cooldown}s")
+                
+                await asyncio.sleep(cooldown)
+        
+        # === RETRY FAILED URLs ===
+        if ENABLE_RETRY and failed_urls_for_retry and MAX_RETRY_ATTEMPTS > 0:
+            logger.info(f"🔄 Retrying {len(failed_urls_for_retry)} failed URLs with smaller batches")
+            
+            for retry_attempt in range(MAX_RETRY_ATTEMPTS):
+                if not failed_urls_for_retry:
+                    break
+                    
+                logger.info(f"🔄 Retry attempt {retry_attempt + 1}/{MAX_RETRY_ATTEMPTS} for {len(failed_urls_for_retry)} URLs")
+                
+                # Create smaller batches for retries
+                retry_batches = []
+                for i in range(0, len(failed_urls_for_retry), RETRY_BATCH_SIZE):
+                    batch = failed_urls_for_retry[i:i + RETRY_BATCH_SIZE]
+                    retry_urls = [url for url, idx in batch]
+                    retry_indices = [idx for url, idx in batch]
+                    retry_batches.append((retry_urls, retry_indices))
+                
+                # Clear for next round
+                still_failed = []
+                
+                for retry_batch_num, (retry_urls, retry_indices) in enumerate(retry_batches):
+                    # Check if cancelled
+                    if is_job_cancelled(job_id):
+                        logger.info(f"Job {job_id} was cancelled during retry")
+                        job.status = "cancelled"
+                        db.commit()
+                        return False
+                    
+                    logger.info(f"🔄 Retry batch {retry_batch_num + 1}/{len(retry_batches)} ({len(retry_urls)} URLs)")
+                    
+                    # Track failures in retry
+                    retry_failed = []
+                    
+                    def handle_retry_result(idx: int, result: Dict):
+                        """Handle retry results."""
+                        if result['success'] and result.get('has_content', False):
+                            # Success on retry! Update the row
+                            markdown = result['markdown']
+                            if isinstance(markdown, dict):
+                                markdown = markdown.get('raw_markdown', '') or markdown.get('fit_markdown', '') or ''
+                            
+                            contacts = extract_contacts(markdown)
+                            output_rows[idx]['email_1'] = contacts['email_1']
+                            output_rows[idx]['email_2'] = contacts['email_2']
+                            output_rows[idx]['phone_1'] = contacts['phone_1']
+                            output_rows[idx]['phone_2'] = contacts['phone_2']
+                            
+                            has_contacts = bool(contacts['email_1'] or contacts['email_2'] or 
+                                               contacts['phone_1'] or contacts['phone_2'])
+                            if has_contacts:
+                                output_rows[idx]['extraction_status'] = 'success_retry'
+                                nonlocal total_with_contacts
+                                total_with_contacts += 1
+                                crawl_stats.rows_with_contacts += 1
+                            else:
+                                output_rows[idx]['extraction_status'] = 'not_found_retry'
+                            
+                            crawl_stats.urls_with_content += 1
+                            crawl_stats.urls_failed -= 1  # Recovered from failure
+                            logger.debug(f"✅ Retry success for index {idx}")
+                        elif result['success']:
+                            output_rows[idx]['extraction_status'] = 'no_content_retry'
+                            crawl_stats.urls_empty_content += 1
+                            crawl_stats.urls_failed -= 1
+                        else:
+                            # Still failed, track for potential next retry round
+                            for url, i in zip(retry_urls, retry_indices):
+                                if i == idx:
+                                    retry_failed.append((url, idx))
+                                    break
+                    
+                    try:
+                        await crawl_batch_streaming(retry_urls, retry_indices, handle_retry_result)
+                        still_failed.extend(retry_failed)
+                    except Exception as e:
+                        logger.warning(f"Retry batch failed: {e}")
+                        still_failed.extend(zip(retry_urls, retry_indices))
+                    
+                    # Longer cooldown between retry batches
+                    await asyncio.sleep(BATCH_COOLDOWN_SECONDS * 2)
+                
+                failed_urls_for_retry = still_failed
+                
+            if failed_urls_for_retry:
+                logger.info(f"📊 {len(failed_urls_for_retry)} URLs still failed after retries")
         
         # Copy contacts from first occurrence to duplicate rows
         if duplicate_map:
@@ -955,6 +1119,7 @@ def main():
     logger.info(f"🚀 Website Scraper worker starting...")
     logger.info(f"📋 Listening to queue: {WEBSITE_SCRAPER_QUEUE}")
     logger.info(f"🌐 Crawl4AI URL: {settings.CRAWL4AI_URL or 'NOT CONFIGURED'}")
+    logger.info(f"⚙️ Batch size: {BATCH_SIZE}, Cooldown: {BATCH_COOLDOWN_SECONDS}s, Retry: {ENABLE_RETRY}")
     
     while True:
         try:
