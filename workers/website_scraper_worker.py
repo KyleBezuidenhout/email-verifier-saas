@@ -20,6 +20,7 @@ import logging
 import asyncio
 import json
 from typing import Optional, List, Dict, Tuple, AsyncGenerator
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 from uuid import UUID
 from decimal import Decimal
@@ -63,8 +64,8 @@ s3_client = boto3.client(
 # Queue name
 WEBSITE_SCRAPER_QUEUE = "website-scraper-queue"
 
-# Batch size for crawling
-BATCH_SIZE = 100
+# Batch size for crawling (reduced from 100 to align with Crawl4AI MAX_CONCURRENT_TASKS)
+BATCH_SIZE = 25
 
 # Crawl4AI timeout per URL (seconds)
 CRAWL_TIMEOUT = 30
@@ -75,6 +76,7 @@ CRAWL_TIMEOUT = 30
 # ============================================
 
 # Patterns to exclude for emails (junk emails)
+# NOTE: admin@ and webmaster@ removed - these can be valid business contacts
 EMAIL_EXCLUDE_PATTERNS = [
     re.compile(r'^noreply@', re.IGNORECASE),
     re.compile(r'^no-reply@', re.IGNORECASE),
@@ -84,8 +86,6 @@ EMAIL_EXCLUDE_PATTERNS = [
     re.compile(r'^filler@', re.IGNORECASE),
     re.compile(r'^test@', re.IGNORECASE),
     re.compile(r'^example@', re.IGNORECASE),
-    re.compile(r'^admin@', re.IGNORECASE),
-    re.compile(r'^webmaster@', re.IGNORECASE),
     re.compile(r'^postmaster@', re.IGNORECASE),
     re.compile(r'^mailer-daemon@', re.IGNORECASE),
     re.compile(r'@\d+x\.', re.IGNORECASE),  # Image files like icon@2x.png
@@ -116,6 +116,50 @@ PHONE_REGEX = re.compile(
 
 # Tel link regex - higher priority
 TEL_REGEX = re.compile(r'tel:([+\d\s().-]+)', re.IGNORECASE)
+
+
+# ============================================
+# PERFORMANCE TRACKING
+# ============================================
+
+@dataclass
+class CrawlStats:
+    """Track detailed crawl and extraction metrics for performance analysis."""
+    total_urls: int = 0
+    urls_with_content: int = 0      # Crawl succeeded AND returned markdown content
+    urls_empty_content: int = 0     # Crawl succeeded but no/empty markdown (JS-heavy, blocked)
+    urls_failed: int = 0            # Crawl failed (timeout, error, blocked)
+    urls_malformed: int = 0         # Invalid URL format in input
+    urls_skipped_no_website: int = 0  # Row had no website value
+    urls_duplicate: int = 0         # Duplicate domains skipped
+    emails_extracted: int = 0       # Total emails found
+    phones_extracted: int = 0       # Total phones found
+    rows_with_contacts: int = 0     # Rows that got at least one contact
+    
+    def log_summary(self, job_id: str):
+        """Log comprehensive performance summary."""
+        total_crawled = self.urls_with_content + self.urls_empty_content + self.urls_failed
+        content_rate = (self.urls_with_content / total_crawled * 100) if total_crawled > 0 else 0
+        empty_rate = (self.urls_empty_content / total_crawled * 100) if total_crawled > 0 else 0
+        fail_rate = (self.urls_failed / total_crawled * 100) if total_crawled > 0 else 0
+        contact_rate = (self.rows_with_contacts / self.total_urls * 100) if self.total_urls > 0 else 0
+        
+        logger.info("=" * 50)
+        logger.info(f"JOB PERFORMANCE SUMMARY - {job_id}")
+        logger.info("=" * 50)
+        logger.info(f"Total URLs in CSV: {self.total_urls}")
+        logger.info(f"  - Skipped (no website): {self.urls_skipped_no_website}")
+        logger.info(f"  - Skipped (duplicate domain): {self.urls_duplicate}")
+        logger.info(f"  - Malformed URLs: {self.urls_malformed}")
+        logger.info(f"Crawl Results ({total_crawled} URLs crawled):")
+        logger.info(f"  - With content: {self.urls_with_content} ({content_rate:.1f}%)")
+        logger.info(f"  - Empty content: {self.urls_empty_content} ({empty_rate:.1f}%) <- Sites returned but no markdown")
+        logger.info(f"  - Failed: {self.urls_failed} ({fail_rate:.1f}%)")
+        logger.info(f"Extraction Results:")
+        logger.info(f"  - Emails found: {self.emails_extracted}")
+        logger.info(f"  - Phones found: {self.phones_extracted}")
+        logger.info(f"  - Rows with contacts: {self.rows_with_contacts} ({contact_rate:.1f}% hit rate)")
+        logger.info("=" * 50)
 
 
 def is_junk_email(email: str) -> bool:
@@ -339,24 +383,47 @@ def extract_contacts(markdown: str) -> Dict[str, str]:
 STREAMING_BATCH_TIMEOUT = 600
 
 
-def prepare_urls_for_crawl(urls: List[str]) -> List[str]:
+def prepare_urls_for_crawl(urls: List[str]) -> Tuple[List[str], int]:
     """
     Clean and prepare URLs for crawling.
     
-    Returns list of cleaned URLs with protocol added if missing.
+    Returns:
+        Tuple of (cleaned URLs with protocol, count of malformed/invalid URLs)
     """
     prepared = []
+    malformed_count = 0
+    
     for url in urls:
         url = url.strip()
         if not url:
             continue
+        
         # Remove newlines, carriage returns, tabs
         url = url.replace('\n', '').replace('\r', '').replace('\t', ' ').strip()
+        
+        # Basic URL validation
+        # Check for obviously malformed URLs
+        if ' ' in url or len(url) < 4:
+            malformed_count += 1
+            logger.debug(f"Malformed URL skipped: '{url[:50]}...'")
+            continue
+        
+        # Check for valid domain pattern (at least has a dot)
+        if '.' not in url:
+            malformed_count += 1
+            logger.debug(f"Invalid URL (no domain): '{url[:50]}...'")
+            continue
+        
         # Add protocol if missing
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
+        
         prepared.append(url)
-    return prepared
+    
+    if malformed_count > 0:
+        logger.warning(f"⚠️ {malformed_count} malformed/invalid URLs skipped during preparation")
+    
+    return prepared, malformed_count
 
 
 async def crawl_batch_streaming(
@@ -376,18 +443,24 @@ async def crawl_batch_streaming(
         on_result: Callback function(index, result_dict) called for each result
         
     Returns:
-        Dict with stats: {'processed': N, 'success': N, 'failed': N, 'unmatched': N}
+        Dict with stats including:
+        - processed: Total URLs processed
+        - with_content: URLs that returned actual markdown content
+        - empty_content: URLs that succeeded but had no/empty content
+        - failed: URLs that failed to crawl
+        - unmatched: Results that couldn't be matched to input
+        - malformed: URLs that were malformed and skipped
     """
     if not settings.CRAWL4AI_URL:
         logger.error("CRAWL4AI_URL not configured")
-        return {'processed': 0, 'success': 0, 'failed': 0, 'unmatched': 0}
+        return {'processed': 0, 'with_content': 0, 'empty_content': 0, 'failed': 0, 'unmatched': 0, 'malformed': 0}
     
     # Prepare URLs (clean and add protocol)
-    prepared_urls = prepare_urls_for_crawl(urls)
+    prepared_urls, malformed_count = prepare_urls_for_crawl(urls)
     
     if not prepared_urls:
         logger.warning("No valid URLs to crawl after preparation")
-        return {'processed': 0, 'success': 0, 'failed': 0, 'unmatched': 0}
+        return {'processed': 0, 'with_content': 0, 'empty_content': 0, 'failed': 0, 'unmatched': 0, 'malformed': malformed_count}
     
     # Build lookup map for hybrid URL matching
     lookup = build_url_lookup(urls, indices)
@@ -406,7 +479,14 @@ async def crawl_batch_streaming(
     
     logger.info(f"🌐 Sending batch of {len(prepared_urls)} URLs to Crawl4AI /crawl/stream")
     
-    stats = {'processed': 0, 'success': 0, 'failed': 0, 'unmatched': 0}
+    stats = {
+        'processed': 0, 
+        'with_content': 0,      # Crawl succeeded AND has markdown content
+        'empty_content': 0,     # Crawl succeeded but no/empty markdown
+        'failed': 0,            # Crawl failed
+        'unmatched': 0,         # Could not match to input URL
+        'malformed': malformed_count  # Malformed URLs skipped
+    }
     
     try:
         async with httpx.AsyncClient(timeout=STREAMING_BATCH_TIMEOUT) as client:
@@ -465,17 +545,26 @@ async def crawl_batch_streaming(
                         markdown = markdown_raw if markdown_raw else ''
                     error_msg = result.get('error_message')
                     
+                    # Track detailed content stats
                     if success:
-                        stats['success'] += 1
+                        # Check if we actually got content
+                        content_length = len(markdown.strip()) if markdown else 0
+                        if content_length > 50:  # Meaningful content threshold
+                            stats['with_content'] += 1
+                        else:
+                            stats['empty_content'] += 1
+                            if content_length == 0:
+                                logger.debug(f"Empty content from {result_url[:50]}...")
                     else:
                         stats['failed'] += 1
                     
-                    # Call the result handler
+                    # Call the result handler with content info
                     on_result(idx, {
                         'url': result_url,
                         'success': success,
                         'markdown': markdown,
-                        'error': error_msg
+                        'error': error_msg,
+                        'has_content': bool(markdown and len(markdown.strip()) > 50)
                     })
                     
     except httpx.TimeoutException:
@@ -485,7 +574,8 @@ async def crawl_batch_streaming(
         import traceback
         traceback.print_exc()
     
-    logger.info(f"📊 Batch complete: {stats['processed']} processed, {stats['success']} success, {stats['failed']} failed, {stats['unmatched']} unmatched")
+    total_success = stats['with_content'] + stats['empty_content']
+    logger.info(f"📊 Batch complete: {stats['processed']} processed | {stats['with_content']} with content, {stats['empty_content']} empty, {stats['failed']} failed, {stats['unmatched']} unmatched")
     return stats
 
 
@@ -682,6 +772,13 @@ async def process_job(job_id: str, website_col: str) -> bool:
             batch_indices = unique_indices[i:i + BATCH_SIZE]
             batches.append((batch_urls, batch_indices))
         
+        # Initialize performance tracking
+        crawl_stats = CrawlStats(
+            total_urls=len(rows),
+            urls_skipped_no_website=sum(1 for row in rows if not row.get(website_col, '').strip()),
+            urls_duplicate=len(duplicate_map)
+        )
+        
         # Track progress
         total_processed = 0
         total_with_contacts = 0
@@ -691,7 +788,7 @@ async def process_job(job_id: str, website_col: str) -> bool:
         def handle_crawl_result(idx: int, result: Dict):
             nonlocal total_processed, total_with_contacts
             
-            if result['success'] and result['markdown']:
+            if result['success'] and result.get('has_content', False):
                 # Ensure markdown is a string (defensive check)
                 markdown = result['markdown']
                 if isinstance(markdown, dict):
@@ -705,14 +802,28 @@ async def process_job(job_id: str, website_col: str) -> bool:
                 output_rows[idx]['phone_1'] = contacts['phone_1']
                 output_rows[idx]['phone_2'] = contacts['phone_2']
                 
+                # Track extraction stats
+                if contacts['email_1']:
+                    crawl_stats.emails_extracted += 1
+                if contacts['email_2']:
+                    crawl_stats.emails_extracted += 1
+                if contacts['phone_1']:
+                    crawl_stats.phones_extracted += 1
+                if contacts['phone_2']:
+                    crawl_stats.phones_extracted += 1
+                
                 # Determine status based on whether contacts were found
                 has_contacts = bool(contacts['email_1'] or contacts['email_2'] or 
                                    contacts['phone_1'] or contacts['phone_2'])
                 if has_contacts:
                     output_rows[idx]['extraction_status'] = 'success'
                     total_with_contacts += 1
+                    crawl_stats.rows_with_contacts += 1
                 else:
                     output_rows[idx]['extraction_status'] = 'not_found'
+            elif result['success']:
+                # Crawl succeeded but no meaningful content
+                output_rows[idx]['extraction_status'] = 'no_content'
             else:
                 output_rows[idx]['extraction_status'] = 'error'
             
@@ -731,7 +842,14 @@ async def process_job(job_id: str, website_col: str) -> bool:
             
             # Crawl batch using streaming endpoint
             try:
-                await crawl_batch_streaming(batch_urls, batch_indices, handle_crawl_result)
+                batch_stats = await crawl_batch_streaming(batch_urls, batch_indices, handle_crawl_result)
+                
+                # Accumulate batch stats into overall stats
+                crawl_stats.urls_with_content += batch_stats.get('with_content', 0)
+                crawl_stats.urls_empty_content += batch_stats.get('empty_content', 0)
+                crawl_stats.urls_failed += batch_stats.get('failed', 0)
+                crawl_stats.urls_malformed += batch_stats.get('malformed', 0)
+                
             except Exception as e:
                 logger.error(f"❌ Batch {batch_num + 1} crawl failed: {e}")
                 import traceback
@@ -741,6 +859,7 @@ async def process_job(job_id: str, website_col: str) -> bool:
                     if output_rows[idx]['extraction_status'] == 'not_found':
                         output_rows[idx]['extraction_status'] = 'error'
                         total_processed += 1
+                        crawl_stats.urls_failed += 1
             
             # Update progress after each batch
             progress = int((total_processed / total_unique) * 100) if total_unique > 0 else 0
@@ -805,6 +924,9 @@ async def process_job(job_id: str, website_col: str) -> bool:
         job.hit_rate_percentage = Decimal(str(round(hit_rate, 2)))
         job.completed_at = datetime.utcnow()
         db.commit()
+        
+        # Log comprehensive performance summary
+        crawl_stats.log_summary(job_id)
         
         logger.info(f"✅ Job {job_id} completed! Processed {total_processed} URLs, {total_with_contacts} with contacts ({hit_rate:.1f}% hit rate)")
         
