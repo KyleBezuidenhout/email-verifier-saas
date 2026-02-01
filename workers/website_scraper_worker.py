@@ -66,7 +66,7 @@ WEBSITE_SCRAPER_QUEUE = "website-scraper-queue"
 
 # Batch size for crawling - reduced to prevent browser exhaustion
 # Railway Crawl4AI works better with smaller concurrent batches
-BATCH_SIZE = 8
+BATCH_SIZE = 2
 
 # Crawl4AI timeout per URL (milliseconds for Crawl4AI config)
 CRAWL_TIMEOUT_MS = 30000  # 30 seconds per URL
@@ -93,7 +93,7 @@ HEALTH_PAUSE_SECONDS = 30
 
 # Retry configuration for failed URLs
 ENABLE_RETRY = True
-RETRY_BATCH_SIZE = 10  # Smaller batches for retries
+RETRY_BATCH_SIZE = 2  # Smaller batches for retries
 MAX_RETRY_ATTEMPTS = 1  # Number of retry rounds
 
 
