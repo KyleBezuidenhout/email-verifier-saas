@@ -68,7 +68,10 @@ WEBSITE_SCRAPER_QUEUE = "website-scraper-queue"
 # Railway Crawl4AI works better with smaller concurrent batches
 BATCH_SIZE = 8
 
-# Crawl4AI timeout per URL (seconds)
+# Crawl4AI timeout per URL (milliseconds for Crawl4AI config)
+CRAWL_TIMEOUT_MS = 30000  # 30 seconds per URL
+
+# Crawl4AI timeout per URL (seconds) - legacy
 CRAWL_TIMEOUT = 30
 
 # ============================================
@@ -402,8 +405,10 @@ def extract_contacts(markdown: str) -> Dict[str, str]:
 # CRAWL4AI INTEGRATION
 # ============================================
 
-# Streaming batch timeout (10 minutes for large batches)
-STREAMING_BATCH_TIMEOUT = 600
+# Streaming batch timeout - reduced to prevent long freezes
+# With page_timeout=30s and batch_size=8, worst case is ~4 minutes
+# Setting to 3 minutes to catch issues faster
+STREAMING_BATCH_TIMEOUT = 180
 
 
 # ============================================
@@ -611,7 +616,8 @@ async def crawl_batch_streaming(
         "crawler_config": {
             "cache_mode": "BYPASS",
             "screenshot": False,     # Don't capture screenshots
-            "verbose": False
+            "verbose": False,
+            "page_timeout": CRAWL_TIMEOUT_MS  # 30 seconds per URL - prevents single URL from blocking batch
         }
     }
     

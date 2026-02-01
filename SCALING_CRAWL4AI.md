@@ -4,16 +4,16 @@
 
 ```
 Redis Queue ──▶ Worker ──▶ Crawl4AI Service ──▶ Websites
-                           (20 concurrent)
+                           (8 concurrent)
 ```
 
-**Current throughput:** ~200-400 URLs/minute with single instance
+**Current throughput:** ~100-200 URLs/minute with single instance
 
 ---
 
 ## Why Scale Horizontally?
 
-The bottleneck is **browser context limits** in Crawl4AI. Each instance can only handle ~20 concurrent browser tabs reliably. To process more URLs simultaneously, we need multiple Crawl4AI instances.
+The bottleneck is **browser context limits** in Crawl4AI. Each instance can only handle ~8 concurrent browser tabs reliably without overheating. To process more URLs simultaneously, we need multiple Crawl4AI instances.
 
 **Target:** 2x or 3x throughput by running parallel Crawl4AI services.
 
@@ -26,12 +26,12 @@ The cleanest approach is to pair each Crawl4AI instance with its own worker:
 ```
                          ┌──────────────┐     ┌──────────────┐
                     ┌───▶│   Worker 1   │────▶│  Crawl4AI 1  │
-┌──────────────┐    │    │              │     │  (20 conc.)  │
+┌──────────────┐    │    │              │     │  (8 conc.)   │
 │ Redis Queue  │────┤    └──────────────┘     └──────────────┘
 │              │    │
 │ (shared)     │    │    ┌──────────────┐     ┌──────────────┐
 └──────────────┘    └───▶│   Worker 2   │────▶│  Crawl4AI 2  │
-                         │              │     │  (20 conc.)  │
+                         │              │     │  (8 conc.)   │
                          └──────────────┘     └──────────────┘
 ```
 
@@ -54,8 +54,8 @@ The cleanest approach is to pair each Crawl4AI instance with its own worker:
 5. Verify environment variables are copied:
    ```
    PORT=11235
-   MAX_CONCURRENT_TASKS=20
-   MEMORY_THRESHOLD_PERCENT=75
+   MAX_CONCURRENT_TASKS=8
+   MEMORY_THRESHOLD_PERCENT=70
    CRAWL4AI_API_TOKEN=<your-token>
    ```
 6. Deploy the service
@@ -108,8 +108,8 @@ The cleanest approach is to pair each Crawl4AI instance with its own worker:
 | Variable | Value |
 |----------|-------|
 | `PORT` | `11235` |
-| `MAX_CONCURRENT_TASKS` | `20` |
-| `MEMORY_THRESHOLD_PERCENT` | `75` |
+| `MAX_CONCURRENT_TASKS` | `8` |
+| `MEMORY_THRESHOLD_PERCENT` | `70` |
 
 ---
 
@@ -117,9 +117,9 @@ The cleanest approach is to pair each Crawl4AI instance with its own worker:
 
 | Setup | Concurrent Crawls | Throughput |
 |-------|-------------------|------------|
-| 1 Worker + 1 Crawl4AI | 20 | ~200-400 URLs/min |
-| 2 Workers + 2 Crawl4AI | 40 | ~400-800 URLs/min |
-| 3 Workers + 3 Crawl4AI | 60 | ~600-1200 URLs/min |
+| 1 Worker + 1 Crawl4AI | 8 | ~100-200 URLs/min |
+| 2 Workers + 2 Crawl4AI | 16 | ~200-400 URLs/min |
+| 3 Workers + 3 Crawl4AI | 24 | ~300-600 URLs/min |
 
 ---
 
@@ -133,7 +133,7 @@ The cleanest approach is to pair each Crawl4AI instance with its own worker:
 
 4. **Scaling Further:** To add a third instance, repeat Steps 1-2 with `crawl4ai-3` and `website-scraper-worker-3`.
 
-5. **Cost:** Each Crawl4AI instance uses ~4-8GB RAM when active. Budget accordingly on Railway.
+5. **Cost:** Each Crawl4AI instance uses ~2-4GB RAM when running 8 concurrent. Budget accordingly on Railway.
 
 ---
 

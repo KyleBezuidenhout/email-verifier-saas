@@ -20,8 +20,8 @@ Set the following environment variables in Railway:
 
 ```
 PORT=8000
-MAX_CONCURRENT_TASKS=10
-MEMORY_THRESHOLD_PERCENT=75
+MAX_CONCURRENT_TASKS=8
+MEMORY_THRESHOLD_PERCENT=70
 ```
 
 ### Step 3: Configure Resources
@@ -120,9 +120,9 @@ Or add it to your worker Dockerfile/process.
 
 ### Common Issues
 
-1. **Out of Memory**: Increase Railway memory allocation or reduce `MAX_CONCURRENT_TASKS`
+1. **Out of Memory**: Increase Railway memory allocation or reduce `MAX_CONCURRENT_TASKS` (recommended: 8)
 
-2. **Timeouts**: The worker has a 30-second timeout per URL. Sites that take longer will be marked as errors.
+2. **Timeouts**: The worker has a 30-second timeout per URL (`page_timeout`). Sites that take longer will be marked as errors. Batch timeout is 3 minutes.
 
 3. **Service Disconnected**: Check Railway logs and ensure the service is running. The health endpoint should return `{"status": "ok"}`.
 
@@ -130,9 +130,9 @@ Or add it to your worker Dockerfile/process.
 
 ## Performance Tips
 
-1. **Batch Processing**: The worker processes URLs in batches of 100 for efficiency.
+1. **Batch Processing**: The worker processes URLs in batches of 8 for efficiency and to prevent browser pool exhaustion.
 
-2. **Rate Limiting**: Crawl4AI has built-in rate limiting. If you hit limits, reduce `MAX_CONCURRENT_TASKS`.
+2. **Rate Limiting**: Crawl4AI has built-in rate limiting. If browser pool gets exhausted, reduce `MAX_CONCURRENT_TASKS` to 8 or lower.
 
 3. **Caching**: Crawl4AI can cache results. For fresh data, the worker uses `BYPASS` cache mode.
 
