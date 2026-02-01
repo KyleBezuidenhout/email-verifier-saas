@@ -64,8 +64,9 @@ s3_client = boto3.client(
 # Queue name
 WEBSITE_SCRAPER_QUEUE = "website-scraper-queue"
 
-# Batch size for crawling - should match Crawl4AI MAX_CONCURRENT_TASKS
-BATCH_SIZE = 20
+# Batch size for crawling - reduced to prevent browser exhaustion
+# Railway Crawl4AI works better with smaller concurrent batches
+BATCH_SIZE = 8
 
 # Crawl4AI timeout per URL (seconds)
 CRAWL_TIMEOUT = 30
@@ -75,13 +76,13 @@ CRAWL_TIMEOUT = 30
 # ============================================
 
 # Cooldown between batches (seconds) - allows Crawl4AI browser pool to recover
-BATCH_COOLDOWN_SECONDS = 3
+BATCH_COOLDOWN_SECONDS = 5
 
 # Adaptive cooldown: if failure rate exceeds this threshold, double the cooldown
 ADAPTIVE_COOLDOWN_THRESHOLD = 0.4  # 40% failure rate triggers longer cooldown
 
 # Maximum cooldown (seconds) to prevent excessively long waits
-MAX_COOLDOWN_SECONDS = 15
+MAX_COOLDOWN_SECONDS = 30
 
 # Consecutive batch failure threshold - pause longer if multiple batches fail badly
 CONSECUTIVE_FAILURE_THRESHOLD = 3
@@ -405,6 +406,116 @@ def extract_contacts(markdown: str) -> Dict[str, str]:
 STREAMING_BATCH_TIMEOUT = 600
 
 
+# ============================================
+# CRAWL4AI MONITORING & RECOVERY
+# ============================================
+
+async def get_crawl4ai_health() -> dict:
+    """Get detailed health status from Crawl4AI monitor endpoint."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(f"{settings.CRAWL4AI_URL}/monitor/health")
+            if response.status_code == 200:
+                return response.json()
+    except Exception as e:
+        logger.warning(f"Health check failed: {e}")
+    return {"status": "unknown"}
+
+
+async def trigger_crawl4ai_cleanup() -> bool:
+    """Force cleanup of Crawl4AI resources via monitor endpoint."""
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(f"{settings.CRAWL4AI_URL}/monitor/actions/cleanup")
+            logger.info(f"🧹 Crawl4AI cleanup triggered: {response.status_code}")
+            return response.status_code == 200
+    except Exception as e:
+        logger.error(f"❌ Crawl4AI cleanup failed: {e}")
+    return False
+
+
+async def restart_crawl4ai_browser() -> bool:
+    """Restart the Crawl4AI browser pool via monitor endpoint."""
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                f"{settings.CRAWL4AI_URL}/monitor/actions/restart_browser",
+                json={"sig": "permanent"}
+            )
+            logger.info(f"🔄 Crawl4AI browser restart triggered: {response.status_code}")
+            return response.status_code == 200
+    except Exception as e:
+        logger.error(f"❌ Crawl4AI browser restart failed: {e}")
+    return False
+
+
+class FailureRateTracker:
+    """
+    Track rolling failure rate across batches for auto-recovery.
+    
+    When failure rate exceeds threshold, triggers cleanup or browser restart
+    to recover from Crawl4AI resource exhaustion.
+    """
+    
+    def __init__(self, window_size: int = 5):
+        self.window_size = window_size
+        self.batch_results = []  # List of (success_count, total_count) tuples
+        self.cleanup_triggered = False
+    
+    def add_batch(self, success: int, total: int):
+        """Record batch results for rolling average calculation."""
+        self.batch_results.append((success, total))
+        if len(self.batch_results) > self.window_size:
+            self.batch_results.pop(0)
+    
+    def get_failure_rate(self) -> float:
+        """Calculate rolling failure rate across recent batches."""
+        if not self.batch_results:
+            return 0.0
+        total_success = sum(s for s, _ in self.batch_results)
+        total_count = sum(t for _, t in self.batch_results)
+        return 1 - (total_success / total_count) if total_count > 0 else 0.0
+    
+    async def check_and_recover(self) -> bool:
+        """
+        Check failure rate and trigger recovery if needed.
+        
+        Recovery strategy:
+        1. First, try cleanup (lighter operation)
+        2. If still failing, restart browser pool (heavier but more effective)
+        
+        Returns True if recovery action was taken.
+        """
+        failure_rate = self.get_failure_rate()
+        
+        if failure_rate > 0.4:  # >40% failure rate triggers recovery
+            logger.warning(f"⚠️ High failure rate detected: {failure_rate:.1%}")
+            
+            if not self.cleanup_triggered:
+                # First attempt: cleanup
+                logger.info("🧹 Attempting Crawl4AI cleanup...")
+                success = await trigger_crawl4ai_cleanup()
+                self.cleanup_triggered = True
+                if success:
+                    await asyncio.sleep(5)  # Wait for cleanup to take effect
+                return True
+            else:
+                # Second attempt: full browser restart
+                logger.info("🔄 Cleanup didn't help, restarting browser pool...")
+                success = await restart_crawl4ai_browser()
+                self.cleanup_triggered = False  # Reset for next cycle
+                self.batch_results.clear()  # Clear history after restart
+                if success:
+                    await asyncio.sleep(10)  # Wait for browser restart
+                return True
+        
+        # Reset cleanup flag if failure rate is acceptable
+        if failure_rate < 0.2:
+            self.cleanup_triggered = False
+        
+        return False
+
+
 def prepare_urls_for_crawl(urls: List[str]) -> Tuple[List[str], int]:
     """
     Clean and prepare URLs for crawling.
@@ -488,14 +599,19 @@ async def crawl_batch_streaming(
     lookup = build_url_lookup(urls, indices)
     
     # Prepare request payload for Crawl4AI batch endpoint
+    # Using flat structure per Railway Crawl4AI Swagger API schema
     request_payload = {
         "urls": prepared_urls,
+        "browser_config": {
+            "text_mode": True,       # Skip images for speed
+            "light_mode": True,      # Reduce browser overhead
+            "headless": True,
+            "java_script_enabled": True
+        },
         "crawler_config": {
-            "type": "CrawlerRunConfig",
-            "params": {
-                "stream": True,
-                "cache_mode": "BYPASS"
-            }
+            "cache_mode": "BYPASS",
+            "screenshot": False,     # Don't capture screenshots
+            "verbose": False
         }
     }
     
@@ -855,6 +971,9 @@ async def process_job(job_id: str, website_col: str) -> bool:
         failed_urls_for_retry = []  # List of (url, index) tuples
         consecutive_bad_batches = 0
         
+        # Initialize failure rate tracker for auto-recovery
+        failure_tracker = FailureRateTracker(window_size=5)
+        
         # Process each batch using streaming
         for batch_num, (batch_urls, batch_indices) in enumerate(batches):
             # Check if cancelled
@@ -893,7 +1012,11 @@ async def process_job(job_id: str, website_col: str) -> bool:
                 # Calculate batch failure rate for adaptive cooldown
                 batch_processed = batch_stats.get('processed', 0)
                 batch_failed = batch_stats.get('failed', 0)
+                batch_success = batch_stats.get('with_content', 0) + batch_stats.get('empty_content', 0)
                 batch_failure_rate = (batch_failed / batch_processed) if batch_processed > 0 else 0
+                
+                # Track for auto-recovery
+                failure_tracker.add_batch(batch_success, batch_processed)
                 
                 # Collect failed URLs for retry
                 failed_urls_for_retry.extend(batch_failed_urls)
@@ -923,6 +1046,11 @@ async def process_job(job_id: str, website_col: str) -> bool:
             db.commit()
             
             logger.info(f"📊 Progress: {progress}% ({total_processed}/{total_unique}), Hit rate: {hit_rate:.1f}%")
+            
+            # === AUTO-RECOVERY CHECK ===
+            # Check if we need to trigger cleanup or browser restart based on rolling failure rate
+            if await failure_tracker.check_and_recover():
+                logger.info("🔧 Recovery action taken, continuing with next batch...")
             
             # === ADAPTIVE COOLDOWN LOGIC ===
             
@@ -1120,6 +1248,7 @@ def main():
     logger.info(f"📋 Listening to queue: {WEBSITE_SCRAPER_QUEUE}")
     logger.info(f"🌐 Crawl4AI URL: {settings.CRAWL4AI_URL or 'NOT CONFIGURED'}")
     logger.info(f"⚙️ Batch size: {BATCH_SIZE}, Cooldown: {BATCH_COOLDOWN_SECONDS}s, Retry: {ENABLE_RETRY}")
+    logger.info(f"🔧 Auto-recovery enabled: cleanup + browser restart on high failure rate")
     
     while True:
         try:
