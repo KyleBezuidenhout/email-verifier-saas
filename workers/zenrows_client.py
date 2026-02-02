@@ -416,14 +416,10 @@ class ZenRowsClient:
     
     async def __aenter__(self):
         """Async context manager entry."""
-<<<<<<< HEAD
         self.http_client = httpx.AsyncClient(
             timeout=60.0,
             limits=httpx.Limits(max_connections=25, max_keepalive_connections=10)
         )
-=======
-        self.http_client = httpx.AsyncClient(timeout=60.0)
->>>>>>> f8b232d (Fix ZenRows session_id to be 5-digit numeric value)
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -446,10 +442,6 @@ class ZenRowsClient:
         params = {
             "apikey": self.api_key,
             "url": url,
-<<<<<<< HEAD
-=======
-            "json_response": "true",
->>>>>>> f8b232d (Fix ZenRows session_id to be 5-digit numeric value)
         }
         
         # Add tier-specific parameters
@@ -463,19 +455,9 @@ class ZenRowsClient:
             response = await self.http_client.get(ZENROWS_API_URL, params=params)
             
             if response.status_code == 200:
-<<<<<<< HEAD
                 # Without json_response, ZenRows returns plain HTML
                 html = response.text
                 return response.status_code, html, {'html': html}
-=======
-                try:
-                    data = response.json()
-                    html = data.get('html', '')
-                    return response.status_code, html, data
-                except Exception:
-                    # Response wasn't JSON, treat as HTML
-                    return response.status_code, response.text, {'html': response.text}
->>>>>>> f8b232d (Fix ZenRows session_id to be 5-digit numeric value)
             else:
                 return response.status_code, None, {}
                 
