@@ -425,7 +425,8 @@ async def process_job(job_id: str, website_col: str) -> bool:
             # Create tasks for all URLs
             async def process_url(url: str, idx: int) -> Tuple[int, dict]:
                 """Process a single URL and return (index, result_dict)."""
-                result = await zenrows.scrape_with_fallback(url, session_id=job_id[:8])
+                # Direct scrape without fallback - see FALLBACK_LOGIC.md to re-enable
+                result = await zenrows.scrape_url(url, starting_tier=1, session_id=job_id[:8])
                 
                 contacts_dict = result.contacts.to_dict()
                 has_contacts = result.contacts.has_contacts()
