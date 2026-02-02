@@ -198,7 +198,7 @@ export interface LocalScraperHealthStatus {
   message: string;
 }
 
-// Website Contact Scraper Types (Crawl4AI for email/phone extraction)
+// Website Contact Scraper Types (ZenRows API for email/phone extraction)
 export interface WebsiteScraperJob {
   id: string;
   user_id: string;
@@ -208,6 +208,7 @@ export interface WebsiteScraperJob {
   completed_leads: number;
   progress_percentage: number;
   hit_rate_percentage: number;
+  credits_spent: number;
   input_file_path?: string;
   output_file_path?: string;
   created_at: string;
@@ -216,8 +217,7 @@ export interface WebsiteScraperJob {
 }
 
 export interface WebsiteScraperHealthStatus {
-  crawl4ai_api: 'connected' | 'disconnected';
-  api_url?: string;
+  zenrows_api: 'connected' | 'disconnected';
   message: string;
 }
 

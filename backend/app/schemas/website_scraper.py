@@ -1,5 +1,6 @@
 """
 Pydantic schemas for Website Contact Scraper feature.
+Uses ZenRows API for web scraping with tiered escalation.
 """
 
 from pydantic import BaseModel
@@ -18,6 +19,7 @@ class WebsiteScraperJobResponse(BaseModel):
     completed_leads: int = 0
     progress_percentage: int = 0
     hit_rate_percentage: float = 0.00
+    credits_spent: int = 0  # ZenRows API credits consumed
     input_file_path: Optional[str] = None
     output_file_path: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -42,9 +44,8 @@ class WebsiteScraperUploadResponse(BaseModel):
 
 
 class WebsiteScraperHealthResponse(BaseModel):
-    """Response for Crawl4AI health check"""
-    crawl4ai_api: str  # "connected" or "disconnected"
-    api_url: Optional[str] = None
+    """Response for ZenRows API health check"""
+    zenrows_api: str  # "connected" or "disconnected"
     message: str
 
 
@@ -56,4 +57,5 @@ class WebsiteScraperJobStatusResponse(BaseModel):
     completed_leads: int
     progress_percentage: int
     hit_rate_percentage: float
+    credits_spent: int = 0  # ZenRows API credits consumed
     error_message: Optional[str] = None

@@ -1,7 +1,7 @@
 """
 Website Contact Scraper API Endpoints
 
-Provides endpoints for website contact extraction using Crawl4AI service.
+Provides endpoints for website contact extraction using ZenRows API.
 This is completely separate from the Sales Nav, Enrichment, and Verification features.
 """
 
@@ -70,6 +70,7 @@ def job_to_response(job: WebsiteScraperJob) -> dict:
         "completed_leads": job.completed_leads or 0,
         "progress_percentage": job.progress_percentage or 0,
         "hit_rate_percentage": float(job.hit_rate_percentage or 0),
+        "credits_spent": job.credits_spent or 0,
         "input_file_path": job.input_file_path,
         "output_file_path": job.output_file_path,
         "created_at": job.created_at,
@@ -101,35 +102,47 @@ def auto_detect_website_column(actual_columns: list, normalized_headers: list) -
 
 @router.get("/health", response_model=WebsiteScraperHealthResponse)
 async def check_health():
-    """Check if Crawl4AI service is reachable"""
-    if not settings.CRAWL4AI_URL:
+    """Check if ZenRows API is accessible and API key is valid"""
+    if not settings.ZENROWS_API_KEY:
         return WebsiteScraperHealthResponse(
-            crawl4ai_api="disconnected",
-            api_url=None,
-            message="CRAWL4AI_URL not configured. Please set the environment variable."
+            zenrows_api="disconnected",
+            message="ZENROWS_API_KEY not configured. Please set the environment variable."
         )
     
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{settings.CRAWL4AI_URL}/health")
+            # Make a minimal request to test auth
+            params = {
+                "apikey": settings.ZENROWS_API_KEY,
+                "url": "https://httpbin.org/ip",
+            }
+            response = await client.get("https://api.zenrows.com/v1/", params=params)
+            
             if response.status_code == 200:
                 return WebsiteScraperHealthResponse(
-                    crawl4ai_api="connected",
-                    api_url=settings.CRAWL4AI_URL,
-                    message="Crawl4AI service is running"
+                    zenrows_api="connected",
+                    message="ZenRows API connected"
+                )
+            elif response.status_code == 401:
+                return WebsiteScraperHealthResponse(
+                    zenrows_api="disconnected",
+                    message="Invalid ZenRows API key"
+                )
+            elif response.status_code == 402:
+                return WebsiteScraperHealthResponse(
+                    zenrows_api="disconnected",
+                    message="ZenRows account has insufficient credits"
                 )
             else:
                 return WebsiteScraperHealthResponse(
-                    crawl4ai_api="disconnected",
-                    api_url=settings.CRAWL4AI_URL,
-                    message=f"Crawl4AI service returned status {response.status_code}"
+                    zenrows_api="disconnected",
+                    message=f"ZenRows API returned status {response.status_code}"
                 )
     except Exception as e:
-        logger.error(f"Failed to connect to Crawl4AI: {str(e)}")
+        logger.error(f"Failed to connect to ZenRows: {str(e)}")
         return WebsiteScraperHealthResponse(
-            crawl4ai_api="disconnected",
-            api_url=settings.CRAWL4AI_URL,
-            message=f"Could not connect to Crawl4AI service: {str(e)}"
+            zenrows_api="disconnected",
+            message=f"Could not connect to ZenRows API: {str(e)}"
         )
 
 
@@ -405,6 +418,7 @@ async def get_job_status(
         completed_leads=job.completed_leads or 0,
         progress_percentage=job.progress_percentage or 0,
         hit_rate_percentage=float(job.hit_rate_percentage or 0),
+        credits_spent=job.credits_spent or 0,
         error_message=job.error_message,
     )
 

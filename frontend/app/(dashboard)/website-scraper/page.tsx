@@ -39,13 +39,13 @@ export default function WebsiteScraperPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewJobId, setPreviewJobId] = useState<string | null>(null);
 
-  // Check Crawl4AI health
+  // Check ZenRows health
   const checkHealth = useCallback(async () => {
     try {
       const status = await apiClient.getWebsiteScraperHealth();
       setHealthStatus(status);
     } catch (err) {
-      setHealthStatus({ crawl4ai_api: "disconnected", message: "Could not check API status" });
+      setHealthStatus({ zenrows_api: "disconnected", message: "Could not check API status" });
     }
   }, []);
 
@@ -320,27 +320,27 @@ export default function WebsiteScraperPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-dashboard-text">Website Contact Scraper</h1>
         <p className="mt-2 text-dashboard-text-muted">
-          Extract emails and phone numbers from websites using Crawl4AI
+          Extract emails and phone numbers from websites using ZenRows
         </p>
       </div>
 
       {/* API Health Status */}
       <div className={`mb-6 glass-card p-4 ${
-        healthStatus?.crawl4ai_api === "connected" 
+        healthStatus?.zenrows_api === "connected" 
           ? "bg-green-500/10 border-green-500/30" 
           : "bg-red-500/10 border-red-500/30"
       }`}>
         <div className="flex items-center gap-3">
           <div className={`w-3 h-3 rounded-full ${
-            healthStatus?.crawl4ai_api === "connected" ? "bg-green-500" : "bg-red-500"
+            healthStatus?.zenrows_api === "connected" ? "bg-green-500" : "bg-red-500"
           }`}></div>
           <div>
             <p className={`text-sm font-medium ${
-              healthStatus?.crawl4ai_api === "connected" ? "text-green-400" : "text-red-400"
+              healthStatus?.zenrows_api === "connected" ? "text-green-400" : "text-red-400"
             }`}>
-              {healthStatus?.crawl4ai_api === "connected" 
-                ? "Crawl4AI Service Connected" 
-                : "Crawl4AI Service Disconnected"}
+              {healthStatus?.zenrows_api === "connected" 
+                ? "ZenRows API Connected" 
+                : "ZenRows API Disconnected"}
             </p>
             <p className="text-xs text-dashboard-text-muted">{healthStatus?.message}</p>
           </div>
@@ -763,7 +763,7 @@ export default function WebsiteScraperPage() {
           {[
             {
               q: "What is the Website Contact Scraper?",
-              a: "The Website Contact Scraper uses Crawl4AI to visit websites and extract contact information (emails and phone numbers) from the page content. It's useful for lead enrichment when you have a list of company websites.",
+              a: "The Website Contact Scraper uses ZenRows to visit websites and extract contact information (emails and phone numbers) from the page content. It uses intelligent tiered scraping to handle difficult sites while minimizing costs.",
             },
             {
               q: "What format should my CSV be in?",
@@ -771,7 +771,7 @@ export default function WebsiteScraperPage() {
             },
             {
               q: "What data is extracted?",
-              a: "The scraper extracts up to 2 email addresses and 2 phone numbers per website. It prioritizes mailto: and tel: links over plain text, filters out generic emails like noreply@ or webmaster@, and automatically deduplicates websites to prevent duplicate contacts.",
+              a: "The scraper extracts up to 2 email addresses and 2 phone numbers per website. It prioritizes mailto: and tel: links, filters out generic emails like noreply@ or webmaster@, and automatically tries /contact pages if the homepage has no contacts.",
             },
             {
               q: "What does 'Hit Rate' mean?",
@@ -779,7 +779,7 @@ export default function WebsiteScraperPage() {
             },
             {
               q: "What are the limits?",
-              a: "Maximum file size is 250MB with up to 50,000 rows. Processing time depends on the number of websites and their response times.",
+              a: "Maximum file size is 250MB with up to 50,000 rows. Processing is highly parallelized for fast turnaround times.",
             },
           ].map((faq, idx) => (
             <div key={idx} className="border-b border-dashboard-border last:border-0">

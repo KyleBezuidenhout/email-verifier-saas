@@ -1,4 +1,0 @@
-crawl4ai[all]
-fastapi
-uvicorn[standard]
-

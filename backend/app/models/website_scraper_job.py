@@ -2,7 +2,7 @@
 Website Scraper Job Model
 
 Stores website contact scraper jobs - for extracting emails and phones from websites.
-Uses Crawl4AI service on Railway for web crawling.
+Uses ZenRows API for web scraping with tiered escalation.
 """
 
 from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Numeric
@@ -16,7 +16,7 @@ from app.db.base import Base
 class WebsiteScraperJob(Base):
     """
     Website Contact Scraper Job - for extracting emails and phones from websites.
-    Uses Crawl4AI service on Railway for web crawling.
+    Uses ZenRows API with tiered scraping (basic → JS render → premium proxy → residential).
     """
     __tablename__ = "website_scraper_jobs"
 
@@ -34,6 +34,9 @@ class WebsiteScraperJob(Base):
     completed_leads = Column(Integer, default=0)
     progress_percentage = Column(Integer, default=0)
     hit_rate_percentage = Column(Numeric(5, 2), default=0.00)  # % of sites with contacts found
+    
+    # Cost tracking (ZenRows credits)
+    credits_spent = Column(Integer, default=0)  # Total ZenRows API credits consumed
     
     # File storage (R2 paths)
     input_file_path = Column(Text, nullable=True)
