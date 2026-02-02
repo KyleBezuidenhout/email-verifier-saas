@@ -658,6 +658,7 @@ async def check_zenrows_health(api_key: str) -> Tuple[bool, str]:
             params = {
                 "apikey": api_key,
                 "url": "https://httpbin.org/ip",
+                "js_render": "true",
             }
             response = await client.get(ZENROWS_API_URL, params=params)
             
