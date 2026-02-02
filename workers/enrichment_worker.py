@@ -201,6 +201,20 @@ def is_linkedin_url(value: str) -> bool:
     return 'linkedin' in value.lower()
 
 
+def is_facebook_url(value: str) -> bool:
+    """Check if website value contains 'facebook' (case-insensitive)."""
+    if not value:
+        return False
+    return 'facebook' in value.lower()
+
+
+def is_social_media_url(value: str) -> bool:
+    """Check if website value is a social media URL that should be skipped."""
+    if not value:
+        return False
+    return is_linkedin_url(value) or is_facebook_url(value)
+
+
 def validate_and_clean_row(first_name: str, last_name: str, website: str) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
     """
     Validate and clean a row's critical fields.
@@ -240,9 +254,11 @@ def validate_and_clean_row(first_name: str, last_name: str, website: str) -> Tup
     if is_only_special_chars(cleaned_website):
         return None, None, None, "website_only_special_chars"
     
-    # Step 6: Check if website is a LinkedIn URL (skip these)
+    # Step 6: Check if website is a social media URL (skip these)
     if is_linkedin_url(cleaned_website):
         return None, None, None, "website_is_linkedin"
+    if is_facebook_url(cleaned_website):
+        return None, None, None, "website_is_facebook"
     
     return cleaned_first, cleaned_last, cleaned_website, ""
 
@@ -405,6 +421,7 @@ def parse_csv_from_r2(
         'last_name_only_special_chars': 0,
         'website_only_special_chars': 0,
         'website_is_linkedin': 0,
+        'website_is_facebook': 0,
     }
     
     # Remap rows to standard format with cleaning

@@ -157,6 +157,7 @@ class CrawlStats:
     urls_failed: int = 0            # Crawl failed (timeout, error, blocked)
     urls_malformed: int = 0         # Invalid URL format in input
     urls_skipped_no_website: int = 0  # Row had no website value
+    urls_skipped_social_media: int = 0  # LinkedIn/Facebook URLs skipped
     urls_duplicate: int = 0         # Duplicate domains skipped
     emails_extracted: int = 0       # Total emails found
     phones_extracted: int = 0       # Total phones found
@@ -175,6 +176,7 @@ class CrawlStats:
         logger.info("=" * 50)
         logger.info(f"Total URLs in CSV: {self.total_urls}")
         logger.info(f"  - Skipped (no website): {self.urls_skipped_no_website}")
+        logger.info(f"  - Skipped (social media): {self.urls_skipped_social_media}")
         logger.info(f"  - Skipped (duplicate domain): {self.urls_duplicate}")
         logger.info(f"  - Malformed URLs: {self.urls_malformed}")
         logger.info(f"Crawl Results ({total_crawled} URLs crawled):")
@@ -217,6 +219,27 @@ def normalize_url(url: str) -> str:
     url = url.replace('http://', '').replace('https://', '')
     url = url.rstrip('/')
     return url
+
+
+def is_linkedin_url(url: str) -> bool:
+    """Check if URL is a LinkedIn URL (case-insensitive)."""
+    if not url:
+        return False
+    return 'linkedin' in url.lower()
+
+
+def is_facebook_url(url: str) -> bool:
+    """Check if URL is a Facebook URL (case-insensitive)."""
+    if not url:
+        return False
+    return 'facebook' in url.lower()
+
+
+def is_social_media_url(url: str) -> bool:
+    """Check if URL is a social media URL that should be skipped for website extraction."""
+    if not url:
+        return False
+    return is_linkedin_url(url) or is_facebook_url(url)
 
 
 def extract_domain(url: str) -> str:
@@ -278,17 +301,19 @@ def match_result_to_index(result_url: str, lookup: Dict[str, Dict[str, int]]) ->
     return lookup['domain'].get(domain)
 
 
-def deduplicate_urls_by_domain(rows: List[Dict], website_col: str) -> Tuple[List[str], List[int], Dict[int, int]]:
+def deduplicate_urls_by_domain(rows: List[Dict], website_col: str) -> Tuple[List[str], List[int], Dict[int, int], List[int]]:
     """
-    Remove duplicate domains from URL list within a job.
+    Remove duplicate domains and social media URLs from URL list within a job.
     
     Returns:
         - unique_urls: List of unique URLs to crawl
         - unique_indices: List of row indices for unique URLs
         - duplicate_map: Dict mapping duplicate row index -> first occurrence index
+        - social_media_indices: List of row indices that were skipped due to social media URLs
     """
     domain_to_first_index = {}
     duplicate_map = {}  # Maps duplicate row index -> first occurrence row index
+    social_media_indices = []  # Rows skipped due to LinkedIn/Facebook URLs
     unique_urls = []
     unique_indices = []
     
@@ -298,6 +323,12 @@ def deduplicate_urls_by_domain(rows: List[Dict], website_col: str) -> Tuple[List
         url = url.replace('\n', '').replace('\r', '').replace('\t', ' ').strip()
         
         if not url:
+            continue
+        
+        # Skip social media URLs (LinkedIn, Facebook)
+        if is_social_media_url(url):
+            social_media_indices.append(i)
+            logger.debug(f"Skipping social media URL at row {i}: '{url[:50]}...'")
             continue
         
         domain = extract_domain(url)
@@ -312,10 +343,12 @@ def deduplicate_urls_by_domain(rows: List[Dict], website_col: str) -> Tuple[List
             unique_urls.append(url)
             unique_indices.append(i)
     
+    if social_media_indices:
+        logger.info(f"Skipped {len(social_media_indices)} social media URLs (LinkedIn/Facebook)")
     if duplicate_map:
         logger.info(f"Deduplicated {len(duplicate_map)} duplicate domains, {len(unique_urls)} unique URLs to crawl")
     
-    return unique_urls, unique_indices, duplicate_map
+    return unique_urls, unique_indices, duplicate_map, social_media_indices
 
 
 def extract_contacts(markdown: str) -> Dict[str, str]:
@@ -893,8 +926,8 @@ async def process_job(job_id: str, website_col: str) -> bool:
             if not website:
                 output_rows[i]['extraction_status'] = 'no_website'
         
-        # Deduplicate URLs by domain to prevent duplicate contacts
-        unique_urls, unique_indices, duplicate_map = deduplicate_urls_by_domain(rows, website_col)
+        # Deduplicate URLs by domain and filter social media URLs
+        unique_urls, unique_indices, duplicate_map, social_media_indices = deduplicate_urls_by_domain(rows, website_col)
         
         if not unique_urls:
             logger.error(f"No valid URLs found in CSV for job {job_id}")
@@ -907,7 +940,11 @@ async def process_job(job_id: str, website_col: str) -> bool:
         for dup_idx in duplicate_map:
             output_rows[dup_idx]['extraction_status'] = 'duplicate'
         
-        logger.info(f"📊 Found {len(unique_urls)} unique domains to crawl ({len(duplicate_map)} duplicates)")
+        # Mark social media rows as skipped
+        for sm_idx in social_media_indices:
+            output_rows[sm_idx]['extraction_status'] = 'skipped_social_media'
+        
+        logger.info(f"📊 Found {len(unique_urls)} unique domains to crawl ({len(duplicate_map)} duplicates, {len(social_media_indices)} social media skipped)")
         
         # Split unique URLs into batches
         batches = []
@@ -920,6 +957,7 @@ async def process_job(job_id: str, website_col: str) -> bool:
         crawl_stats = CrawlStats(
             total_urls=len(rows),
             urls_skipped_no_website=sum(1 for row in rows if not row.get(website_col, '').strip()),
+            urls_skipped_social_media=len(social_media_indices),
             urls_duplicate=len(duplicate_map)
         )
         
