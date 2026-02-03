@@ -5,7 +5,7 @@ Provides endpoints for website contact extraction using ZenRows API.
 This is completely separate from the Sales Nav, Enrichment, and Verification features.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -150,8 +150,8 @@ async def check_health():
 @router.post("/upload", response_model=WebsiteScraperUploadResponse)
 async def upload_csv(
     file: UploadFile = File(...),
-    column_website: Optional[str] = None,
-    job_name: Optional[str] = None,
+    column_website: Optional[str] = Form(None),
+    job_name: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
