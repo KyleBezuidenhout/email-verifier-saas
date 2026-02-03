@@ -5,20 +5,15 @@ Website Contact Scraper Worker
 Background worker that processes website scraper jobs:
 - Listens to Redis queue "website-scraper-queue" for new jobs
 - Downloads CSV from R2
-- Scrapes websites using ZenRows API with tiered escalation
-- Extracts emails and phone numbers
+- Scrapes websites using ZenRows API with mode=auto (Adaptive Stealth Mode)
+- Extracts emails and phone numbers using Python regex extraction
 - Generates output CSV with contact data
 
-ZenRows Tier Strategy:
-- Tier 1: Basic (1 credit) - No JS, no proxy
-- Tier 2: JS Render (5 credits) - JavaScript rendering
-- Tier 3: Premium Proxy (10 credits) - JS + residential proxy  
-- Tier 4: Residential US (25 credits) - JS + proxy + US geo
-
-Features:
-- Domain intelligence caching (remembers which tier works)
-- Contact page fallback (/contact, /about if homepage has 0 contacts)
-- Automatic escalation on blocked/JS-required responses
+ZenRows Strategy:
+- Single API call with mode=auto (Adaptive Stealth Mode)
+- ZenRows automatically selects the best scraping approach
+- No manual tier escalation needed
+- 40 concurrent requests
 """
 
 import io
@@ -48,7 +43,7 @@ from app.core.config import settings
 from app.models.website_scraper_job import WebsiteScraperJob
 
 # Import ZenRows client
-from zenrows_client import ZenRowsClient, ExtractedContacts, check_zenrows_health
+from zenrows_client import ZenRowsClient, ExtractedContacts, check_zenrows_health, MAX_CONCURRENT_REQUESTS
 
 # Configure logging - ensure unbuffered output for Railway
 logging.basicConfig(
@@ -81,6 +76,9 @@ s3_client = boto3.client(
 # Queue name
 WEBSITE_SCRAPER_QUEUE = "website-scraper-queue"
 
+# Concurrency limit (must match zenrows_client.py)
+CONCURRENCY_LIMIT = 40
+
 
 # ============================================
 # PERFORMANCE TRACKING
@@ -92,27 +90,18 @@ class CrawlStats:
     total_urls: int = 0
     urls_scraped: int = 0           # Successfully scraped (got HTML)
     urls_with_contacts: int = 0     # Found at least one email or phone
-    urls_failed: int = 0            # Scraping failed (all tiers exhausted)
+    urls_failed: int = 0            # Scraping failed
     urls_skipped_no_website: int = 0
     urls_skipped_social_media: int = 0
     urls_duplicate: int = 0
     emails_extracted: int = 0
     phones_extracted: int = 0
-    total_credits_spent: int = 0
-    fallbacks_tried: int = 0
-    fallbacks_successful: int = 0
-    
-    # Tier usage tracking
-    tier_1_success: int = 0
-    tier_2_success: int = 0
-    tier_3_success: int = 0
-    tier_4_success: int = 0
+    api_requests_made: int = 0      # Total ZenRows API calls made
     
     def log_summary(self, job_id: str):
         """Log comprehensive performance summary."""
         total_attempted = self.urls_scraped + self.urls_failed
         contact_rate = (self.urls_with_contacts / total_attempted * 100) if total_attempted > 0 else 0
-        avg_credits = (self.total_credits_spent / total_attempted) if total_attempted > 0 else 0
         
         logger.info("=" * 60)
         logger.info(f"JOB PERFORMANCE SUMMARY - {job_id}")
@@ -123,22 +112,16 @@ class CrawlStats:
         logger.info(f"  - Skipped (duplicate): {self.urls_duplicate}")
         logger.info(f"Scraping Results ({total_attempted} URLs attempted):")
         logger.info(f"  - Successful scrapes: {self.urls_scraped}")
-        logger.info(f"  - Failed (all tiers): {self.urls_failed}")
+        logger.info(f"  - Failed: {self.urls_failed}")
         logger.info(f"Contact Extraction:")
         logger.info(f"  - URLs with contacts: {self.urls_with_contacts} ({contact_rate:.1f}% hit rate)")
         logger.info(f"  - Emails found: {self.emails_extracted}")
         logger.info(f"  - Phones found: {self.phones_extracted}")
-        logger.info(f"Tier Usage:")
-        logger.info(f"  - Tier 1 (Basic): {self.tier_1_success}")
-        logger.info(f"  - Tier 2 (JS): {self.tier_2_success}")
-        logger.info(f"  - Tier 3 (Premium): {self.tier_3_success}")
-        logger.info(f"  - Tier 4 (Residential): {self.tier_4_success}")
-        logger.info(f"Contact Fallback:")
-        logger.info(f"  - Fallbacks tried: {self.fallbacks_tried}")
-        logger.info(f"  - Fallbacks successful: {self.fallbacks_successful}")
         logger.info(f"Cost:")
-        logger.info(f"  - Total credits spent: {self.total_credits_spent}")
-        logger.info(f"  - Avg credits/URL: {avg_credits:.2f}")
+        logger.info(f"  - ZenRows API requests: {self.api_requests_made}")
+        logger.info(f"  - (Check ZenRows dashboard for exact credit usage)")
+        logger.info(f"Scraping Mode: ZenRows Adaptive Stealth (mode=auto)")
+        logger.info(f"Concurrency: {CONCURRENCY_LIMIT} concurrent requests")
         logger.info("=" * 60)
 
 
@@ -276,9 +259,10 @@ async def process_job(job_id: str, website_col: str) -> bool:
     Process a single website scraper job:
     1. Fetch job from database
     2. Download CSV from R2
-    3. Scrape websites with ZenRows (tiered escalation + fallback)
-    4. Generate output CSV
-    5. Upload to R2 and update job
+    3. Scrape websites with ZenRows mode=auto (Adaptive Stealth Mode)
+    4. Extract contacts using Python regex
+    5. Generate output CSV
+    6. Upload to R2 and update job
     """
     db = SessionLocal()
     
@@ -309,6 +293,8 @@ async def process_job(job_id: str, website_col: str) -> bool:
             return False
         
         logger.info(f"🔄 Processing website scraper job {job_id}")
+        logger.info(f"⚙️ Using ZenRows mode=auto (Adaptive Stealth Mode)")
+        logger.info(f"⚙️ Concurrency limit: {CONCURRENCY_LIMIT}")
         
         # Update status to processing
         job.status = "processing"
@@ -409,26 +395,20 @@ async def process_job(job_id: str, website_col: str) -> bool:
             urls_duplicate=len(duplicate_map),
         )
         
-        # Create ZenRows client
+        # Create ZenRows client with 40 concurrent requests
         async with ZenRowsClient(
             api_key=settings.ZENROWS_API_KEY,
-            redis_client=redis.from_url(settings.REDIS_URL),
-            concurrency_limit=settings.ZENROWS_CONCURRENCY,
-            cache_ttl=settings.ZENROWS_DOMAIN_CACHE_TTL,
+            concurrency_limit=CONCURRENCY_LIMIT,
         ) as zenrows:
             
             # Process URLs in parallel batches
             total_processed = 0
             total_with_contacts = 0
-            total_credits = 0
             
             # Create tasks for all URLs
             async def process_url(url: str, idx: int) -> Tuple[int, dict]:
                 """Process a single URL and return (index, result_dict)."""
-                # Direct scrape without fallback - see FALLBACK_LOGIC.md to re-enable
-                # ZenRows requires session_id to be a 5-digit numeric value
-                numeric_session_id = str(int(job_id[:8], 16) % 90000 + 10000)
-                result = await zenrows.scrape_url(url, starting_tier=1, session_id=numeric_session_id)
+                result = await zenrows.scrape_url(url)
                 
                 contacts_dict = result.contacts.to_dict()
                 has_contacts = result.contacts.has_contacts()
@@ -437,10 +417,8 @@ async def process_job(job_id: str, website_col: str) -> bool:
                     'success': result.success,
                     'contacts': contacts_dict,
                     'has_contacts': has_contacts,
-                    'tier_used': result.tier_used,
-                    'credits': result.credits_spent,
-                    'fallback_used': result.fallback_used,
                     'classification': result.classification,
+                    'error': result.error,
                 }
             
             # Process in chunks for better progress reporting
@@ -466,7 +444,7 @@ async def process_job(job_id: str, website_col: str) -> bool:
                     for url, idx in zip(chunk_urls, chunk_indices)
                 ]
                 
-                # Execute all tasks concurrently
+                # Execute all tasks concurrently (limited by semaphore in ZenRowsClient)
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 
                 # Process results
@@ -478,28 +456,10 @@ async def process_job(job_id: str, website_col: str) -> bool:
                     
                     idx, data = result
                     total_processed += 1
-                    total_credits += data['credits']
-                    stats.total_credits_spent += data['credits']
+                    stats.api_requests_made += 1  # Count each ZenRows API call
                     
                     if data['success']:
                         stats.urls_scraped += 1
-                        
-                        # Track tier usage
-                        tier = data['tier_used']
-                        if tier == 1:
-                            stats.tier_1_success += 1
-                        elif tier == 2:
-                            stats.tier_2_success += 1
-                        elif tier == 3:
-                            stats.tier_3_success += 1
-                        elif tier == 4:
-                            stats.tier_4_success += 1
-                        
-                        # Track fallback usage
-                        if data['fallback_used']:
-                            stats.fallbacks_tried += 1
-                            if data['has_contacts']:
-                                stats.fallbacks_successful += 1
                         
                         # Update output row
                         contacts = data['contacts']
@@ -527,6 +487,8 @@ async def process_job(job_id: str, website_col: str) -> bool:
                     else:
                         stats.urls_failed += 1
                         output_rows[idx]['extraction_status'] = 'error'
+                        if data.get('error'):
+                            logger.debug(f"URL failed: {data['error']}")
                 
                 # Update progress
                 progress = int((total_processed / len(unique_urls)) * 100)
@@ -535,11 +497,11 @@ async def process_job(job_id: str, website_col: str) -> bool:
                 job.completed_leads = total_processed
                 job.progress_percentage = progress
                 job.hit_rate_percentage = Decimal(str(round(hit_rate, 2)))
-                job.credits_spent = total_credits
+                job.credits_spent = stats.api_requests_made  # Store API request count
                 db.commit()
                 
                 logger.info(f"📊 Progress: {progress}% ({total_processed}/{len(unique_urls)}), "
-                           f"Hit rate: {hit_rate:.1f}%, Credits: {total_credits}")
+                           f"Hit rate: {hit_rate:.1f}%, API requests: {stats.api_requests_made}")
         
         # Copy contacts from first occurrence to duplicate rows
         if duplicate_map:
@@ -589,7 +551,7 @@ async def process_job(job_id: str, website_col: str) -> bool:
         job.progress_percentage = 100
         hit_rate = (total_with_contacts / total_processed * 100) if total_processed > 0 else 0
         job.hit_rate_percentage = Decimal(str(round(hit_rate, 2)))
-        job.credits_spent = total_credits
+        job.credits_spent = stats.api_requests_made  # Store total API requests made
         job.completed_at = datetime.utcnow()
         db.commit()
         
@@ -598,7 +560,7 @@ async def process_job(job_id: str, website_col: str) -> bool:
         
         logger.info(f"✅ Job {job_id} completed! Processed {total_processed} URLs, "
                    f"{total_with_contacts} with contacts ({hit_rate:.1f}% hit rate), "
-                   f"{total_credits} credits spent")
+                   f"{stats.api_requests_made} API requests")
         
         return True
         
@@ -634,8 +596,8 @@ def main():
     """Main worker loop - polls queue and processes jobs."""
     logger.info(f"🚀 Website Scraper worker starting...")
     logger.info(f"📋 Listening to queue: {WEBSITE_SCRAPER_QUEUE}")
-    logger.info(f"⚙️ ZenRows concurrency limit: {settings.ZENROWS_CONCURRENCY}")
-    logger.info(f"⚙️ Domain cache TTL: {settings.ZENROWS_DOMAIN_CACHE_TTL}s")
+    logger.info(f"⚙️ Scraping mode: ZenRows Adaptive Stealth (mode=auto)")
+    logger.info(f"⚙️ Concurrency limit: {CONCURRENCY_LIMIT}")
     
     # Check ZenRows health on startup
     is_healthy = asyncio.run(check_health_and_log())

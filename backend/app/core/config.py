@@ -55,8 +55,7 @@ class Settings(BaseSettings):
     
     # ZenRows API (Website contact scraping)
     ZENROWS_API_KEY: str = ""  # ZenRows API key
-    ZENROWS_CONCURRENCY: int = 50  # Max concurrent requests (Startup=50, Business=100)
-    ZENROWS_DOMAIN_CACHE_TTL: int = 604800  # 7 days in seconds
+    ZENROWS_CONCURRENCY: int = 40  # Max concurrent requests (using mode=auto)
     
     # Cloudflare R2 Public URL for file access
     CLOUDFLARE_R2_PUBLIC_URL: str = ""  # Public URL for accessing R2 files
