@@ -26,6 +26,7 @@ export default function VerifyEmailsPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [jobName, setJobName] = useState("");
   const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
   const [isMappingValid, setIsMappingValid] = useState(false);
   
@@ -108,12 +109,14 @@ export default function VerifyEmailsPage() {
         column_email: columnMapping.email,
         column_first_name: columnMapping.first_name,
         column_last_name: columnMapping.last_name,
+        job_name: jobName.trim() || undefined,
       });
       
       // Reset upload state
       setSelectedFile(null);
       setColumnMapping(null);
       setIsMappingValid(false);
+      setJobName("");
       
       // Refresh jobs list
       await loadJobs();
@@ -235,12 +238,30 @@ export default function VerifyEmailsPage() {
 
             <FilePreview file={selectedFile} onMappingChange={handleMappingChange} mode="verification" />
 
+            {/* Job Name Input - Optional */}
+            <div className="border-t border-dashboard-border pt-6">
+              <h3 className="text-lg font-medium text-dashboard-text mb-4">
+                Job Name (Optional)
+              </h3>
+              <input
+                type="text"
+                value={jobName}
+                onChange={(e) => setJobName(e.target.value)}
+                placeholder="e.g., Email List Verification Feb 2026"
+                className="apple-input w-full"
+              />
+              <p className="mt-2 text-xs text-dashboard-text-muted">
+                Give your job a descriptive name to easily identify it later
+              </p>
+            </div>
+
             <div className="flex justify-end space-x-4 pt-6 border-t border-dashboard-border">
               <button
                 onClick={() => {
                   setSelectedFile(null);
                   setColumnMapping(null);
                   setIsMappingValid(false);
+                  setJobName("");
                   setUploadError("");
                 }}
                 className="btn-secondary"

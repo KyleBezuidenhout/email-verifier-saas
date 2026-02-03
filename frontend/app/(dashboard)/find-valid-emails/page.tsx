@@ -28,6 +28,7 @@ export default function FindValidEmailsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [companySize, setCompanySize] = useState("");
+  const [jobName, setJobName] = useState("");
   const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
   const [isMappingValid, setIsMappingValid] = useState(false);
   const [showSalesNavModal, setShowSalesNavModal] = useState(false);
@@ -127,6 +128,7 @@ export default function FindValidEmailsPage() {
         column_last_name: columnMapping.last_name,
         column_website: columnMapping.website,
         source: source === "Sales Nav" ? "Sales Nav" : undefined,
+        job_name: jobName.trim() || undefined,
       });
       
       // Reset upload state
@@ -134,6 +136,7 @@ export default function FindValidEmailsPage() {
       setColumnMapping(null);
       setIsMappingValid(false);
       setCompanySize("");
+      setJobName("");
       
       // Refresh jobs list
       await loadJobs();
@@ -254,6 +257,23 @@ export default function FindValidEmailsPage() {
 
             <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
 
+            {/* Job Name Input - Optional */}
+            <div className="border-t border-dashboard-border pt-6">
+              <h3 className="text-lg font-medium text-dashboard-text mb-4">
+                Job Name (Optional)
+              </h3>
+              <input
+                type="text"
+                value={jobName}
+                onChange={(e) => setJobName(e.target.value)}
+                placeholder="e.g., Q4 Tech Leads, Marketing Campaign Jan 2026"
+                className="apple-input w-full"
+              />
+              <p className="mt-2 text-xs text-dashboard-text-muted">
+                Give your job a descriptive name to easily identify it later
+              </p>
+            </div>
+
             {/* Company Size Selection - Always Required */}
             <div className="border-t border-dashboard-border pt-6">
               <h3 className="text-lg font-medium text-dashboard-text mb-4">
@@ -293,6 +313,7 @@ export default function FindValidEmailsPage() {
                   setColumnMapping(null);
                   setIsMappingValid(false);
                   setCompanySize("");
+                  setJobName("");
                   setUploadError("");
                 }}
                 className="btn-secondary"

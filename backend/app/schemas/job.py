@@ -11,6 +11,7 @@ class JobResponse(BaseModel):
     job_type: Optional[str] = "enrichment"  # enrichment or verification
     source: Optional[str] = None
     original_filename: Optional[str]
+    job_name: Optional[str] = None  # User-provided job name
     total_leads: int
     processed_leads: int
     valid_emails_found: int

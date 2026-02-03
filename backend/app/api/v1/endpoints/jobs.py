@@ -302,6 +302,7 @@ async def upload_file(
     column_website: Optional[str] = Form(None),
     column_company_size: Optional[str] = Form(None),
     source: Optional[str] = Form(None),  # e.g., "Sales Nav"
+    job_name: Optional[str] = Form(None),  # Optional user-provided job name
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -457,6 +458,7 @@ async def upload_file(
         user_id=current_user.id,
         status="pending",
         original_filename=file.filename,
+        job_name=job_name.strip() if job_name else None,  # Optional user-provided job name
         total_leads=0,  # Will be set by enrichment worker
         processed_leads=0,
         valid_emails_found=0,
@@ -519,6 +521,7 @@ async def upload_verify_file(
     column_email: Optional[str] = Form(None),
     column_first_name: Optional[str] = Form(None),
     column_last_name: Optional[str] = Form(None),
+    job_name: Optional[str] = Form(None),  # Optional user-provided job name
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -610,6 +613,7 @@ async def upload_verify_file(
         status="pending",
         job_type="verification",
         original_filename=file.filename,
+        job_name=job_name.strip() if job_name else None,  # Optional user-provided job name
         total_leads=len(remapped_rows),
         processed_leads=0,
         valid_emails_found=0,

@@ -237,6 +237,7 @@ class ApiClient {
       column_website?: string;
       column_company_size?: string;
       source?: string; // e.g., "Sales Nav"
+      job_name?: string; // Optional user-provided job name
     }
   ): Promise<UploadResponse> {
     return this.requestWithFile<UploadResponse>("/api/v1/jobs/upload", file, options);
@@ -248,6 +249,7 @@ class ApiClient {
       column_email?: string;
       column_first_name?: string;
       column_last_name?: string;
+      job_name?: string; // Optional user-provided job name
     }
   ): Promise<UploadResponse> {
     return this.requestWithFile<UploadResponse>("/api/v1/jobs/verify-upload", file, options);

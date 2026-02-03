@@ -18,6 +18,7 @@ export interface Job {
   job_type?: 'enrichment' | 'verification';
   source?: string; // e.g., "Sales Nav"
   original_filename?: string;
+  job_name?: string; // Optional user-provided job name
   total_leads: number;
   processed_leads: number;
   valid_emails_found: number;

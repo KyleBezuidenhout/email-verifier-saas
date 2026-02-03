@@ -86,7 +86,15 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
               >
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-dashboard-text">
                   <div className="flex items-center gap-2">
-                    <span>{job.id.slice(0, 8)}...</span>
+                    <span 
+                      title={job.job_name || job.id}
+                      className="cursor-default"
+                    >
+                      {job.job_name 
+                        ? (job.job_name.length > 15 ? `${job.job_name.slice(0, 15)}...` : job.job_name)
+                        : `${job.id.slice(0, 8)}...`
+                      }
+                    </span>
                     {(job.source === "Sales Nav" || job.source === "Scraped") && (
                       <span className="px-2 py-0.5 text-xs font-medium bg-blue-500/20 text-blue-400 rounded-full">
                         {job.source === "Scraped" ? "Scraped" : "Sales Nav"}

@@ -21,6 +21,7 @@ class Job(Base):
     column_website = Column(String(255), nullable=True)
     column_company_size = Column(String(255), nullable=True)
     original_filename = Column(Text)
+    job_name = Column(String(255), nullable=True)  # Optional user-provided job name
     total_leads = Column(Integer, nullable=False)
     processed_leads = Column(Integer, default=0)
     valid_emails_found = Column(Integer, default=0)
