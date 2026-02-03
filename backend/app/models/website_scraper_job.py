@@ -28,6 +28,7 @@ class WebsiteScraperJob(Base):
     
     # File metadata
     original_filename = Column(Text, nullable=True)
+    job_name = Column(String(255), nullable=True)  # Optional user-provided job name
     
     # Progress tracking
     total_leads = Column(Integer, default=0)

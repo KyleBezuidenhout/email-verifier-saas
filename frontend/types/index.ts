@@ -205,6 +205,7 @@ export interface WebsiteScraperJob {
   user_id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   original_filename?: string;
+  job_name?: string; // Optional user-provided job name
   total_leads: number;
   completed_leads: number;
   progress_percentage: number;

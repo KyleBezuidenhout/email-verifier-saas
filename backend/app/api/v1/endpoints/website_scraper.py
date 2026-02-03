@@ -66,6 +66,7 @@ def job_to_response(job: WebsiteScraperJob) -> dict:
         "user_id": str(job.user_id),
         "status": job.status,
         "original_filename": job.original_filename,
+        "job_name": job.job_name,
         "total_leads": job.total_leads or 0,
         "completed_leads": job.completed_leads or 0,
         "progress_percentage": job.progress_percentage or 0,
@@ -150,6 +151,7 @@ async def check_health():
 async def upload_csv(
     file: UploadFile = File(...),
     column_website: Optional[str] = None,
+    job_name: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -263,6 +265,7 @@ async def upload_csv(
         user_id=current_user.id,
         status="pending",
         original_filename=file.filename,
+        job_name=job_name.strip() if job_name else None,
         total_leads=valid_rows,
         completed_leads=0,
         progress_percentage=0,

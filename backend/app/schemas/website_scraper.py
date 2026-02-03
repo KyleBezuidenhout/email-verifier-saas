@@ -15,6 +15,7 @@ class WebsiteScraperJobResponse(BaseModel):
     user_id: str
     status: str
     original_filename: Optional[str] = None
+    job_name: Optional[str] = None  # User-provided job name
     total_leads: int = 0
     completed_leads: int = 0
     progress_percentage: int = 0

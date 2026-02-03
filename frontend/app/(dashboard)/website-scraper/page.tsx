@@ -32,6 +32,7 @@ export default function WebsiteScraperPage() {
   // Column mapping state
   const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
   const [isMappingValid, setIsMappingValid] = useState(false);
+  const [jobName, setJobName] = useState("");
   
   // Preview modal state
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -201,12 +202,14 @@ export default function WebsiteScraperPage() {
     try {
       const result = await apiClient.uploadWebsiteScraperFile(selectedFile, {
         column_website: columnMapping.website,
+        job_name: jobName.trim() || undefined,
       });
       
       // Clear file selection and mapping
       setSelectedFile(null);
       setColumnMapping(null);
       setIsMappingValid(false);
+      setJobName("");
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -534,6 +537,23 @@ export default function WebsiteScraperPage() {
                 onMappingChange={handleMappingChange}
               />
               
+              {/* Job Name Input - Optional */}
+              <div className="mt-4 text-left">
+                <label className="block text-sm font-medium text-dashboard-text mb-2">
+                  Job Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={jobName}
+                  onChange={(e) => setJobName(e.target.value)}
+                  placeholder="e.g., Tech Companies Contact Extraction"
+                  className="apple-input w-full"
+                />
+                <p className="mt-1 text-xs text-dashboard-text-muted">
+                  Give your job a descriptive name to easily identify it later
+                </p>
+              </div>
+              
               <div className="flex items-center justify-center gap-3">
                 <button
                   onClick={handleUpload}
@@ -554,6 +574,7 @@ export default function WebsiteScraperPage() {
                     setSelectedFile(null);
                     setColumnMapping(null);
                     setIsMappingValid(false);
+                    setJobName("");
                     if (fileInputRef.current) fileInputRef.current.value = "";
                   }}
                   className="px-4 py-2 text-dashboard-text-muted hover:text-dashboard-text transition-colors"
@@ -647,7 +668,15 @@ export default function WebsiteScraperPage() {
                     title={job.status === "completed" ? "Click to preview results" : undefined}
                   >
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text">
-                      <span title={job.id}>{job.id.slice(0, 8)}...</span>
+                      <span 
+                        title={job.job_name || job.id}
+                        className="cursor-default"
+                      >
+                        {job.job_name 
+                          ? (job.job_name.length > 15 ? `${job.job_name.slice(0, 15)}...` : job.job_name)
+                          : `${job.id.slice(0, 8)}...`
+                        }
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                       {formatDate(job.created_at)}
