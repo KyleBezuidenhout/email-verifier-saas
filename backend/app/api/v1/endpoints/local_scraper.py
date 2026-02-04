@@ -19,7 +19,7 @@ import json
 import csv
 import io
 import boto3
-import asyncio
+import redis
 
 from app.db.session import get_db
 from app.models.user import User
@@ -52,6 +52,12 @@ s3_client = boto3.client(
     aws_secret_access_key=settings.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
     region_name='auto'
 )
+
+# Initialize Redis client for job queue
+redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+# Queue name for Google Maps scraper jobs
+GOOGLE_MAPS_SCRAPER_QUEUE = "google-maps-scraper-queue"
 
 
 def order_to_response(order: LocalScraperOrder) -> dict:
@@ -199,8 +205,8 @@ async def create_order(
     """
     Create a new Google Maps scraper order.
     
-    For single_city mode: Starts one Apify run.
-    For full_state mode: Starts concurrent runs for all cities in selected states (max 100 at a time).
+    Orders are queued and processed by a dedicated worker.
+    The worker starts Apify runs and handles results via webhooks.
     
     Note: Multi-state selection (more than 1 state) requires admin privileges.
     """
@@ -223,42 +229,40 @@ async def create_order(
                     detail="Multi-state selection is only available for admin users"
                 )
         
-        # Get cities to scrape
-        cities_with_state = []  # List of (state, city) tuples
-        
+        # Count cities to scrape (for cost estimation)
         if payload.scrape_mode == "single_city":
-            # Single city mode - just one city
-            cities_with_state = [(payload.states[0], payload.city)]
+            num_cities = 1
         else:
-            # Full state mode - get all cities from all selected states
+            # Count cities across all selected states
+            num_cities = 0
             for state in payload.states:
                 result = db.execute(text("""
-                    SELECT city FROM google_maps_cities WHERE state = :state ORDER BY city
+                    SELECT COUNT(*) FROM google_maps_cities WHERE state = :state
                 """), {"state": state})
-                state_cities = [row[0] for row in result.fetchall()]
-                
-                for city in state_cities:
-                    cities_with_state.append((state, city))
+                num_cities += result.scalar() or 0
             
-            if not cities_with_state:
+            if num_cities == 0:
                 raise HTTPException(
                     status_code=400, 
                     detail=f"No cities found for selected states. Please seed the google_maps_cities table."
                 )
         
-        num_cities = len(cities_with_state)
         estimated_cost = apify_service.estimate_cost(num_cities)
         webhook_secret = apify_service.generate_webhook_secret()
+        
+        # Build webhook URL for worker to use
+        base_url = str(request.base_url).rstrip('/')
+        webhook_url = f"{base_url}/api/v1/webhooks/apify"
         
         logger.info(f"📝 Creating Google Maps scraper order for user {current_user.id}")
         logger.info(f"   Mode: {payload.scrape_mode}, States: {payload.states}, Cities: {num_cities}")
         logger.info(f"   Search term: {payload.search_term}")
         logger.info(f"   Estimated cost: ${estimated_cost:.2f}")
         
-        # Create order in database
+        # Create order in database with status "queued"
         order = LocalScraperOrder(
             user_id=current_user.id,
-            status="pending",
+            status="queued",
             job_name=payload.job_name.strip(),
             scrape_mode=payload.scrape_mode,
             states=payload.states,  # Store as JSON list
@@ -269,6 +273,7 @@ async def create_order(
             progress_percentage=0,
             estimated_cost=Decimal(str(estimated_cost)),
             webhook_secret=webhook_secret,
+            webhook_url=webhook_url,  # Store for worker to use
             apify_run_ids=[],
         )
         
@@ -278,79 +283,14 @@ async def create_order(
         
         logger.info(f"✅ Order created: {order.id}")
         
-        # Build webhook URL
-        base_url = str(request.base_url).rstrip('/')
-        webhook_url = f"{base_url}/api/v1/webhooks/apify"
-        
-        # Start Apify runs
-        apify_runs = []
-        
-        # Process in batches of 100 (Apify concurrency limit)
-        batch_size = apify_service.MAX_CONCURRENT_RUNS
-        
-        for batch_start in range(0, num_cities, batch_size):
-            batch_cities = cities_with_state[batch_start:batch_start + batch_size]
-            
-            # Start runs concurrently within batch
-            tasks = []
-            for i, (state, city) in enumerate(batch_cities):
-                city_index = batch_start + i
-                input_payload = apify_service.build_input_payload(
-                    search_term=payload.search_term.strip(),
-                    city=city  # Will be formatted as "{city}, United States"
-                )
-                
-                tasks.append(
-                    apify_service.start_run_with_webhook(
-                        input_payload=input_payload,
-                        webhook_url=webhook_url,
-                        order_id=str(order.id),
-                        city_index=city_index
-                    )
-                )
-            
-            # Execute batch
-            try:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                for i, result in enumerate(results):
-                    city_index = batch_start + i
-                    state, city = batch_cities[i]
-                    
-                    if isinstance(result, Exception):
-                        logger.error(f"Failed to start run for city {city}, {state}: {result}")
-                        apify_runs.append({
-                            "state": state,
-                            "city": city,
-                            "city_index": city_index,
-                            "run_id": None,
-                            "status": "failed",
-                            "error": str(result),
-                            "retry_count": 0
-                        })
-                    else:
-                        apify_runs.append({
-                            "state": state,
-                            "city": city,
-                            "city_index": city_index,
-                            "run_id": result.get("id"),
-                            "status": "running",
-                            "retry_count": 0
-                        })
-                
-            except Exception as e:
-                logger.error(f"Error starting batch: {e}")
-                raise HTTPException(status_code=500, detail=f"Failed to start scraping: {str(e)}")
-        
-        # Update order with run info
-        order.apify_run_ids = apify_runs
-        order.status = "processing"
-        order.started_at = datetime.utcnow()
-        db.commit()
-        db.refresh(order)
-        
-        successful_runs = sum(1 for r in apify_runs if r.get("run_id"))
-        logger.info(f"✅ Started {successful_runs}/{num_cities} Apify runs for order {order.id}")
+        # Queue order for processing by worker
+        try:
+            redis_client.lpush(GOOGLE_MAPS_SCRAPER_QUEUE, str(order.id))
+            queue_length = redis_client.llen(GOOGLE_MAPS_SCRAPER_QUEUE)
+            logger.info(f"📤 Queued order {order.id} to {GOOGLE_MAPS_SCRAPER_QUEUE} (queue length: {queue_length})")
+        except Exception as e:
+            logger.error(f"❌ Failed to queue order {order.id}: {e}")
+            # Don't fail the request - order is created, worker can pick it up later
         
         return order_to_response(order)
         

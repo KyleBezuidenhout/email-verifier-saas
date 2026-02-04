@@ -138,7 +138,7 @@ async def retry_failed_run(order_id: str, city_index: int, webhook_url: str):
         city = run_info.get("city")
         input_payload = apify_service.build_input_payload(
             search_term=order.search_term,
-            city=city  # Will be formatted as "{city}, United States"
+            city=city
         )
         
         try:

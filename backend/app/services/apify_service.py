@@ -48,23 +48,21 @@ class ApifyGoogleMapsService:
         - Lowest cost (only fetch websites, no reviews/images/questions)
         - Businesses with websites only
         
-        Note: City is formatted as "{city}, United States" for Apify
+        Uses locationQuery format: "City, United States" (per Apify recommendation)
         """
-        # Format city for Apify: "Los Angeles, United States"
-        formatted_city = f"{city}, United States"
+        # Format location for Apify: "Los Angeles, United States"
+        location_query = f"{city}, United States"
         
         return {
             "searchStringsArray": [search_term],
-            "countryCode": "us",
-            "city": formatted_city,
+            "locationQuery": location_query,
             "language": "en",
             "maxCrawledPlacesPerSearch": max_results,
             "maxReviews": 0,  # Cost optimization
             "maxImages": 0,  # Cost optimization
             "maxQuestions": 0,  # Cost optimization
-            "deeperCityScrape": True,  # Maximum coverage
             "skipClosedPlaces": True,  # Exclude closed businesses
-            "onlyPlacesWithWebsite": True,  # We only want businesses WITH websites
+            "website": "withWebsite",  # Only businesses with websites
             "scrapeContacts": False,  # Saves $0.002/place - website URL is in base data
             "scrapeDirectories": False,
             "includeWebResults": False

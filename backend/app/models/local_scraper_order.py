@@ -38,6 +38,7 @@ class LocalScraperOrder(Base):
     # Apify run tracking
     apify_run_ids = Column(JSON, nullable=True)  # Array of {run_id, city, status, dataset_id, retry_count}
     webhook_secret = Column(String(100), nullable=True)  # For verifying webhook callbacks
+    webhook_url = Column(String(500), nullable=True)  # Webhook URL for Apify callbacks
     
     # Progress tracking
     total_cities = Column(Integer, default=1)

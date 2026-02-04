@@ -35,6 +35,7 @@ def run_migration():
                     search_term VARCHAR(500) NOT NULL,
                     apify_run_ids JSONB,
                     webhook_secret VARCHAR(100),
+                    webhook_url VARCHAR(500),
                     total_cities INTEGER DEFAULT 1,
                     completed_cities INTEGER DEFAULT 0,
                     progress_percentage INTEGER DEFAULT 0,
@@ -81,6 +82,7 @@ def run_migration():
                 ("search_term", "VARCHAR(500)"),
                 ("apify_run_ids", "JSONB"),
                 ("webhook_secret", "VARCHAR(100)"),
+                ("webhook_url", "VARCHAR(500)"),  # Webhook URL for Apify callbacks
                 ("total_cities", "INTEGER DEFAULT 1"),
                 ("completed_cities", "INTEGER DEFAULT 0"),
                 ("estimated_cost", "DECIMAL(10, 2)"),
