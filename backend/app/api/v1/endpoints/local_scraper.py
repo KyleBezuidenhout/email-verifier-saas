@@ -455,7 +455,19 @@ async def download_results(
         safe_job_name = "".join(c for c in order.job_name if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
         if not safe_job_name:
             safe_job_name = "google_maps_results"
-        filename = f"{safe_job_name}_{order.state}_{str(order.id)[:8]}.csv"
+        
+        # Add location context to filename
+        location_part = ""
+        if order.scrape_mode == "single_city" and order.city:
+            location_part = f"_{order.city}"
+        elif order.states:
+            states_list = order.states if isinstance(order.states, list) else [order.states]
+            if len(states_list) == 1:
+                location_part = f"_{states_list[0]}"
+            else:
+                location_part = "_multi_state"
+        
+        filename = f"{safe_job_name}{location_part}_{str(order.id)[:8]}.csv"
         
         return StreamingResponse(
             iter([csv_content]),
