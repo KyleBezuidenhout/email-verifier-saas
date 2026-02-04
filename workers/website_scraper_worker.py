@@ -422,7 +422,7 @@ async def process_job(job_id: str, website_col: str) -> bool:
                 }
             
             # Process in chunks for better progress reporting
-            CHUNK_SIZE = 100  # Report progress every 100 URLs
+            CHUNK_SIZE = CONCURRENCY_LIMIT  # Match chunk size to concurrency limit
             
             for chunk_start in range(0, len(unique_urls), CHUNK_SIZE):
                 # Check cancellation

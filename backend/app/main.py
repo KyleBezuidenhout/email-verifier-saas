@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 import sys
 import os
 import logging
@@ -24,6 +25,11 @@ app = FastAPI(
     docs_url="/api/docs",
     openapi_url="/api/openapi.json"
 )
+
+# Trust proxy headers from Railway/load balancer
+# This ensures request.base_url returns https:// when accessed via HTTPS
+# Critical for webhook URLs sent to Apify
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 # CORS origins - explicit list (kept for reference, but allow all below)
 origins = [
