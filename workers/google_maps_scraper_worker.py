@@ -137,6 +137,11 @@ async def start_apify_run(
         json=body,
         timeout=30.0
     )
+    
+    # Log error details before raising
+    if response.status_code >= 400:
+        logger.error(f"Apify API error {response.status_code}: {response.text}")
+    
     response.raise_for_status()
     result = response.json()
     

@@ -251,7 +251,10 @@ async def create_order(
         webhook_secret = apify_service.generate_webhook_secret()
         
         # Build webhook URL for worker to use
+        # Force HTTPS since Railway terminates SSL at load balancer
         base_url = str(request.base_url).rstrip('/')
+        if base_url.startswith("http://") and "localhost" not in base_url and "127.0.0.1" not in base_url:
+            base_url = base_url.replace("http://", "https://", 1)
         webhook_url = f"{base_url}/api/v1/webhooks/apify"
         
         logger.info(f"📝 Creating Google Maps scraper order for user {current_user.id}")
