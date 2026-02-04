@@ -61,7 +61,7 @@ GOOGLE_MAPS_SCRAPER_QUEUE = "google-maps-scraper-queue"
 # Apify configuration
 APIFY_BASE_URL = "https://api.apify.com/v2"
 APIFY_ACTOR_ID = "compass~crawler-google-places"
-MAX_CONCURRENT_RUNS = 100  # Apify Scale plan limit is 128, stay safe at 100
+MAX_CONCURRENT_RUNS = 20  # 20 concurrent x 4GB = 80GB (within 128GB limit)
 
 
 # ============================================
@@ -76,11 +76,12 @@ def get_apify_headers() -> Dict[str, str]:
     }
 
 
-def build_input_payload(search_term: str, city: str, max_results: int = 200) -> Dict[str, Any]:
+def build_input_payload(search_term: str, city: str) -> Dict[str, Any]:
     """
     Build the input payload for a single city scrape.
     
     Uses locationQuery format: "City, United States" (per Apify recommendation)
+    No results cap - scrapes all places, filtered by skipClosedPlaces and website filters.
     """
     location_query = f"{city}, United States"
     
@@ -88,12 +89,12 @@ def build_input_payload(search_term: str, city: str, max_results: int = 200) -> 
         "searchStringsArray": [search_term],
         "locationQuery": location_query,
         "language": "en",
-        "maxCrawledPlacesPerSearch": max_results,
+        # No maxCrawledPlacesPerSearch - scrape ALL results
         "maxReviews": 0,
         "maxImages": 0,
         "maxQuestions": 0,
-        "skipClosedPlaces": True,
-        "website": "withWebsite",
+        "skipClosedPlaces": True,  # Filter out closed businesses
+        "website": "withWebsite",  # Only businesses with websites
         "scrapeContacts": False,
         "scrapeDirectories": False,
         "includeWebResults": False
@@ -276,90 +277,116 @@ async def process_order(order_id: str) -> bool:
         order.total_cities = num_cities
         db.commit()
         
-        # Start Apify runs
+        # Initialize ALL cities as "pending" in apify_run_ids
+        # This allows the webhook handler to start new jobs as others complete
         apify_runs = []
+        for i, (state, city) in enumerate(cities_with_state):
+            apify_runs.append({
+                "state": state,
+                "city": city,
+                "city_index": i,
+                "run_id": None,
+                "status": "pending",
+                "retry_count": 0
+            })
+        
+        # Save initial state with all cities as pending
+        order.apify_run_ids = apify_runs
+        db.commit()
+        
+        logger.info(f"📋 Initialized {num_cities} cities as pending")
+        
+        # Start only the first MAX_CONCURRENT_RUNS (20) jobs
+        # Webhook handler will start more as these complete (rolling queue)
+        initial_batch_size = min(MAX_CONCURRENT_RUNS, num_cities)
+        initial_batch = cities_with_state[:initial_batch_size]
+        
+        logger.info(f"🚀 Starting initial batch of {initial_batch_size} jobs (rolling queue will maintain {MAX_CONCURRENT_RUNS} concurrent)")
+        
+        successful_runs = 0
+        failed_runs = 0
         
         async with httpx.AsyncClient() as client:
-            # Process in batches of MAX_CONCURRENT_RUNS
-            for batch_start in range(0, num_cities, MAX_CONCURRENT_RUNS):
-                batch_cities = cities_with_state[batch_start:batch_start + MAX_CONCURRENT_RUNS]
-                batch_end = batch_start + len(batch_cities)
+            # Create tasks for initial batch only
+            tasks = []
+            for i, (state, city) in enumerate(initial_batch):
+                input_payload = build_input_payload(
+                    search_term=order.search_term,
+                    city=city
+                )
                 
-                logger.info(f"🚀 Starting batch {batch_start + 1}-{batch_end} of {num_cities}")
-                
-                # Create tasks for this batch
-                tasks = []
-                for i, (state, city) in enumerate(batch_cities):
-                    city_index = batch_start + i
-                    input_payload = build_input_payload(
-                        search_term=order.search_term,
-                        city=city
+                tasks.append(
+                    start_apify_run(
+                        client=client,
+                        input_payload=input_payload,
+                        webhook_url=webhook_url,
+                        order_id=str(order.id),
+                        city_index=i,
+                        webhook_secret=order.webhook_secret
                     )
-                    
-                    tasks.append(
-                        start_apify_run(
-                            client=client,
-                            input_payload=input_payload,
-                            webhook_url=webhook_url,
-                            order_id=str(order.id),
-                            city_index=city_index,
-                            webhook_secret=order.webhook_secret
-                        )
-                    )
+                )
+            
+            # Execute initial batch concurrently
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results for initial batch
+            for i, result in enumerate(results):
+                state, city = initial_batch[i]
                 
-                # Execute batch concurrently
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                # Process results
-                for i, result in enumerate(results):
-                    city_index = batch_start + i
-                    state, city = batch_cities[i]
-                    
-                    if isinstance(result, Exception):
-                        logger.error(f"Failed to start run for city {city}, {state}: {result}")
-                        apify_runs.append({
-                            "state": state,
-                            "city": city,
-                            "city_index": city_index,
-                            "run_id": None,
-                            "status": "failed",
-                            "error": str(result),
-                            "retry_count": 0
-                        })
-                    else:
-                        run_id = result.get("id")
-                        logger.info(f"✅ Started run {run_id} for {city}, {state}")
-                        apify_runs.append({
-                            "state": state,
-                            "city": city,
-                            "city_index": city_index,
-                            "run_id": run_id,
-                            "status": "running",
-                            "retry_count": 0
-                        })
-                
-                # Update order with run info after each batch
-                order.apify_run_ids = apify_runs
-                db.commit()
-                
-                # Small delay between batches to avoid rate limiting
-                if batch_end < num_cities:
-                    await asyncio.sleep(1)
+                if isinstance(result, Exception):
+                    logger.error(f"Failed to start run for city {city}, {state}: {result}")
+                    apify_runs[i]["status"] = "failed"
+                    apify_runs[i]["error"] = str(result)
+                    failed_runs += 1
+                else:
+                    run_id = result.get("id")
+                    logger.info(f"✅ Started run {run_id} for {city}, {state}")
+                    apify_runs[i]["run_id"] = run_id
+                    apify_runs[i]["status"] = "running"
+                    successful_runs += 1
         
-        # Final update
-        successful_runs = sum(1 for r in apify_runs if r.get("run_id"))
-        failed_runs = num_cities - successful_runs
-        
-        logger.info(f"✅ Started {successful_runs}/{num_cities} Apify runs for order {order_id}")
-        
-        if failed_runs > 0:
-            logger.warning(f"⚠️ {failed_runs} runs failed to start")
-        
-        if successful_runs == 0:
-            order.status = "failed"
-            order.error_message = "All Apify runs failed to start"
-        
+        # Update order with initial batch results
+        order.apify_run_ids = apify_runs
         db.commit()
+        
+        # Calculate pending count
+        pending_count = num_cities - initial_batch_size
+        
+        # ============================================
+        # PERFORMANCE REPORT - Job Initiated
+        # ============================================
+        logger.info("=" * 60)
+        logger.info("SCRAPE JOB INITIATED - PERFORMANCE REPORT")
+        logger.info("=" * 60)
+        logger.info(f"Order ID: {order_id}")
+        logger.info(f"Search Term: {order.search_term}")
+        logger.info(f"States: {order.states}")
+        logger.info(f"Total Cities: {num_cities}")
+        logger.info(f"Concurrent Limit: {MAX_CONCURRENT_RUNS}")
+        logger.info(f"Memory per Job: 4096 MB")
+        logger.info("-" * 60)
+        logger.info(f"Initial Batch Started: {successful_runs}")
+        logger.info(f"Initial Batch Failed: {failed_runs}")
+        logger.info(f"Pending (rolling queue): {pending_count}")
+        logger.info("-" * 60)
+        
+        # Log any failed cities in initial batch
+        if failed_runs > 0:
+            logger.info("FAILED CITIES (Initial Batch):")
+            for run_info in apify_runs[:initial_batch_size]:
+                if run_info.get('status') == 'failed':
+                    city = run_info.get('city', 'unknown')
+                    state = run_info.get('state', 'unknown')
+                    error = run_info.get('error', 'Unknown error')
+                    logger.error(f"  - {city}, {state}: {error}")
+        
+        logger.info("=" * 60)
+        
+        if successful_runs == 0 and initial_batch_size > 0:
+            order.status = "failed"
+            order.error_message = "All initial Apify runs failed to start"
+            db.commit()
+        
         return successful_runs > 0
         
     except Exception as e:

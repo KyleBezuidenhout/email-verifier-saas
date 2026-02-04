@@ -21,7 +21,7 @@ class ApifyGoogleMapsService:
     
     BASE_URL = "https://api.apify.com/v2"
     ACTOR_ID = "compass~crawler-google-places"
-    MAX_CONCURRENT_RUNS = 100  # Scale plan limit is 128, stay safe at 100
+    MAX_CONCURRENT_RUNS = 20  # 20 concurrent x 4GB = 80GB (within 128GB limit)
     
     def __init__(self):
         self.api_token = settings.APIFY_API_TOKEN
@@ -39,14 +39,13 @@ class ApifyGoogleMapsService:
     def build_input_payload(
         self,
         search_term: str,
-        city: str,
-        max_results: int = 200
+        city: str
     ) -> Dict[str, Any]:
         """
         Build the input payload for a single city scrape.
         
         Optimized for:
-        - Maximum TAM (Total Addressable Market)
+        - Maximum TAM (Total Addressable Market) - NO results cap
         - Lowest cost (only fetch websites, no reviews/images/questions)
         - Businesses with websites only
         
@@ -59,7 +58,7 @@ class ApifyGoogleMapsService:
             "searchStringsArray": [search_term],
             "locationQuery": location_query,
             "language": "en",
-            "maxCrawledPlacesPerSearch": max_results,
+            # No maxCrawledPlacesPerSearch - scrape ALL results
             "maxReviews": 0,  # Cost optimization
             "maxImages": 0,  # Cost optimization
             "maxQuestions": 0,  # Cost optimization
@@ -128,7 +127,8 @@ class ApifyGoogleMapsService:
         webhook_url: str,
         order_id: str,
         city_index: int,
-        memory_mbytes: int = 4096
+        memory_mbytes: int = 4096,
+        webhook_secret: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Start an Apify run with webhook configuration.
@@ -136,12 +136,15 @@ class ApifyGoogleMapsService:
         The webhook will be called when the run finishes (SUCCEEDED, FAILED, ABORTED, TIMED-OUT).
         """
         try:
+            # Use provided webhook_secret or fall back to default
+            secret = webhook_secret or self.webhook_secret
+            
             # Construct webhook configuration
             # Note: shouldInterpolateStrings is needed for {{eventType}} inside quotes to be replaced
             webhooks = [{
                 "eventTypes": ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
                 "requestUrl": webhook_url,
-                "payloadTemplate": f'{{"orderId": "{order_id}", "cityIndex": {city_index}, "secret": "{self.webhook_secret}", "resource": {{{{resource}}}}, "eventType": "{{{{eventType}}}}"}}',
+                "payloadTemplate": f'{{"orderId": "{order_id}", "cityIndex": {city_index}, "secret": "{secret}", "resource": {{{{resource}}}}, "eventType": "{{{{eventType}}}}"}}',
                 "shouldInterpolateStrings": True
             }]
             
