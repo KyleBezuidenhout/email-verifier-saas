@@ -144,18 +144,38 @@ export interface VayneOrderCreate {
 }
 
 // Google Maps Scraper Types (via Apify compass/crawler-google-places)
+export interface ApifySettings {
+  max_results_per_city?: number | null;  // null = unlimited
+  skip_closed_places: boolean;
+  website_filter: 'allPlaces' | 'withWebsite' | 'withoutWebsite';
+  scrape_reviews: boolean;
+  max_reviews: number;
+  scrape_images: boolean;
+  max_images: number;
+  language: string;
+}
+
 export interface GoogleMapsScraperOrderCreate {
   job_name: string;
   scrape_mode: 'single_city' | 'full_state';
   states: string[];  // List of states (single for single_city, multiple for full_state admin)
   city?: string | null;  // Required for single_city mode
   search_term: string;
+  // Apify settings (optional - defaults applied if not provided)
+  max_results_per_city?: number | null;
+  skip_closed_places?: boolean;
+  website_filter?: 'allPlaces' | 'withWebsite' | 'withoutWebsite';
+  scrape_reviews?: boolean;
+  max_reviews?: number;
+  scrape_images?: boolean;
+  max_images?: number;
+  language?: string;
 }
 
 export interface GoogleMapsScraperOrder {
   id: string;
   user_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
   scrape_mode: 'single_city' | 'full_state';
   states: string[];  // List of states being scraped
   city: string | null;
@@ -171,6 +191,15 @@ export interface GoogleMapsScraperOrder {
   created_at: string;
   completed_at: string | null;
   error_message: string | null;
+  // Apify settings
+  max_results_per_city?: number | null;
+  skip_closed_places?: boolean;
+  website_filter?: string;
+  scrape_reviews?: boolean;
+  max_reviews?: number;
+  scrape_images?: boolean;
+  max_images?: number;
+  language?: string;
 }
 
 export interface GoogleMapsScraperHealthStatus {

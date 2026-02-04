@@ -441,6 +441,17 @@ export default function GoogleMapsScraperPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
 
+  // Advanced Apify settings state
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [maxResultsPerCity, setMaxResultsPerCity] = useState<string>("");
+  const [skipClosedPlaces, setSkipClosedPlaces] = useState(true);
+  const [websiteFilter, setWebsiteFilter] = useState<"allPlaces" | "withWebsite" | "withoutWebsite">("withWebsite");
+  const [scrapeReviews, setScrapeReviews] = useState(false);
+  const [maxReviews, setMaxReviews] = useState(0);
+  const [scrapeImages, setScrapeImages] = useState(false);
+  const [maxImages, setMaxImages] = useState(0);
+  const [language, setLanguage] = useState("en");
+
   const isAdmin = user?.is_admin || false;
 
   // Check Apify API health
@@ -664,6 +675,15 @@ export default function GoogleMapsScraperPage() {
         states: scrapeMode === "single_city" ? [selectedState] : selectedStates,
         city: scrapeMode === "single_city" ? selectedCity : null,
         search_term: searchTerm.trim(),
+        // Apify settings
+        max_results_per_city: maxResultsPerCity ? parseInt(maxResultsPerCity, 10) : null,
+        skip_closed_places: skipClosedPlaces,
+        website_filter: websiteFilter,
+        scrape_reviews: scrapeReviews,
+        max_reviews: maxReviews,
+        scrape_images: scrapeImages,
+        max_images: maxImages,
+        language: language,
       });
 
       setOrders((prev) => [newOrder, ...prev]);
@@ -673,6 +693,15 @@ export default function GoogleMapsScraperPage() {
       setSelectedStates([]);
       setSelectedCity("");
       setCostEstimate(null);
+      // Reset advanced settings to defaults
+      setMaxResultsPerCity("");
+      setSkipClosedPlaces(true);
+      setWebsiteFilter("withWebsite");
+      setScrapeReviews(false);
+      setMaxReviews(0);
+      setScrapeImages(false);
+      setMaxImages(0);
+      setLanguage("en");
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -951,6 +980,145 @@ export default function GoogleMapsScraperPage() {
           )}
         </div>
       )}
+
+      {/* Advanced Apify Settings (Collapsible) */}
+      <div className="glass-card mb-6 overflow-hidden">
+        <button
+          onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+          className="w-full p-6 flex items-center justify-between text-left hover:bg-dashboard-card/30 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="text-sm font-medium text-dashboard-text">Advanced Scraper Settings</span>
+          </div>
+          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform duration-200 ${showAdvancedSettings ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        
+        {showAdvancedSettings && (
+          <div className="p-6 pt-0 space-y-5 border-t border-dashboard-border">
+            {/* Max Results per City */}
+            <div>
+              <label className="block text-sm font-medium text-dashboard-text mb-2">Max Results per City</label>
+              <input
+                type="number"
+                value={maxResultsPerCity}
+                onChange={(e) => setMaxResultsPerCity(e.target.value)}
+                placeholder="Leave empty for unlimited"
+                min="1"
+                className="apple-input w-full py-2"
+              />
+              <p className="mt-1 text-xs text-dashboard-text-muted">Limit results to control costs. Empty = scrape all available.</p>
+            </div>
+
+            {/* Website Filter */}
+            <div>
+              <label className="block text-sm font-medium text-dashboard-text mb-2">Website Filter</label>
+              <select
+                value={websiteFilter}
+                onChange={(e) => setWebsiteFilter(e.target.value as typeof websiteFilter)}
+                className="apple-input w-full py-2"
+              >
+                <option value="withWebsite">With Website Only</option>
+                <option value="allPlaces">All Places</option>
+                <option value="withoutWebsite">Without Website Only</option>
+              </select>
+              <p className="mt-1 text-xs text-dashboard-text-muted">Filter businesses by website presence.</p>
+            </div>
+
+            {/* Skip Closed Places */}
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="skipClosed"
+                checked={skipClosedPlaces}
+                onChange={(e) => setSkipClosedPlaces(e.target.checked)}
+                className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
+              />
+              <label htmlFor="skipClosed" className="text-sm text-dashboard-text">Skip Permanently Closed Places</label>
+            </div>
+
+            {/* Reviews */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="scrapeReviews"
+                  checked={scrapeReviews}
+                  onChange={(e) => setScrapeReviews(e.target.checked)}
+                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
+                />
+                <label htmlFor="scrapeReviews" className="text-sm text-dashboard-text">Include Reviews (increases cost)</label>
+              </div>
+              {scrapeReviews && (
+                <div className="ml-7">
+                  <label className="block text-xs text-dashboard-text-muted mb-1">Max Reviews per Place</label>
+                  <input
+                    type="number"
+                    value={maxReviews}
+                    onChange={(e) => setMaxReviews(parseInt(e.target.value) || 0)}
+                    min="0"
+                    max="100"
+                    className="apple-input w-32 py-1 text-sm"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Images */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="scrapeImages"
+                  checked={scrapeImages}
+                  onChange={(e) => setScrapeImages(e.target.checked)}
+                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
+                />
+                <label htmlFor="scrapeImages" className="text-sm text-dashboard-text">Include Images (increases cost)</label>
+              </div>
+              {scrapeImages && (
+                <div className="ml-7">
+                  <label className="block text-xs text-dashboard-text-muted mb-1">Max Images per Place</label>
+                  <input
+                    type="number"
+                    value={maxImages}
+                    onChange={(e) => setMaxImages(parseInt(e.target.value) || 0)}
+                    min="0"
+                    max="20"
+                    className="apple-input w-32 py-1 text-sm"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Language */}
+            <div>
+              <label className="block text-sm font-medium text-dashboard-text mb-2">Language</label>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className="apple-input w-full py-2"
+              >
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="it">Italian</option>
+                <option value="pt">Portuguese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="zh">Chinese</option>
+              </select>
+              <p className="mt-1 text-xs text-dashboard-text-muted">Language for search results.</p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Cost Estimate */}
       {costEstimate && (

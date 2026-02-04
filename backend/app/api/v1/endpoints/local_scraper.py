@@ -24,6 +24,7 @@ import redis
 from app.db.session import get_db
 from app.models.user import User
 from app.models.local_scraper_order import LocalScraperOrder
+from app.models.local_scraper_city_job import LocalScraperCityJob
 from app.api.dependencies import get_current_user
 from app.schemas.google_maps_scraper import (
     GoogleMapsScraperOrderCreate,
@@ -84,6 +85,15 @@ def order_to_response(order: LocalScraperOrder) -> dict:
         "created_at": order.created_at,
         "completed_at": order.completed_at,
         "error_message": order.error_message,
+        # Apify settings
+        "max_results_per_city": order.max_results_per_city,
+        "skip_closed_places": order.skip_closed_places if order.skip_closed_places is not None else True,
+        "website_filter": order.website_filter or "withWebsite",
+        "scrape_reviews": order.scrape_reviews if order.scrape_reviews is not None else False,
+        "max_reviews": order.max_reviews or 0,
+        "scrape_images": order.scrape_images if order.scrape_images is not None else False,
+        "max_images": order.max_images or 0,
+        "language": order.language or "en",
     }
 
 
@@ -277,7 +287,16 @@ async def create_order(
             estimated_cost=Decimal(str(estimated_cost)),
             webhook_secret=webhook_secret,
             webhook_url=webhook_url,  # Store for worker to use
-            apify_run_ids=[],
+            apify_run_ids=[],  # Legacy field - new orders use city_jobs table
+            # Apify settings from payload
+            max_results_per_city=payload.max_results_per_city,
+            skip_closed_places=payload.skip_closed_places,
+            website_filter=payload.website_filter,
+            scrape_reviews=payload.scrape_reviews,
+            max_reviews=payload.max_reviews,
+            scrape_images=payload.scrape_images,
+            max_images=payload.max_images,
+            language=payload.language,
         )
         
         db.add(order)
@@ -361,7 +380,8 @@ async def get_order_status(
 ):
     """
     Get real-time status for an order (for polling).
-    Webhooks are preferred, but this provides a fallback.
+    For new orders, calculates progress from city_jobs table.
+    For legacy orders, uses stored values.
     """
     order = db.query(LocalScraperOrder).filter(
         LocalScraperOrder.id == order_id,
@@ -371,15 +391,46 @@ async def get_order_status(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
-    return GoogleMapsScraperStatusResponse(
-        order_id=str(order.id),
-        status=order.status,
-        total_cities=order.total_cities or 1,
-        completed_cities=order.completed_cities or 0,
-        progress_percentage=order.progress_percentage or 0,
-        results_count=order.results_count or 0,
-        error_message=order.error_message,
-    )
+    # Check if this order uses the new city_jobs table
+    city_jobs_count = db.query(LocalScraperCityJob).filter(
+        LocalScraperCityJob.order_id == order.id
+    ).count()
+    
+    if city_jobs_count > 0:
+        # New schema: calculate progress from city_jobs table
+        completed_count = db.query(LocalScraperCityJob).filter(
+            LocalScraperCityJob.order_id == order.id,
+            LocalScraperCityJob.status.in_(["completed", "failed"])
+        ).count()
+        
+        total_results = db.query(db.func.sum(LocalScraperCityJob.results_count)).filter(
+            LocalScraperCityJob.order_id == order.id,
+            LocalScraperCityJob.status == "completed"
+        ).scalar() or 0
+        
+        total_cities = city_jobs_count
+        progress = int((completed_count / total_cities) * 100) if total_cities > 0 else 0
+        
+        return GoogleMapsScraperStatusResponse(
+            order_id=str(order.id),
+            status=order.status,
+            total_cities=total_cities,
+            completed_cities=completed_count,
+            progress_percentage=progress,
+            results_count=total_results,
+            error_message=order.error_message,
+        )
+    else:
+        # Legacy schema: use stored values from order
+        return GoogleMapsScraperStatusResponse(
+            order_id=str(order.id),
+            status=order.status,
+            total_cities=order.total_cities or 1,
+            completed_cities=order.completed_cities or 0,
+            progress_percentage=order.progress_percentage or 0,
+            results_count=order.results_count or 0,
+            error_message=order.error_message,
+        )
 
 
 @router.delete("/orders/{order_id}")

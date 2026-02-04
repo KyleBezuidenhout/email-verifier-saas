@@ -5,7 +5,7 @@ Stores Google Maps scraper orders - using Apify compass/crawler-google-places ac
 Supports single city and full state (concurrent) scraping modes.
 """
 
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Numeric, JSON
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Numeric, JSON, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 import uuid
@@ -23,7 +23,7 @@ class LocalScraperOrder(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     
-    # Order status: pending, processing, completed, failed, cancelled
+    # Order status: pending, queued, processing, completed, failed, cancelled
     status = Column(String(50), nullable=False, default="pending", index=True)
     
     # Job metadata
@@ -35,8 +35,18 @@ class LocalScraperOrder(Base):
     city = Column(String(200), nullable=True)  # Null for full_state mode
     search_term = Column(String(500), nullable=False)
     
-    # Apify run tracking
-    apify_run_ids = Column(JSON, nullable=True)  # Array of {run_id, city, status, dataset_id, retry_count}
+    # Apify settings (user-configurable per job)
+    max_results_per_city = Column(Integer, nullable=True)  # null = unlimited
+    skip_closed_places = Column(Boolean, default=True)
+    website_filter = Column(String(20), default="withWebsite")  # allPlaces, withWebsite, withoutWebsite
+    scrape_reviews = Column(Boolean, default=False)
+    max_reviews = Column(Integer, default=0)
+    scrape_images = Column(Boolean, default=False)
+    max_images = Column(Integer, default=0)
+    language = Column(String(10), default="en")
+    
+    # Legacy: Apify run tracking (kept for backward compatibility with old orders)
+    apify_run_ids = Column(JSON, nullable=True)  # DEPRECATED: Use local_scraper_city_jobs table instead
     webhook_secret = Column(String(100), nullable=True)  # For verifying webhook callbacks
     webhook_url = Column(String(500), nullable=True)  # Webhook URL for Apify callbacks
     

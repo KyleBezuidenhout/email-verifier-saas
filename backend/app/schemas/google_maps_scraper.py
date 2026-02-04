@@ -3,9 +3,21 @@ Pydantic schemas for Google Maps Scraper feature.
 Uses Apify compass/crawler-google-places actor.
 """
 
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, Field
+from typing import Optional, List, Literal
 from datetime import datetime
+
+
+class ApifySettings(BaseModel):
+    """Apify scraper configuration settings"""
+    max_results_per_city: Optional[int] = Field(None, description="Max results per city (null = unlimited)")
+    skip_closed_places: bool = Field(True, description="Exclude permanently closed businesses")
+    website_filter: Literal["allPlaces", "withWebsite", "withoutWebsite"] = Field("withWebsite", description="Filter by website presence")
+    scrape_reviews: bool = Field(False, description="Fetch reviews (increases cost)")
+    max_reviews: int = Field(0, description="Max reviews per place if scrape_reviews is true")
+    scrape_images: bool = Field(False, description="Fetch images (increases cost)")
+    max_images: int = Field(0, description="Max images per place if scrape_images is true")
+    language: str = Field("en", description="Language for results")
 
 
 class GoogleMapsScraperOrderCreate(BaseModel):
@@ -15,6 +27,16 @@ class GoogleMapsScraperOrderCreate(BaseModel):
     states: List[str]  # List of states (single for single_city, multiple for full_state admin)
     city: Optional[str] = None  # Required for single_city mode
     search_term: str
+    
+    # Apify settings (optional - defaults applied if not provided)
+    max_results_per_city: Optional[int] = None
+    skip_closed_places: bool = True
+    website_filter: str = "withWebsite"
+    scrape_reviews: bool = False
+    max_reviews: int = 0
+    scrape_images: bool = False
+    max_images: int = 0
+    language: str = "en"
 
 
 class GoogleMapsScraperOrderResponse(BaseModel):
@@ -37,6 +59,16 @@ class GoogleMapsScraperOrderResponse(BaseModel):
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    
+    # Apify settings
+    max_results_per_city: Optional[int] = None
+    skip_closed_places: bool = True
+    website_filter: str = "withWebsite"
+    scrape_reviews: bool = False
+    max_reviews: int = 0
+    scrape_images: bool = False
+    max_images: int = 0
+    language: str = "en"
 
     class Config:
         from_attributes = True
