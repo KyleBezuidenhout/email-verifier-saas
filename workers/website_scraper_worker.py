@@ -294,7 +294,7 @@ async def process_job(job_id: str, website_col: str) -> bool:
         
         logger.info(f"🔄 Processing website scraper job {job_id}")
         logger.info(f"⚙️ Using ZenRows mode=auto (Adaptive Stealth Mode)")
-        logger.info(f"⚙️ Concurrency limit: {CONCURRENCY_LIMIT}")
+        logger.info(f"⚙️ Concurrency limit: {CONCURRENCY_LIMIT}, Rate limit: 30 req/sec")
         
         # Update status to processing
         job.status = "processing"
@@ -395,10 +395,12 @@ async def process_job(job_id: str, website_col: str) -> bool:
             urls_duplicate=len(duplicate_map),
         )
         
-        # Create ZenRows client with 40 concurrent requests
+        # Create ZenRows client with concurrency + rate limiting
+        RATE_LIMIT = 30  # requests per second
         async with ZenRowsClient(
             api_key=settings.ZENROWS_API_KEY,
             concurrency_limit=CONCURRENCY_LIMIT,
+            rate_limit=RATE_LIMIT,
         ) as zenrows:
             
             # Rolling queue: process URLs with constant concurrency
@@ -647,7 +649,7 @@ def main():
     logger.info(f"🚀 Website Scraper worker starting...")
     logger.info(f"📋 Listening to queue: {WEBSITE_SCRAPER_QUEUE}")
     logger.info(f"⚙️ Scraping mode: ZenRows Adaptive Stealth (mode=auto)")
-    logger.info(f"⚙️ Concurrency limit: {CONCURRENCY_LIMIT}")
+    logger.info(f"⚙️ Concurrency limit: {CONCURRENCY_LIMIT}, Rate limit: 30 req/sec, Retries: 3")
     
     # Check ZenRows health on startup
     is_healthy = asyncio.run(check_health_and_log())

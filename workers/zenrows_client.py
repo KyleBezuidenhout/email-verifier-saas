@@ -220,17 +220,62 @@ class ScrapeResult:
     error: Optional[str] = None
 
 
+class RateLimiter:
+    """
+    Token bucket rate limiter for controlling requests per second.
+    """
+    
+    def __init__(self, rate: float = 30.0):
+        """
+        Initialize rate limiter.
+        
+        Args:
+            rate: Maximum requests per second (default 30)
+        """
+        self.rate = rate
+        self.tokens = rate
+        self.last_update = asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else 0
+        self._lock = asyncio.Lock()
+    
+    async def acquire(self):
+        """Wait until a token is available, then consume it."""
+        async with self._lock:
+            now = asyncio.get_event_loop().time()
+            
+            # Refill tokens based on time elapsed
+            time_passed = now - self.last_update
+            self.tokens = min(self.rate, self.tokens + time_passed * self.rate)
+            self.last_update = now
+            
+            if self.tokens < 1:
+                # Wait for token to become available
+                wait_time = (1 - self.tokens) / self.rate
+                await asyncio.sleep(wait_time)
+                self.tokens = 0
+            else:
+                self.tokens -= 1
+
+
 class ZenRowsClient:
     """
     ZenRows API client using Adaptive Stealth Mode (mode=auto).
     
-    No tier escalation - ZenRows automatically handles anti-bot detection.
+    Features:
+    - Concurrency limit via semaphore (default 40)
+    - Rate limit of 30 requests per second
+    - Retry logic for 429 errors with exponential backoff
     """
+    
+    # Retry configuration
+    MAX_RETRIES = 3
+    INITIAL_BACKOFF = 1.0  # seconds
+    MAX_BACKOFF = 10.0  # seconds
     
     def __init__(
         self,
         api_key: str,
         concurrency_limit: int = MAX_CONCURRENT_REQUESTS,
+        rate_limit: float = 30.0,
     ):
         """
         Initialize ZenRows client.
@@ -238,9 +283,11 @@ class ZenRowsClient:
         Args:
             api_key: ZenRows API key
             concurrency_limit: Max concurrent requests (default 40)
+            rate_limit: Max requests per second (default 30)
         """
         self.api_key = api_key
         self.semaphore = asyncio.Semaphore(concurrency_limit)
+        self.rate_limiter = RateLimiter(rate=rate_limit)
         self.http_client: Optional[httpx.AsyncClient] = None
     
     async def __aenter__(self):
@@ -256,11 +303,30 @@ class ZenRowsClient:
         if self.http_client:
             await self.http_client.aclose()
     
+    async def _make_request(self, url: str) -> httpx.Response:
+        """
+        Make a single HTTP request to ZenRows API.
+        Waits for rate limiter before sending.
+        """
+        # Wait for rate limiter
+        await self.rate_limiter.acquire()
+        
+        params = {
+            "apikey": self.api_key,
+            "url": url,
+            "mode": "auto",
+        }
+        
+        return await self.http_client.get(ZENROWS_API_URL, params=params)
+    
     async def scrape_url(self, url: str) -> ScrapeResult:
         """
         Scrape a URL using ZenRows Adaptive Stealth Mode (mode=auto).
         
-        Single API call - ZenRows automatically selects the best scraping approach.
+        Features:
+        - Rate limited to 30 req/sec
+        - Retries 429 errors with exponential backoff (up to 3 retries)
+        - Respects concurrency limit via semaphore
         
         Args:
             url: URL to scrape
@@ -269,90 +335,103 @@ class ZenRowsClient:
             ScrapeResult with contacts and metadata
         """
         async with self.semaphore:
-            try:
-                # Build request URL with mode=auto (Adaptive Stealth Mode)
-                # Using the exact curl format provided:
-                # curl "https://api.zenrows.com/v1/?apikey=XXX&url=YYY&mode=auto"
-                params = {
-                    "apikey": self.api_key,
-                    "url": url,
-                    "mode": "auto",  # Adaptive Stealth Mode
-                }
-                
-                logger.debug(f"Scraping {url} with mode=auto")
-                
-                response = await self.http_client.get(ZENROWS_API_URL, params=params)
-                
-                if response.status_code == 200:
-                    html = response.text
+            retries = 0
+            backoff = self.INITIAL_BACKOFF
+            
+            while True:
+                try:
+                    logger.debug(f"Scraping {url} with mode=auto (attempt {retries + 1})")
                     
-                    # Check if we got meaningful content
-                    if not html or len(html.strip()) < 100:
+                    response = await self._make_request(url)
+                    
+                    if response.status_code == 200:
+                        html = response.text
+                        
+                        # Check if we got meaningful content
+                        if not html or len(html.strip()) < 100:
+                            return ScrapeResult(
+                                success=False,
+                                url=url,
+                                contacts=ExtractedContacts(),
+                                classification="NO_CONTENT",
+                                error="Empty or minimal response",
+                            )
+                        
+                        # Extract contacts from HTML
+                        contacts = extract_contacts_from_html(html)
+                        
+                        return ScrapeResult(
+                            success=True,
+                            url=url,
+                            contacts=contacts,
+                            classification="SUCCESS",
+                        )
+                    
+                    elif response.status_code == 422:
+                        # Unprocessable - URL is invalid/unreachable, no retry
                         return ScrapeResult(
                             success=False,
                             url=url,
                             contacts=ExtractedContacts(),
-                            classification="NO_CONTENT",
-                            error="Empty or minimal response",
+                            classification="UNPROCESSABLE",
+                            error="ZenRows could not process URL (422)",
                         )
                     
-                    # Extract contacts from HTML using our Python extraction
-                    contacts = extract_contacts_from_html(html)
+                    elif response.status_code == 429:
+                        # Rate limited - retry with backoff
+                        retries += 1
+                        if retries > self.MAX_RETRIES:
+                            logger.warning(f"Max retries ({self.MAX_RETRIES}) exceeded for {url}")
+                            return ScrapeResult(
+                                success=False,
+                                url=url,
+                                contacts=ExtractedContacts(),
+                                classification="RATE_LIMITED",
+                                error=f"Rate limited after {self.MAX_RETRIES} retries",
+                            )
+                        
+                        logger.debug(f"Rate limited on {url}, retry {retries}/{self.MAX_RETRIES} after {backoff:.1f}s")
+                        await asyncio.sleep(backoff)
+                        backoff = min(backoff * 2, self.MAX_BACKOFF)
+                        continue  # Retry
                     
-                    return ScrapeResult(
-                        success=True,
-                        url=url,
-                        contacts=contacts,
-                        classification="SUCCESS",
-                    )
-                
-                elif response.status_code == 422:
-                    # Unprocessable - URL might be invalid or unreachable
-                    return ScrapeResult(
-                        success=False,
-                        url=url,
-                        contacts=ExtractedContacts(),
-                        classification="UNPROCESSABLE",
-                        error=f"ZenRows could not process URL (422)",
-                    )
-                
-                elif response.status_code == 429:
-                    # Rate limited
-                    return ScrapeResult(
-                        success=False,
-                        url=url,
-                        contacts=ExtractedContacts(),
-                        classification="RATE_LIMITED",
-                        error="Rate limited by ZenRows",
-                    )
-                
-                else:
+                    else:
+                        # Other HTTP errors - no retry
+                        return ScrapeResult(
+                            success=False,
+                            url=url,
+                            contacts=ExtractedContacts(),
+                            classification="ERROR",
+                            error=f"HTTP {response.status_code}",
+                        )
+                        
+                except httpx.TimeoutException:
+                    # Timeout - retry with backoff
+                    retries += 1
+                    if retries > self.MAX_RETRIES:
+                        logger.warning(f"Timeout after {self.MAX_RETRIES} retries for {url}")
+                        return ScrapeResult(
+                            success=False,
+                            url=url,
+                            contacts=ExtractedContacts(),
+                            classification="TIMEOUT",
+                            error=f"Timeout after {self.MAX_RETRIES} retries",
+                        )
+                    
+                    logger.debug(f"Timeout on {url}, retry {retries}/{self.MAX_RETRIES} after {backoff:.1f}s")
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, self.MAX_BACKOFF)
+                    continue  # Retry
+                    
+                except Exception as e:
+                    logger.error(f"Error scraping {url}: {e}")
                     return ScrapeResult(
                         success=False,
                         url=url,
                         contacts=ExtractedContacts(),
                         classification="ERROR",
-                        error=f"HTTP {response.status_code}",
+                        error=str(e),
                     )
-                    
-            except httpx.TimeoutException:
-                logger.warning(f"Timeout scraping {url}")
-                return ScrapeResult(
-                    success=False,
-                    url=url,
-                    contacts=ExtractedContacts(),
-                    classification="TIMEOUT",
-                    error="Request timeout",
-                )
-            except Exception as e:
-                logger.error(f"Error scraping {url}: {e}")
-                return ScrapeResult(
-                    success=False,
-                    url=url,
-                    contacts=ExtractedContacts(),
-                    classification="ERROR",
-                    error=str(e),
-                )
 
 
 # ============================================
