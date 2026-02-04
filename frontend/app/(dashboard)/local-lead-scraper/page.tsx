@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { apiClient } from "@/lib/api";
 import { GoogleMapsScraperOrder, GoogleMapsScraperHealthStatus, GoogleMapsScraperPreviewResponse } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
@@ -9,7 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 
 type ScrapeMode = "single_city" | "full_state";
 
-// Searchable Select Component
+// Searchable Select Component with Portal for proper z-index
 function SearchableSelect({
   options,
   value,
@@ -27,7 +28,8 @@ function SearchableSelect({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const filteredOptions = useMemo(() => {
@@ -37,9 +39,25 @@ function SearchableSelect({
     );
   }, [options, search]);
 
+  // Update dropdown position when opened
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      });
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        triggerRef.current && !triggerRef.current.contains(target) &&
+        dropdownRef.current && !dropdownRef.current.contains(target)
+      ) {
         setIsOpen(false);
         setSearch("");
       }
@@ -48,9 +66,60 @@ function SearchableSelect({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const dropdownContent = isOpen && !disabled && typeof document !== 'undefined' ? createPortal(
+    <div 
+      ref={dropdownRef}
+      className="fixed bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden"
+      style={{ 
+        zIndex: 99999,
+        top: dropdownPosition.top,
+        left: dropdownPosition.left,
+        width: dropdownPosition.width,
+      }}
+    >
+      <div className="p-2 border-b border-dashboard-border bg-dashboard-surface">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search..."
+          className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
+          autoFocus
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+      <div className="overflow-y-auto max-h-48 bg-dashboard-surface">
+        {filteredOptions.length === 0 ? (
+          <div className="px-4 py-3 text-sm text-dashboard-text-muted">No results found</div>
+        ) : (
+          filteredOptions.map((option) => (
+            <div
+              key={option}
+              className={`px-4 py-2 cursor-pointer text-sm transition-colors ${
+                option === value 
+                  ? 'bg-dashboard-accent/20 text-dashboard-accent' 
+                  : 'text-dashboard-text hover:bg-dashboard-card'
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(option);
+                setIsOpen(false);
+                setSearch("");
+              }}
+            >
+              {option}
+            </div>
+          ))
+        )}
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
   return (
-    <div className={`relative ${isOpen ? 'z-[100]' : ''}`} ref={dropdownRef} style={{ isolation: 'isolate' }}>
+    <div className="relative">
       <div
+        ref={triggerRef}
         className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
@@ -65,55 +134,12 @@ function SearchableSelect({
           </svg>
         )}
       </div>
-      
-      {isOpen && !disabled && (
-        <div 
-          className="absolute left-0 right-0 mt-1 bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden"
-          style={{ zIndex: 9999 }}
-        >
-          <div className="p-2 border-b border-dashboard-border bg-dashboard-surface">
-            <input
-              ref={inputRef}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
-              autoFocus
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-          <div className="overflow-y-auto max-h-48 bg-dashboard-surface">
-            {filteredOptions.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-dashboard-text-muted">No results found</div>
-            ) : (
-              filteredOptions.map((option) => (
-                <div
-                  key={option}
-                  className={`px-4 py-2 cursor-pointer text-sm transition-colors ${
-                    option === value 
-                      ? 'bg-dashboard-accent/20 text-dashboard-accent' 
-                      : 'text-dashboard-text hover:bg-dashboard-card'
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onChange(option);
-                    setIsOpen(false);
-                    setSearch("");
-                  }}
-                >
-                  {option}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {dropdownContent}
     </div>
   );
 }
 
-// Multi-Select Searchable Component (for admin multi-state selection)
+// Multi-Select Searchable Component with Portal (for admin multi-state selection)
 function MultiSelectSearchable({
   options,
   values,
@@ -131,6 +157,8 @@ function MultiSelectSearchable({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const filteredOptions = useMemo(() => {
@@ -140,9 +168,25 @@ function MultiSelectSearchable({
     );
   }, [options, search]);
 
+  // Update dropdown position when opened
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      });
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        triggerRef.current && !triggerRef.current.contains(target) &&
+        dropdownRef.current && !dropdownRef.current.contains(target)
+      ) {
         setIsOpen(false);
         setSearch("");
       }
@@ -159,9 +203,64 @@ function MultiSelectSearchable({
     }
   };
 
+  const dropdownContent = isOpen && !disabled && typeof document !== 'undefined' ? createPortal(
+    <div 
+      ref={dropdownRef}
+      className="fixed bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden"
+      style={{ 
+        zIndex: 99999,
+        top: dropdownPosition.top,
+        left: dropdownPosition.left,
+        width: dropdownPosition.width,
+      }}
+    >
+      <div className="p-2 border-b border-dashboard-border bg-dashboard-surface">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search states..."
+          className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
+          autoFocus
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+      <div className="overflow-y-auto max-h-48 bg-dashboard-surface">
+        {filteredOptions.length === 0 ? (
+          <div className="px-4 py-3 text-sm text-dashboard-text-muted">No results found</div>
+        ) : (
+          filteredOptions.map((option) => (
+            <div
+              key={option}
+              className={`px-4 py-2 cursor-pointer text-sm transition-colors flex items-center gap-2 ${
+                values.includes(option)
+                  ? 'bg-dashboard-accent/20 text-dashboard-accent' 
+                  : 'text-dashboard-text hover:bg-dashboard-card'
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleOption(option);
+              }}
+            >
+              <input 
+                type="checkbox" 
+                checked={values.includes(option)}
+                onChange={() => {}}
+                className="w-4 h-4 rounded border-dashboard-border text-dashboard-accent"
+              />
+              {option}
+            </div>
+          ))
+        )}
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
   return (
-    <div className={`relative ${isOpen ? 'z-[100]' : ''}`} ref={dropdownRef} style={{ isolation: 'isolate' }}>
+    <div className="relative">
       <div
+        ref={triggerRef}
         className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between min-h-[48px] ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
@@ -193,53 +292,7 @@ function MultiSelectSearchable({
           </svg>
         )}
       </div>
-      
-      {isOpen && !disabled && (
-        <div 
-          className="absolute left-0 right-0 mt-1 bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden"
-          style={{ zIndex: 9999 }}
-        >
-          <div className="p-2 border-b border-dashboard-border bg-dashboard-surface">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search states..."
-              className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
-              autoFocus
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-          <div className="overflow-y-auto max-h-48 bg-dashboard-surface">
-            {filteredOptions.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-dashboard-text-muted">No results found</div>
-            ) : (
-              filteredOptions.map((option) => (
-                <div
-                  key={option}
-                  className={`px-4 py-2 cursor-pointer text-sm transition-colors flex items-center gap-2 ${
-                    values.includes(option)
-                      ? 'bg-dashboard-accent/20 text-dashboard-accent' 
-                      : 'text-dashboard-text hover:bg-dashboard-card'
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleOption(option);
-                  }}
-                >
-                  <input 
-                    type="checkbox" 
-                    checked={values.includes(option)}
-                    onChange={() => {}}
-                    className="w-4 h-4 rounded border-dashboard-border text-dashboard-accent"
-                  />
-                  {option}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {dropdownContent}
     </div>
   );
 }
