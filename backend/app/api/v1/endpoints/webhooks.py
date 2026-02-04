@@ -6,6 +6,7 @@ Handles incoming webhooks from external services like Apify.
 
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from datetime import datetime
 import logging
 import json
@@ -102,6 +103,7 @@ async def start_next_pending_city(order: LocalScraperOrder, db, webhook_url: str
     
     if started_count > 0:
         order.apify_run_ids = apify_runs
+        flag_modified(order, "apify_run_ids")  # Force SQLAlchemy to detect JSON changes
         db.commit()
         logger.info(f"📊 Rolling queue status: {running_count} running, started {started_count} new jobs")
 
@@ -136,6 +138,7 @@ async def process_completed_run(order_id: str, city_index: int, run_data: dict, 
             run_info["error"] = "No dataset ID returned"
             apify_runs[city_index] = run_info
             order.apify_run_ids = apify_runs
+            flag_modified(order, "apify_run_ids")  # Force SQLAlchemy to detect JSON changes
             db.commit()
             # Still try to start next pending city
             await start_next_pending_city(order, db, webhook_url)
@@ -159,6 +162,7 @@ async def process_completed_run(order_id: str, city_index: int, run_data: dict, 
         
         apify_runs[city_index] = run_info
         order.apify_run_ids = apify_runs
+        flag_modified(order, "apify_run_ids")  # Force SQLAlchemy to detect JSON changes
         
         # Update completed cities count (completed + failed = done)
         completed = sum(1 for r in apify_runs if r.get("status") in ["completed", "failed"])
@@ -209,6 +213,7 @@ async def retry_failed_run(order_id: str, city_index: int, webhook_url: str):
             run_info["error"] = "Max retries (3) exceeded"
             apify_runs[city_index] = run_info
             order.apify_run_ids = apify_runs
+            flag_modified(order, "apify_run_ids")  # Force SQLAlchemy to detect JSON changes
             
             # Check if all cities are done
             completed = sum(1 for r in apify_runs if r.get("status") in ["completed", "failed"])
@@ -257,6 +262,7 @@ async def retry_failed_run(order_id: str, city_index: int, webhook_url: str):
         
         apify_runs[city_index] = run_info
         order.apify_run_ids = apify_runs
+        flag_modified(order, "apify_run_ids")  # Force SQLAlchemy to detect JSON changes
         db.commit()
         
     except Exception as e:
@@ -378,6 +384,7 @@ async def finalize_order(order: LocalScraperOrder, db: Session):
         for run_info in apify_runs:
             run_info.pop("results", None)
         order.apify_run_ids = apify_runs
+        flag_modified(order, "apify_run_ids")  # Force SQLAlchemy to detect JSON changes
         
     except Exception as e:
         logger.error(f"Error finalizing order {order.id}: {e}")
