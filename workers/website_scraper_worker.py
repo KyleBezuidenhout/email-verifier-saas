@@ -401,11 +401,11 @@ async def process_job(job_id: str, website_col: str) -> bool:
             concurrency_limit=CONCURRENCY_LIMIT,
         ) as zenrows:
             
-            # Process URLs in parallel batches
+            # Rolling queue: process URLs with constant concurrency
             total_processed = 0
             total_with_contacts = 0
             
-            # Create tasks for all URLs
+            # Helper to process a single URL
             async def process_url(url: str, idx: int) -> Tuple[int, dict]:
                 """Process a single URL and return (index, result_dict)."""
                 result = await zenrows.scrape_url(url)
@@ -421,87 +421,137 @@ async def process_job(job_id: str, website_col: str) -> bool:
                     'error': result.error,
                 }
             
-            # Process in chunks for better progress reporting
-            CHUNK_SIZE = CONCURRENCY_LIMIT  # Match chunk size to concurrency limit
+            # Helper to process a completed task result
+            def handle_result(result_data: Tuple[int, dict]) -> bool:
+                """Process result and update stats. Returns True if contacts found."""
+                nonlocal total_processed, total_with_contacts
+                
+                idx, data = result_data
+                total_processed += 1
+                stats.api_requests_made += 1
+                
+                if data['success']:
+                    stats.urls_scraped += 1
+                    
+                    # Update output row
+                    contacts = data['contacts']
+                    output_rows[idx]['email_1'] = contacts['email_1']
+                    output_rows[idx]['email_2'] = contacts['email_2']
+                    output_rows[idx]['phone_1'] = contacts['phone_1']
+                    output_rows[idx]['phone_2'] = contacts['phone_2']
+                    
+                    if data['has_contacts']:
+                        output_rows[idx]['extraction_status'] = 'success'
+                        total_with_contacts += 1
+                        stats.urls_with_contacts += 1
+                        
+                        # Count individual contacts
+                        if contacts['email_1']:
+                            stats.emails_extracted += 1
+                        if contacts['email_2']:
+                            stats.emails_extracted += 1
+                        if contacts['phone_1']:
+                            stats.phones_extracted += 1
+                        if contacts['phone_2']:
+                            stats.phones_extracted += 1
+                        return True
+                    else:
+                        output_rows[idx]['extraction_status'] = 'not_found'
+                else:
+                    stats.urls_failed += 1
+                    output_rows[idx]['extraction_status'] = 'error'
+                    if data.get('error'):
+                        logger.debug(f"URL failed: {data['error']}")
+                return False
             
-            for chunk_start in range(0, len(unique_urls), CHUNK_SIZE):
-                # Check cancellation
+            # Rolling queue implementation
+            logger.info(f"🚀 Starting rolling queue with {CONCURRENCY_LIMIT} concurrent requests")
+            
+            # Create iterator for URLs
+            url_iterator = iter(zip(unique_urls, unique_indices))
+            pending_tasks = set()
+            task_to_info = {}  # Map task -> (url, idx) for debugging
+            last_progress_update = 0
+            PROGRESS_UPDATE_INTERVAL = 25  # Update DB every N completions
+            
+            # Fill initial pool up to CONCURRENCY_LIMIT
+            for _ in range(min(CONCURRENCY_LIMIT, len(unique_urls))):
+                try:
+                    url, idx = next(url_iterator)
+                    task = asyncio.create_task(process_url(url, idx))
+                    pending_tasks.add(task)
+                    task_to_info[task] = (url, idx)
+                except StopIteration:
+                    break
+            
+            logger.info(f"🌐 Processing {len(unique_urls)} URLs with rolling queue")
+            
+            # Process until all tasks complete
+            while pending_tasks:
+                # Check cancellation periodically
                 if is_job_cancelled(job_id):
                     logger.info(f"Job {job_id} was cancelled during processing")
+                    # Cancel all pending tasks
+                    for task in pending_tasks:
+                        task.cancel()
                     job.status = "cancelled"
                     db.commit()
                     return False
                 
-                chunk_end = min(chunk_start + CHUNK_SIZE, len(unique_urls))
-                chunk_urls = unique_urls[chunk_start:chunk_end]
-                chunk_indices = unique_indices[chunk_start:chunk_end]
+                # Wait for at least one task to complete
+                done, pending_tasks = await asyncio.wait(
+                    pending_tasks,
+                    return_when=asyncio.FIRST_COMPLETED
+                )
                 
-                logger.info(f"🌐 Processing URLs {chunk_start + 1}-{chunk_end} of {len(unique_urls)}")
-                
-                # Create tasks for this chunk
-                tasks = [
-                    process_url(url, idx) 
-                    for url, idx in zip(chunk_urls, chunk_indices)
-                ]
-                
-                # Execute all tasks concurrently (limited by semaphore in ZenRowsClient)
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                # Process results
-                for result in results:
-                    if isinstance(result, Exception):
-                        logger.error(f"Task exception: {result}")
-                        stats.urls_failed += 1
-                        continue
+                # Process completed tasks
+                for task in done:
+                    # Clean up task tracking
+                    task_info = task_to_info.pop(task, None)
                     
-                    idx, data = result
-                    total_processed += 1
-                    stats.api_requests_made += 1  # Count each ZenRows API call
-                    
-                    if data['success']:
-                        stats.urls_scraped += 1
-                        
-                        # Update output row
-                        contacts = data['contacts']
-                        output_rows[idx]['email_1'] = contacts['email_1']
-                        output_rows[idx]['email_2'] = contacts['email_2']
-                        output_rows[idx]['phone_1'] = contacts['phone_1']
-                        output_rows[idx]['phone_2'] = contacts['phone_2']
-                        
-                        if data['has_contacts']:
-                            output_rows[idx]['extraction_status'] = 'success'
-                            total_with_contacts += 1
-                            stats.urls_with_contacts += 1
-                            
-                            # Count individual contacts
-                            if contacts['email_1']:
-                                stats.emails_extracted += 1
-                            if contacts['email_2']:
-                                stats.emails_extracted += 1
-                            if contacts['phone_1']:
-                                stats.phones_extracted += 1
-                            if contacts['phone_2']:
-                                stats.phones_extracted += 1
-                        else:
-                            output_rows[idx]['extraction_status'] = 'not_found'
-                    else:
+                    try:
+                        result = task.result()
+                        handle_result(result)
+                    except Exception as e:
+                        logger.error(f"Task exception for {task_info}: {e}")
                         stats.urls_failed += 1
-                        output_rows[idx]['extraction_status'] = 'error'
-                        if data.get('error'):
-                            logger.debug(f"URL failed: {data['error']}")
+                    
+                    # Start a new task if there are more URLs
+                    try:
+                        url, idx = next(url_iterator)
+                        new_task = asyncio.create_task(process_url(url, idx))
+                        pending_tasks.add(new_task)
+                        task_to_info[new_task] = (url, idx)
+                    except StopIteration:
+                        pass  # No more URLs to process
                 
-                # Update progress
-                progress = int((total_processed / len(unique_urls)) * 100)
-                hit_rate = (total_with_contacts / total_processed * 100) if total_processed > 0 else 0
-                
-                job.completed_leads = total_processed
-                job.progress_percentage = progress
-                job.hit_rate_percentage = Decimal(str(round(hit_rate, 2)))
-                job.credits_spent = stats.api_requests_made  # Store API request count
-                db.commit()
-                
-                logger.info(f"📊 Progress: {progress}% ({total_processed}/{len(unique_urls)}), "
-                           f"Hit rate: {hit_rate:.1f}%, API requests: {stats.api_requests_made}")
+                # Update progress periodically (not every single completion)
+                if total_processed - last_progress_update >= PROGRESS_UPDATE_INTERVAL:
+                    last_progress_update = total_processed
+                    progress = int((total_processed / len(unique_urls)) * 100)
+                    hit_rate = (total_with_contacts / total_processed * 100) if total_processed > 0 else 0
+                    
+                    job.completed_leads = total_processed
+                    job.progress_percentage = progress
+                    job.hit_rate_percentage = Decimal(str(round(hit_rate, 2)))
+                    job.credits_spent = stats.api_requests_made
+                    db.commit()
+                    
+                    logger.info(f"📊 Progress: {progress}% ({total_processed}/{len(unique_urls)}), "
+                               f"Hit rate: {hit_rate:.1f}%, API requests: {stats.api_requests_made}")
+            
+            # Final progress update
+            progress = int((total_processed / len(unique_urls)) * 100) if len(unique_urls) > 0 else 100
+            hit_rate = (total_with_contacts / total_processed * 100) if total_processed > 0 else 0
+            
+            job.completed_leads = total_processed
+            job.progress_percentage = progress
+            job.hit_rate_percentage = Decimal(str(round(hit_rate, 2)))
+            job.credits_spent = stats.api_requests_made
+            db.commit()
+            
+            logger.info(f"📊 Final: {progress}% ({total_processed}/{len(unique_urls)}), "
+                       f"Hit rate: {hit_rate:.1f}%, API requests: {stats.api_requests_made}")
         
         # Copy contacts from first occurrence to duplicate rows
         if duplicate_map:
