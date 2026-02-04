@@ -18,6 +18,7 @@ import os
 import sys
 import time
 import json
+import base64
 import logging
 import asyncio
 from typing import List, Tuple, Dict, Any
@@ -121,10 +122,13 @@ async def start_apify_run(
     }]
     
     url = f"{APIFY_BASE_URL}/acts/{APIFY_ACTOR_ID}/runs"
-    # Webhooks must be passed as a query parameter (JSON-encoded), not in the body
+    # Webhooks must be passed as a query parameter (base64-encoded JSON), not in the body
+    # Per Apify docs: https://docs.apify.com/platform/integrations/webhooks/ad-hoc-webhooks
+    webhooks_json = json.dumps(webhooks)
+    webhooks_base64 = base64.b64encode(webhooks_json.encode('utf-8')).decode('utf-8')
     params = {
         "memory": memory_mbytes,
-        "webhooks": json.dumps(webhooks)
+        "webhooks": webhooks_base64
     }
     
     # Body contains only the actor input

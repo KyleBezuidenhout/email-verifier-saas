@@ -6,6 +6,7 @@ Handles single city and state-wide (concurrent) scraping with webhook callbacks.
 """
 
 import json
+import base64
 import httpx
 import logging
 import secrets
@@ -90,13 +91,15 @@ class ApifyGoogleMapsService:
             url = f"{self.BASE_URL}/acts/{self.ACTOR_ID}/runs"
             params = {"memory": memory_mbytes}
             
-            # Add webhook if provided (must be JSON-encoded array)
+            # Add webhook if provided (must be base64-encoded JSON array)
+            # Per Apify docs: https://docs.apify.com/platform/integrations/webhooks/ad-hoc-webhooks
             if webhook_url:
                 webhooks = [{
                     "eventTypes": ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
                     "requestUrl": webhook_url
                 }]
-                params["webhooks"] = json.dumps(webhooks)
+                webhooks_json = json.dumps(webhooks)
+                params["webhooks"] = base64.b64encode(webhooks_json.encode('utf-8')).decode('utf-8')
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -141,10 +144,13 @@ class ApifyGoogleMapsService:
             }]
             
             url = f"{self.BASE_URL}/acts/{self.ACTOR_ID}/runs"
-            # Webhooks must be passed as a query parameter (JSON-encoded), not in the body
+            # Webhooks must be passed as a query parameter (base64-encoded JSON), not in the body
+            # Per Apify docs: https://docs.apify.com/platform/integrations/webhooks/ad-hoc-webhooks
+            webhooks_json = json.dumps(webhooks)
+            webhooks_base64 = base64.b64encode(webhooks_json.encode('utf-8')).decode('utf-8')
             params = {
                 "memory": memory_mbytes,
-                "webhooks": json.dumps(webhooks)
+                "webhooks": webhooks_base64
             }
             
             # Body contains only the actor input
