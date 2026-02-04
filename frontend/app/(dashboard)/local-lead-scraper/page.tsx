@@ -49,7 +49,7 @@ function SearchableSelect({
   }, []);
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className={`relative ${isOpen ? 'z-[100]' : ''}`} ref={dropdownRef} style={{ isolation: 'isolate' }}>
       <div
         className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
@@ -67,8 +67,11 @@ function SearchableSelect({
       </div>
       
       {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-dashboard-surface border border-dashboard-border rounded-lg shadow-xl max-h-60 overflow-hidden">
-          <div className="p-2 border-b border-dashboard-border">
+        <div 
+          className="absolute left-0 right-0 mt-1 bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden"
+          style={{ zIndex: 9999 }}
+        >
+          <div className="p-2 border-b border-dashboard-border bg-dashboard-surface">
             <input
               ref={inputRef}
               type="text"
@@ -77,9 +80,10 @@ function SearchableSelect({
               placeholder="Search..."
               className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
               autoFocus
+              onClick={(e) => e.stopPropagation()}
             />
           </div>
-          <div className="overflow-y-auto max-h-48">
+          <div className="overflow-y-auto max-h-48 bg-dashboard-surface">
             {filteredOptions.length === 0 ? (
               <div className="px-4 py-3 text-sm text-dashboard-text-muted">No results found</div>
             ) : (
@@ -91,7 +95,8 @@ function SearchableSelect({
                       ? 'bg-dashboard-accent/20 text-dashboard-accent' 
                       : 'text-dashboard-text hover:bg-dashboard-card'
                   }`}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onChange(option);
                     setIsOpen(false);
                     setSearch("");
@@ -155,7 +160,7 @@ function MultiSelectSearchable({
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className={`relative ${isOpen ? 'z-[100]' : ''}`} ref={dropdownRef} style={{ isolation: 'isolate' }}>
       <div
         className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between min-h-[48px] ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
@@ -190,8 +195,11 @@ function MultiSelectSearchable({
       </div>
       
       {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-dashboard-surface border border-dashboard-border rounded-lg shadow-xl max-h-60 overflow-hidden">
-          <div className="p-2 border-b border-dashboard-border">
+        <div 
+          className="absolute left-0 right-0 mt-1 bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden"
+          style={{ zIndex: 9999 }}
+        >
+          <div className="p-2 border-b border-dashboard-border bg-dashboard-surface">
             <input
               type="text"
               value={search}
@@ -199,9 +207,10 @@ function MultiSelectSearchable({
               placeholder="Search states..."
               className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
               autoFocus
+              onClick={(e) => e.stopPropagation()}
             />
           </div>
-          <div className="overflow-y-auto max-h-48">
+          <div className="overflow-y-auto max-h-48 bg-dashboard-surface">
             {filteredOptions.length === 0 ? (
               <div className="px-4 py-3 text-sm text-dashboard-text-muted">No results found</div>
             ) : (
@@ -213,7 +222,10 @@ function MultiSelectSearchable({
                       ? 'bg-dashboard-accent/20 text-dashboard-accent' 
                       : 'text-dashboard-text hover:bg-dashboard-card'
                   }`}
-                  onClick={() => toggleOption(option)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleOption(option);
+                  }}
                 >
                   <input 
                     type="checkbox" 
