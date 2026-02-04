@@ -28,9 +28,10 @@ function SearchableSelect({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0, openUpward: false });
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const filteredOptions = useMemo(() => {
     if (!search) return options;
@@ -39,18 +40,46 @@ function SearchableSelect({
     );
   }, [options, search]);
 
-  // Update dropdown position when opened
-  useEffect(() => {
-    if (isOpen && triggerRef.current) {
+  // Calculate dropdown position
+  const updateDropdownPosition = useCallback(() => {
+    if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
+      const dropdownHeight = 250; // Approximate height of dropdown
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const openUpward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+      
       setDropdownPosition({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
+        top: openUpward ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
+        left: rect.left,
         width: rect.width,
+        openUpward,
       });
     }
-  }, [isOpen]);
+  }, []);
 
+  // Update dropdown position when opened and on scroll/resize
+  useEffect(() => {
+    if (isOpen) {
+      updateDropdownPosition();
+      
+      // Focus search input when dropdown opens
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 10);
+      
+      const handleScrollOrResize = () => updateDropdownPosition();
+      window.addEventListener("scroll", handleScrollOrResize, true);
+      window.addEventListener("resize", handleScrollOrResize);
+      
+      return () => {
+        window.removeEventListener("scroll", handleScrollOrResize, true);
+        window.removeEventListener("resize", handleScrollOrResize);
+      };
+    }
+  }, [isOpen, updateDropdownPosition]);
+
+  // Handle click outside to close dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -62,42 +91,62 @@ function SearchableSelect({
         setSearch("");
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      setSearch("");
+    } else if (e.key === "Enter" && filteredOptions.length === 1) {
+      onChange(filteredOptions[0]);
+      setIsOpen(false);
+      setSearch("");
+    }
+  };
 
   const dropdownContent = isOpen && !disabled && typeof document !== 'undefined' ? createPortal(
     <div 
       ref={dropdownRef}
-      className="fixed bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden"
+      className="fixed bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden animate-in"
       style={{ 
         zIndex: 99999,
         top: dropdownPosition.top,
         left: dropdownPosition.left,
         width: dropdownPosition.width,
+        maxHeight: 250,
       }}
+      onKeyDown={handleKeyDown}
     >
-      <div className="p-2 border-b border-dashboard-border bg-dashboard-surface">
+      <div className="sticky top-0 p-2 border-b border-dashboard-border bg-dashboard-surface">
         <input
+          ref={searchInputRef}
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search..."
+          placeholder="Type to search..."
           className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
-          autoFocus
           onClick={(e) => e.stopPropagation()}
+          onKeyDown={handleKeyDown}
         />
       </div>
-      <div className="overflow-y-auto max-h-48 bg-dashboard-surface">
+      <div className="overflow-y-auto" style={{ maxHeight: 200 }}>
         {filteredOptions.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-dashboard-text-muted">No results found</div>
+          <div className="px-4 py-3 text-sm text-dashboard-text-muted text-center">
+            {search ? `No results for "${search}"` : "No options available"}
+          </div>
         ) : (
           filteredOptions.map((option) => (
             <div
               key={option}
-              className={`px-4 py-2 cursor-pointer text-sm transition-colors ${
+              className={`px-4 py-2.5 cursor-pointer text-sm transition-colors ${
                 option === value 
-                  ? 'bg-dashboard-accent/20 text-dashboard-accent' 
+                  ? 'bg-dashboard-accent/20 text-dashboard-accent font-medium' 
                   : 'text-dashboard-text hover:bg-dashboard-card'
               }`}
               onClick={(e) => {
@@ -120,7 +169,7 @@ function SearchableSelect({
     <div className="relative">
       <div
         ref={triggerRef}
-        className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${isOpen ? 'ring-2 ring-dashboard-accent border-dashboard-accent' : ''}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
         <span className={value ? "text-dashboard-text" : "text-dashboard-text-muted"}>
@@ -129,7 +178,7 @@ function SearchableSelect({
         {loading ? (
           <LoadingSpinner size="sm" />
         ) : (
-          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         )}
@@ -157,9 +206,10 @@ function MultiSelectSearchable({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0, openUpward: false });
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const filteredOptions = useMemo(() => {
     if (!search) return options;
@@ -168,18 +218,46 @@ function MultiSelectSearchable({
     );
   }, [options, search]);
 
-  // Update dropdown position when opened
-  useEffect(() => {
-    if (isOpen && triggerRef.current) {
+  // Calculate dropdown position
+  const updateDropdownPosition = useCallback(() => {
+    if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
+      const dropdownHeight = 300; // Approximate height of dropdown
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const openUpward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+      
       setDropdownPosition({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
+        top: openUpward ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
+        left: rect.left,
         width: rect.width,
+        openUpward,
       });
     }
-  }, [isOpen]);
+  }, []);
 
+  // Update dropdown position when opened and on scroll/resize
+  useEffect(() => {
+    if (isOpen) {
+      updateDropdownPosition();
+      
+      // Focus search input when dropdown opens
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 10);
+      
+      const handleScrollOrResize = () => updateDropdownPosition();
+      window.addEventListener("scroll", handleScrollOrResize, true);
+      window.addEventListener("resize", handleScrollOrResize);
+      
+      return () => {
+        window.removeEventListener("scroll", handleScrollOrResize, true);
+        window.removeEventListener("resize", handleScrollOrResize);
+      };
+    }
+  }, [isOpen, updateDropdownPosition]);
+
+  // Handle click outside to close dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -191,9 +269,20 @@ function MultiSelectSearchable({
         setSearch("");
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      setSearch("");
+    }
+  };
 
   const toggleOption = (option: string) => {
     if (values.includes(option)) {
@@ -206,33 +295,38 @@ function MultiSelectSearchable({
   const dropdownContent = isOpen && !disabled && typeof document !== 'undefined' ? createPortal(
     <div 
       ref={dropdownRef}
-      className="fixed bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden"
+      className="fixed bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden animate-in"
       style={{ 
         zIndex: 99999,
         top: dropdownPosition.top,
         left: dropdownPosition.left,
         width: dropdownPosition.width,
+        maxHeight: 300,
       }}
+      onKeyDown={handleKeyDown}
     >
-      <div className="p-2 border-b border-dashboard-border bg-dashboard-surface">
+      <div className="sticky top-0 p-2 border-b border-dashboard-border bg-dashboard-surface">
         <input
+          ref={searchInputRef}
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search states..."
+          placeholder="Type to search states..."
           className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
-          autoFocus
           onClick={(e) => e.stopPropagation()}
+          onKeyDown={handleKeyDown}
         />
       </div>
-      <div className="overflow-y-auto max-h-48 bg-dashboard-surface">
+      <div className="overflow-y-auto" style={{ maxHeight: 250 }}>
         {filteredOptions.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-dashboard-text-muted">No results found</div>
+          <div className="px-4 py-3 text-sm text-dashboard-text-muted text-center">
+            {search ? `No results for "${search}"` : "No options available"}
+          </div>
         ) : (
           filteredOptions.map((option) => (
             <div
               key={option}
-              className={`px-4 py-2 cursor-pointer text-sm transition-colors flex items-center gap-2 ${
+              className={`px-4 py-2.5 cursor-pointer text-sm transition-colors flex items-center gap-3 ${
                 values.includes(option)
                   ? 'bg-dashboard-accent/20 text-dashboard-accent' 
                   : 'text-dashboard-text hover:bg-dashboard-card'
@@ -242,12 +336,17 @@ function MultiSelectSearchable({
                 toggleOption(option);
               }}
             >
-              <input 
-                type="checkbox" 
-                checked={values.includes(option)}
-                onChange={() => {}}
-                className="w-4 h-4 rounded border-dashboard-border text-dashboard-accent"
-              />
+              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                values.includes(option) 
+                  ? 'bg-dashboard-accent border-dashboard-accent' 
+                  : 'border-dashboard-border'
+              }`}>
+                {values.includes(option) && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
               {option}
             </div>
           ))
@@ -261,7 +360,7 @@ function MultiSelectSearchable({
     <div className="relative">
       <div
         ref={triggerRef}
-        className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between min-h-[48px] ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between min-h-[48px] ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${isOpen ? 'ring-2 ring-dashboard-accent border-dashboard-accent' : ''}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
         <div className="flex-1 flex flex-wrap gap-1">
@@ -269,14 +368,14 @@ function MultiSelectSearchable({
             <span className="text-dashboard-text-muted">{placeholder}</span>
           ) : (
             values.map(v => (
-              <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 bg-dashboard-accent/20 text-dashboard-accent rounded text-xs">
+              <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 bg-dashboard-accent/20 text-dashboard-accent rounded text-xs font-medium">
                 {v}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onChange(values.filter(val => val !== v));
                   }}
-                  className="hover:text-red-400"
+                  className="hover:text-red-400 transition-colors"
                 >
                   ×
                 </button>
@@ -287,7 +386,7 @@ function MultiSelectSearchable({
         {loading ? (
           <LoadingSpinner size="sm" />
         ) : (
-          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform flex-shrink-0 ml-2 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform duration-200 flex-shrink-0 ml-2 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         )}
