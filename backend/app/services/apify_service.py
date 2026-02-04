@@ -137,10 +137,12 @@ class ApifyGoogleMapsService:
         """
         try:
             # Construct webhook configuration
+            # Note: shouldInterpolateStrings is needed for {{eventType}} inside quotes to be replaced
             webhooks = [{
                 "eventTypes": ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
                 "requestUrl": webhook_url,
-                "payloadTemplate": f'{{"orderId": "{order_id}", "cityIndex": {city_index}, "secret": "{self.webhook_secret}", "resource": {{{{resource}}}}, "eventType": "{{{{eventType}}}}"}}'
+                "payloadTemplate": f'{{"orderId": "{order_id}", "cityIndex": {city_index}, "secret": "{self.webhook_secret}", "resource": {{{{resource}}}}, "eventType": "{{{{eventType}}}}"}}',
+                "shouldInterpolateStrings": True
             }]
             
             url = f"{self.BASE_URL}/acts/{self.ACTOR_ID}/runs"

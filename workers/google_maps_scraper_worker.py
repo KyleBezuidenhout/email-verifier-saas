@@ -115,10 +115,12 @@ async def start_apify_run(
     The webhook will be called when the run finishes (SUCCEEDED, FAILED, ABORTED, TIMED-OUT).
     """
     # Construct webhook configuration
+    # Note: shouldInterpolateStrings is needed for {{eventType}} inside quotes to be replaced
     webhooks = [{
         "eventTypes": ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
         "requestUrl": webhook_url,
-        "payloadTemplate": f'{{"orderId": "{order_id}", "cityIndex": {city_index}, "secret": "{webhook_secret}", "resource": {{{{resource}}}}, "eventType": "{{{{eventType}}}}"}}'
+        "payloadTemplate": f'{{"orderId": "{order_id}", "cityIndex": {city_index}, "secret": "{webhook_secret}", "resource": {{{{resource}}}}, "eventType": "{{{{eventType}}}}"}}',
+        "shouldInterpolateStrings": True
     }]
     
     url = f"{APIFY_BASE_URL}/acts/{APIFY_ACTOR_ID}/runs"
