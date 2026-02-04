@@ -17,6 +17,7 @@ Architecture:
 import os
 import sys
 import time
+import json
 import logging
 import asyncio
 from typing import List, Tuple, Dict, Any
@@ -120,12 +121,14 @@ async def start_apify_run(
     }]
     
     url = f"{APIFY_BASE_URL}/acts/{APIFY_ACTOR_ID}/runs"
-    params = {"memory": memory_mbytes}
-    
-    body = {
-        **input_payload,
-        "webhooks": webhooks
+    # Webhooks must be passed as a query parameter (JSON-encoded), not in the body
+    params = {
+        "memory": memory_mbytes,
+        "webhooks": json.dumps(webhooks)
     }
+    
+    # Body contains only the actor input
+    body = input_payload
     
     response = await client.post(
         url,

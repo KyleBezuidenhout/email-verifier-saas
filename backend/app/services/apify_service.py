@@ -5,6 +5,7 @@ This service communicates with the Apify API to run the compass/crawler-google-p
 Handles single city and state-wide (concurrent) scraping with webhook callbacks.
 """
 
+import json
 import httpx
 import logging
 import secrets
@@ -89,9 +90,13 @@ class ApifyGoogleMapsService:
             url = f"{self.BASE_URL}/acts/{self.ACTOR_ID}/runs"
             params = {"memory": memory_mbytes}
             
-            # Add webhook if provided
+            # Add webhook if provided (must be JSON-encoded array)
             if webhook_url:
-                params["webhooks"] = webhook_url
+                webhooks = [{
+                    "eventTypes": ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
+                    "requestUrl": webhook_url
+                }]
+                params["webhooks"] = json.dumps(webhooks)
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -128,13 +133,6 @@ class ApifyGoogleMapsService:
         The webhook will be called when the run finishes (SUCCEEDED, FAILED, ABORTED, TIMED-OUT).
         """
         try:
-            # Generate webhook payload data to identify this run
-            webhook_payload = {
-                "order_id": order_id,
-                "city_index": city_index,
-                "secret": self.webhook_secret
-            }
-            
             # Construct webhook configuration
             webhooks = [{
                 "eventTypes": ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
@@ -143,12 +141,14 @@ class ApifyGoogleMapsService:
             }]
             
             url = f"{self.BASE_URL}/acts/{self.ACTOR_ID}/runs"
-            params = {"memory": memory_mbytes}
-            
-            body = {
-                **input_payload,
-                "webhooks": webhooks
+            # Webhooks must be passed as a query parameter (JSON-encoded), not in the body
+            params = {
+                "memory": memory_mbytes,
+                "webhooks": json.dumps(webhooks)
             }
+            
+            # Body contains only the actor input
+            body = input_payload
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
