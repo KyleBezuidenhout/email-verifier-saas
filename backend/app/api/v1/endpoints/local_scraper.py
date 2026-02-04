@@ -1,31 +1,43 @@
 """
 Google Maps Scraper API Endpoints
 
-Provides endpoints for Google Maps scraping using the AWS-hosted scraper API.
+Provides endpoints for Google Maps scraping using Apify compass/crawler-google-places actor.
+Supports single city and full state (concurrent) scraping modes.
+
 This is completely separate from the Sales Nav, Enrichment, and Verification features.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import desc, text
 from typing import Optional
 from datetime import datetime
+from decimal import Decimal
 import logging
 import json
-import boto3
-import io
 import csv
+import io
+import boto3
+import asyncio
 
 from app.db.session import get_db
 from app.models.user import User
 from app.models.local_scraper_order import LocalScraperOrder
 from app.api.dependencies import get_current_user
-from app.schemas.local_scraper import (
-    CreateLocalScraperOrderRequest,
-    LocalScraperOrderResponse,
-    LocalScraperOrderListResponse,
+from app.schemas.google_maps_scraper import (
+    GoogleMapsScraperOrderCreate,
+    GoogleMapsScraperOrderResponse,
+    GoogleMapsScraperOrderListResponse,
+    GoogleMapsScraperHealthResponse,
+    GoogleMapsScraperStatusResponse,
+    CostEstimateRequest,
+    CostEstimateResponse,
+    StateListResponse,
+    CityListResponse,
+    GoogleMapsScraperPreviewResponse,
 )
-from app.services.botasaurus_service import botasaurus_service
+from app.services.apify_service import apify_service
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -44,206 +56,301 @@ s3_client = boto3.client(
 
 def order_to_response(order: LocalScraperOrder) -> dict:
     """Convert a LocalScraperOrder to a response dict"""
+    # Handle states - could be JSON list or legacy string
+    states = order.states if isinstance(order.states, list) else [order.states] if order.states else []
+    
     return {
         "id": str(order.id),
         "user_id": str(order.user_id),
-        "botasaurus_task_id": order.botasaurus_task_id,
         "status": order.status,
-        "job_name": order.job_name,
-        "business_types": order.business_types,
-        "search_method": order.search_method,
-        "extraction_method": order.extraction_method,
-        "max_results": order.max_results,
-        "enable_reviews": order.enable_reviews or False,
+        "scrape_mode": order.scrape_mode or "single_city",
+        "states": states,
+        "city": order.city,
+        "search_term": order.search_term or "",
+        "job_name": order.job_name or "",
+        "total_cities": order.total_cities or 1,
+        "completed_cities": order.completed_cities or 0,
         "progress_percentage": order.progress_percentage or 0,
         "results_count": order.results_count or 0,
+        "estimated_cost": float(order.estimated_cost or 0),
+        "actual_cost": float(order.actual_cost) if order.actual_cost else None,
         "file_url": order.file_url,
         "created_at": order.created_at,
-        "started_at": order.started_at,
         "completed_at": order.completed_at,
         "error_message": order.error_message,
     }
 
 
-@router.get("/health")
-async def check_scraper_health():
-    """Check if Google Maps Scraper API on AWS is reachable"""
-    is_healthy = await botasaurus_service.check_health()
-    return {
-        "botasaurus_api": "connected" if is_healthy else "disconnected",
-        "api_url": botasaurus_service.base_url,
-        "message": "Google Maps Scraper API is running" if is_healthy else "Could not connect to Google Maps Scraper API. Please check the AWS instance."
-    }
-
-
-async def run_direct_scrape_task(order_id: str, scraper_config: dict):
-    """
-    Background task to run direct scraping (for AWS-hosted API that doesn't support async tasks).
-    """
-    from app.db.session import SessionLocal
+@router.get("/health", response_model=GoogleMapsScraperHealthResponse)
+async def check_health():
+    """Check if Apify API is accessible and API key is valid"""
+    is_healthy = await apify_service.check_health()
     
-    db = SessionLocal()
+    if not settings.APIFY_API_TOKEN:
+        return GoogleMapsScraperHealthResponse(
+            apify_api="disconnected",
+            message="APIFY_API_TOKEN not configured. Please set the environment variable."
+        )
+    
+    return GoogleMapsScraperHealthResponse(
+        apify_api="connected" if is_healthy else "disconnected",
+        message="Apify API connected" if is_healthy else "Could not connect to Apify API. Please check your API token."
+    )
+
+
+@router.get("/states", response_model=StateListResponse)
+async def list_states(db: Session = Depends(get_db)):
+    """Get list of available US states for scraping"""
     try:
-        order = db.query(LocalScraperOrder).filter(LocalScraperOrder.id == order_id).first()
-        if not order:
-            logger.error(f"Order {order_id} not found for direct scraping")
-            return
+        result = db.execute(text("""
+            SELECT DISTINCT state FROM google_maps_cities ORDER BY state
+        """))
+        states = [row[0] for row in result.fetchall()]
         
-        logger.info(f"🔄 Starting direct scrape for order {order_id}")
+        if not states:
+            # Return default US states if table is empty
+            states = [
+                "Alabama", "Alaska", "Arizona", "Arkansas", "California",
+                "Colorado", "Connecticut", "Delaware", "Florida", "Georgia",
+                "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa",
+                "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
+                "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri",
+                "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
+                "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
+                "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina",
+                "South Dakota", "Tennessee", "Texas", "Utah", "Vermont",
+                "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming"
+            ]
         
-        try:
-            # Check if order was cancelled before starting scrape
-            db.refresh(order)
-            if order.status == "cancelled" or order.status == "deleted":
-                logger.info(f"Order {order_id} was cancelled/deleted, skipping scrape")
-                return
-            
-            # Run the direct scrape
-            results = await botasaurus_service.direct_scrape(scraper_config)
-            
-            # Check again if order was cancelled during scraping
-            db.refresh(order)
-            if order.status == "cancelled" or order.status == "deleted":
-                logger.info(f"Order {order_id} was cancelled/deleted during scrape, not storing results")
-                return
-            
-            # Update order with results
-            order.status = "completed"
-            order.completed_at = datetime.utcnow()
-            order.results_count = len(results) if isinstance(results, list) else 1
-            order.progress_percentage = 100
-            
-            # Store results in R2
-            csv_buffer = io.StringIO()
-            if results and isinstance(results, list) and len(results) > 0:
-                # Get fieldnames from first result
-                fieldnames = list(results[0].keys()) if results else []
-                writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(results)
-            
-            csv_bytes = csv_buffer.getvalue().encode('utf-8')
-            csv_file_path = f"local-scraper-orders/{order_id}/results.csv"
-            s3_client.put_object(
-                Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-                Key=csv_file_path,
-                Body=csv_bytes,
-                ContentType="text/csv"
-            )
-            
-            order.file_url = f"{settings.CLOUDFLARE_R2_PUBLIC_URL}/{csv_file_path}"
-            db.commit()
-            
-            logger.info(f"✅ Direct scraping completed for order {order_id}: {order.results_count} results")
-            
-        except Exception as scrape_error:
-            logger.error(f"❌ Direct scraping failed for order {order_id}: {str(scrape_error)}")
-            order.status = "failed"
-            order.error_message = str(scrape_error)
-            order.completed_at = datetime.utcnow()
-            db.commit()
-            
+        return StateListResponse(states=states)
     except Exception as e:
-        logger.error(f"Error in direct scraping task for order {order_id}: {str(e)}")
-    finally:
-        db.close()
+        logger.error(f"Error listing states: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/orders", response_model=LocalScraperOrderResponse)
+@router.get("/cities/{state}", response_model=CityListResponse)
+async def list_cities(
+    state: str,
+    db: Session = Depends(get_db)
+):
+    """Get list of cities for a specific state"""
+    try:
+        result = db.execute(text("""
+            SELECT city FROM google_maps_cities WHERE state = :state ORDER BY city
+        """), {"state": state})
+        cities = [row[0] for row in result.fetchall()]
+        
+        return CityListResponse(
+            state=state,
+            cities=cities,
+            count=len(cities)
+        )
+    except Exception as e:
+        logger.error(f"Error listing cities for {state}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/estimate", response_model=CostEstimateResponse)
+async def estimate_cost(
+    payload: CostEstimateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Estimate the cost of a scrape job.
+    
+    - Single city: ~$0.80
+    - Full state: num_cities * $0.80
+    """
+    try:
+        if payload.scrape_mode == "single_city":
+            num_cities = 1
+        else:
+            # Count cities across all selected states
+            num_cities = 0
+            for state in payload.states:
+                result = db.execute(text("""
+                    SELECT COUNT(*) FROM google_maps_cities WHERE state = :state
+                """), {"state": state})
+                num_cities += result.scalar() or 0
+            
+            if num_cities == 0:
+                num_cities = 1  # Fallback
+        
+        cost_per_city = 0.80  # ~$0.80 per city (200 results * $0.004)
+        estimated_cost = num_cities * cost_per_city
+        
+        return CostEstimateResponse(
+            num_cities=num_cities,
+            estimated_cost=estimated_cost,
+            cost_per_city=cost_per_city
+        )
+    except Exception as e:
+        logger.error(f"Error estimating cost: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/orders", response_model=GoogleMapsScraperOrderResponse)
 async def create_order(
-    payload: CreateLocalScraperOrderRequest,
-    background_tasks: BackgroundTasks,
+    payload: GoogleMapsScraperOrderCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Create a new local scraper order.
+    Create a new Google Maps scraper order.
     
-    This creates an order in the database and sends it to the scraper API for processing.
+    For single_city mode: Starts one Apify run.
+    For full_state mode: Starts concurrent runs for all cities in selected states (max 100 at a time).
+    
+    Note: Multi-state selection (more than 1 state) requires admin privileges.
     """
     try:
-        config = payload.config
+        # Validate inputs
+        if not payload.search_term.strip():
+            raise HTTPException(status_code=400, detail="Search term is required")
         
-        # Validate required fields
-        if not config.business_types:
-            raise HTTPException(status_code=400, detail="At least one business type is required")
+        if not payload.states or len(payload.states) == 0:
+            raise HTTPException(status_code=400, detail="At least one state is required")
         
-        if config.search_method == "city" and not config.cities:
-            raise HTTPException(status_code=400, detail="At least one city is required when using city search method")
+        if payload.scrape_mode == "single_city" and not payload.city:
+            raise HTTPException(status_code=400, detail="City is required for single city mode")
         
-        if config.search_method == "search_link" and not config.search_links:
-            raise HTTPException(status_code=400, detail="At least one search link is required when using search link method")
+        # Check admin for multi-state selection
+        if payload.scrape_mode == "full_state" and len(payload.states) > 1:
+            if not current_user.is_admin:
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Multi-state selection is only available for admin users"
+                )
         
-        logger.info(f"📝 Creating local scraper order for user {current_user.id}")
-        logger.info(f"   Job name: {payload.job_name}")
-        logger.info(f"   Business types: {config.business_types}")
-        logger.info(f"   Search method: {config.search_method}")
+        # Get cities to scrape
+        cities_with_state = []  # List of (state, city) tuples
         
-        # Build scraper configuration
-        scraper_config = botasaurus_service.build_google_maps_config(
-            business_types=config.business_types,
-            search_method=config.search_method,
-            cities=config.cities,
-            search_links=config.search_links,
-            extraction_method=config.extraction_method,
-            max_results=config.max_results,
-            enable_reviews=config.enable_reviews_extraction,
-            max_reviews=config.max_reviews,
-            enable_photos=config.enable_photos_extraction,
-            max_photos=config.max_photos,
-            lang=config.lang,
-            randomize_cities=config.randomize_cities,
-            include_places_outside_city=config.include_places_outside_city,
-            geo_shape=config.geo_shape,
-            point_coordinates=config.point_coordinates,
-            polygons=config.polygons,
-            geo_zoom_level=config.geo_zoom_level,
-            exclude_outside_shape=config.exclude_outside_shape,
-            reviews_sort=config.reviews_sort,
-            reviews_query=config.reviews_query,
-            api_key=config.api_key,
-        )
+        if payload.scrape_mode == "single_city":
+            # Single city mode - just one city
+            cities_with_state = [(payload.states[0], payload.city)]
+        else:
+            # Full state mode - get all cities from all selected states
+            for state in payload.states:
+                result = db.execute(text("""
+                    SELECT city FROM google_maps_cities WHERE state = :state ORDER BY city
+                """), {"state": state})
+                state_cities = [row[0] for row in result.fetchall()]
+                
+                for city in state_cities:
+                    cities_with_state.append((state, city))
+            
+            if not cities_with_state:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"No cities found for selected states. Please seed the google_maps_cities table."
+                )
         
-        # Determine search locations for storage
-        search_locations = config.cities if config.search_method == "city" else config.search_links
+        num_cities = len(cities_with_state)
+        estimated_cost = apify_service.estimate_cost(num_cities)
+        webhook_secret = apify_service.generate_webhook_secret()
+        
+        logger.info(f"📝 Creating Google Maps scraper order for user {current_user.id}")
+        logger.info(f"   Mode: {payload.scrape_mode}, States: {payload.states}, Cities: {num_cities}")
+        logger.info(f"   Search term: {payload.search_term}")
+        logger.info(f"   Estimated cost: ${estimated_cost:.2f}")
         
         # Create order in database
         order = LocalScraperOrder(
             user_id=current_user.id,
             status="pending",
-            job_name=payload.job_name,
-            scraper_config=scraper_config,
-            business_types=", ".join(config.business_types),
-            search_method=config.search_method,
-            search_locations=search_locations,
-            extraction_method=config.extraction_method,
-            max_results=config.max_results,
-            enable_reviews=config.enable_reviews_extraction,
-            max_reviews=config.max_reviews,
+            job_name=payload.job_name.strip(),
+            scrape_mode=payload.scrape_mode,
+            states=payload.states,  # Store as JSON list
+            city=payload.city if payload.scrape_mode == "single_city" else None,
+            search_term=payload.search_term.strip(),
+            total_cities=num_cities,
+            completed_cities=0,
+            progress_percentage=0,
+            estimated_cost=Decimal(str(estimated_cost)),
+            webhook_secret=webhook_secret,
+            apify_run_ids=[],
         )
         
         db.add(order)
         db.commit()
         db.refresh(order)
         
-        logger.info(f"✅ Order created in database: {order.id}")
+        logger.info(f"✅ Order created: {order.id}")
         
-        # AWS-hosted Botasaurus API only supports direct scraping (no async task endpoints)
-        # Schedule background task for direct scraping
+        # Build webhook URL
+        base_url = str(request.base_url).rstrip('/')
+        webhook_url = f"{base_url}/api/v1/webhooks/apify"
+        
+        # Start Apify runs
+        apify_runs = []
+        
+        # Process in batches of 100 (Apify concurrency limit)
+        batch_size = apify_service.MAX_CONCURRENT_RUNS
+        
+        for batch_start in range(0, num_cities, batch_size):
+            batch_cities = cities_with_state[batch_start:batch_start + batch_size]
+            
+            # Start runs concurrently within batch
+            tasks = []
+            for i, (state, city) in enumerate(batch_cities):
+                city_index = batch_start + i
+                input_payload = apify_service.build_input_payload(
+                    search_term=payload.search_term.strip(),
+                    city=city  # Will be formatted as "{city}, United States"
+                )
+                
+                tasks.append(
+                    apify_service.start_run_with_webhook(
+                        input_payload=input_payload,
+                        webhook_url=webhook_url,
+                        order_id=str(order.id),
+                        city_index=city_index
+                    )
+                )
+            
+            # Execute batch
+            try:
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for i, result in enumerate(results):
+                    city_index = batch_start + i
+                    state, city = batch_cities[i]
+                    
+                    if isinstance(result, Exception):
+                        logger.error(f"Failed to start run for city {city}, {state}: {result}")
+                        apify_runs.append({
+                            "state": state,
+                            "city": city,
+                            "city_index": city_index,
+                            "run_id": None,
+                            "status": "failed",
+                            "error": str(result),
+                            "retry_count": 0
+                        })
+                    else:
+                        apify_runs.append({
+                            "state": state,
+                            "city": city,
+                            "city_index": city_index,
+                            "run_id": result.get("id"),
+                            "status": "running",
+                            "retry_count": 0
+                        })
+                
+            except Exception as e:
+                logger.error(f"Error starting batch: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to start scraping: {str(e)}")
+        
+        # Update order with run info
+        order.apify_run_ids = apify_runs
         order.status = "processing"
         order.started_at = datetime.utcnow()
-        order.botasaurus_task_id = None  # Not used for direct scraping
         db.commit()
         db.refresh(order)
         
-        # Schedule background task for direct scraping
-        background_tasks.add_task(
-            run_direct_scrape_task,
-            order_id=str(order.id),
-            scraper_config=scraper_config
-        )
-        
-        logger.info(f"✅ Scheduled direct scrape task for order {order.id}")
+        successful_runs = sum(1 for r in apify_runs if r.get("run_id"))
+        logger.info(f"✅ Started {successful_runs}/{num_cities} Apify runs for order {order.id}")
         
         return order_to_response(order)
         
@@ -251,11 +358,11 @@ async def create_order(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error creating local scraper order: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error creating order: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/orders", response_model=LocalScraperOrderListResponse)
+@router.get("/orders", response_model=GoogleMapsScraperOrderListResponse)
 async def list_orders(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -263,7 +370,7 @@ async def list_orders(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all local scraper orders for the current user"""
+    """List all Google Maps scraper orders for the current user"""
     try:
         query = db.query(LocalScraperOrder).filter(LocalScraperOrder.user_id == current_user.id)
         
@@ -274,80 +381,62 @@ async def list_orders(
         total = query.count()
         
         # Get paginated results, newest first
-        orders = query.order_by(LocalScraperOrder.created_at.desc()).offset(offset).limit(limit).all()
+        orders = query.order_by(desc(LocalScraperOrder.created_at)).offset(offset).limit(limit).all()
         
-        return {
-            "orders": [order_to_response(order) for order in orders],
-            "total": total,
-        }
+        return GoogleMapsScraperOrderListResponse(
+            orders=[order_to_response(order) for order in orders],
+            total=total,
+        )
     except Exception as e:
-        logger.error(f"Error listing local scraper orders: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error listing orders: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/orders/{order_id}", response_model=LocalScraperOrderResponse)
+@router.get("/orders/{order_id}", response_model=GoogleMapsScraperOrderResponse)
 async def get_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get a specific local scraper order"""
-    try:
-        order = db.query(LocalScraperOrder).filter(
-            LocalScraperOrder.id == order_id,
-            LocalScraperOrder.user_id == current_user.id
-        ).first()
-        
-        if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
-        
-        return order_to_response(order)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting local scraper order: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+    """Get a specific Google Maps scraper order"""
+    order = db.query(LocalScraperOrder).filter(
+        LocalScraperOrder.id == order_id,
+        LocalScraperOrder.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    return order_to_response(order)
 
 
-@router.get("/orders/{order_id}/poll-status")
-async def poll_order_status(
+@router.get("/orders/{order_id}/status", response_model=GoogleMapsScraperStatusResponse)
+async def get_order_status(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Poll order status from database.
-    
-    For AWS-hosted Botasaurus API, we use direct scraping in background tasks,
-    so we just return the current database status.
+    Get real-time status for an order (for polling).
+    Webhooks are preferred, but this provides a fallback.
     """
-    try:
-        order = db.query(LocalScraperOrder).filter(
-            LocalScraperOrder.id == order_id,
-            LocalScraperOrder.user_id == current_user.id
-        ).first()
-        
-        if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
-        
-        # Return current database status
-        # Background task will update this when scraping completes
-        return {
-            "order_id": str(order.id),
-            "botasaurus_task_id": order.botasaurus_task_id,
-            "status": order.status,
-            "progress_percentage": order.progress_percentage or (100 if order.status == "completed" else (50 if order.status == "processing" else 0)),
-            "results_count": order.results_count or 0,
-            "from_database": True,
-            "error_message": order.error_message,
-        }
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error polling order status: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+    order = db.query(LocalScraperOrder).filter(
+        LocalScraperOrder.id == order_id,
+        LocalScraperOrder.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    return GoogleMapsScraperStatusResponse(
+        order_id=str(order.id),
+        status=order.status,
+        total_cities=order.total_cities or 1,
+        completed_cities=order.completed_cities or 0,
+        progress_percentage=order.progress_percentage or 0,
+        results_count=order.results_count or 0,
+        error_message=order.error_message,
+    )
 
 
 @router.delete("/orders/{order_id}")
@@ -356,173 +445,142 @@ async def delete_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete (soft delete) a local scraper order"""
-    try:
-        order = db.query(LocalScraperOrder).filter(
-            LocalScraperOrder.id == order_id,
-            LocalScraperOrder.user_id == current_user.id
-        ).first()
-        
-        if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
-        
-        old_status = order.status
-        order.status = "deleted"
-        db.commit()
-        
-        # Note: AWS-hosted Botasaurus API uses direct scraping in background tasks
-        # We can't abort running scrapes, but we've marked the order as deleted
-        # The background task will check the status before storing results
-        
-        logger.info(f"Order {order_id} marked as deleted (was: {old_status})")
-        
-        return {"message": "Order deleted successfully", "order_id": str(order_id)}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error deleting order: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/orders/{order_id}/cancel")
-async def cancel_order(
-    order_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Cancel a running or pending order"""
-    try:
-        order = db.query(LocalScraperOrder).filter(
-            LocalScraperOrder.id == order_id,
-            LocalScraperOrder.user_id == current_user.id
-        ).first()
-        
-        if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
-        
-        if order.status in ("completed", "deleted", "cancelled"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot cancel order with status '{order.status}'"
-            )
-        
-        old_status = order.status
-        order.status = "cancelled"
-        order.completed_at = datetime.utcnow()
-        db.commit()
-        
-        # Note: AWS-hosted Botasaurus API uses direct scraping in background tasks
-        # We can't abort running scrapes, but we've marked the order as cancelled
-        # The background task will check the status before storing results
-        
-        logger.info(f"Order {order_id} cancelled (was: {old_status})")
-        
-        return {
-            "message": "Order cancelled successfully",
-            "order_id": str(order_id),
-            "previous_status": old_status,
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error cancelling order: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+    """Delete a Google Maps scraper order"""
+    order = db.query(LocalScraperOrder).filter(
+        LocalScraperOrder.id == order_id,
+        LocalScraperOrder.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # If still processing, try to abort Apify runs
+    if order.status == "processing" and order.apify_run_ids:
+        for run_info in order.apify_run_ids:
+            run_id = run_info.get("run_id")
+            if run_id and run_info.get("status") == "running":
+                try:
+                    await apify_service.abort_run(run_id)
+                except Exception as e:
+                    logger.warning(f"Failed to abort run {run_id}: {e}")
+    
+    # Soft delete by setting status
+    order.status = "cancelled"
+    order.completed_at = datetime.utcnow()
+    db.commit()
+    
+    logger.info(f"Deleted order {order_id}")
+    
+    return {"message": "Order deleted successfully", "order_id": order_id}
 
 
 @router.get("/orders/{order_id}/download")
-async def download_order_results(
+async def download_results(
     order_id: str,
-    format: str = Query("csv", regex="^(csv|json|excel)$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Download results for a completed order"""
+    """Download results CSV for a completed order"""
+    order = db.query(LocalScraperOrder).filter(
+        LocalScraperOrder.id == order_id,
+        LocalScraperOrder.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order.status != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order is not completed (status: {order.status})"
+        )
+    
+    if not order.file_url:
+        raise HTTPException(status_code=404, detail="Results file not found")
+    
     try:
-        order = db.query(LocalScraperOrder).filter(
-            LocalScraperOrder.id == order_id,
-            LocalScraperOrder.user_id == current_user.id
-        ).first()
+        # Extract key from URL
+        csv_file_path = f"google-maps-scraper/{order.id}/results.csv"
         
-        if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
+        response = s3_client.get_object(
+            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+            Key=csv_file_path
+        )
+        csv_content = response['Body'].read()
         
-        if order.status != "completed":
-            raise HTTPException(status_code=400, detail="Order is not yet completed")
+        # Generate filename
+        safe_job_name = "".join(c for c in order.job_name if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
+        if not safe_job_name:
+            safe_job_name = "google_maps_results"
+        filename = f"{safe_job_name}_{order.state}_{str(order.id)[:8]}.csv"
         
-        # If we have a file_url in R2, fetch from there
-        if order.file_url:
-            try:
-                # Extract the key from the URL
-                csv_file_path = f"local-scraper-orders/{order.id}/results.csv"
-                
-                response = s3_client.get_object(
-                    Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
-                    Key=csv_file_path
-                )
-                csv_content = response['Body'].read()
-                
-                # Generate filename
-                safe_job_name = "".join(c for c in order.job_name if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
-                if not safe_job_name:
-                    safe_job_name = "results"
-                filename = f"{safe_job_name}_{str(order.id)[:8]}.csv"
-                
-                return StreamingResponse(
-                    iter([csv_content]),
-                    media_type="text/csv",
-                    headers={
-                        "Content-Disposition": f'attachment; filename="{filename}"',
-                        "Content-Length": str(len(csv_content)),
-                    }
-                )
-            except Exception as r2_error:
-                logger.error(f"Failed to fetch from R2: {str(r2_error)}")
-                # Fall through to try scraper API directly
-        
-        # Fallback: Download directly from scraper API
-        if order.botasaurus_task_id:
-            try:
-                file_bytes, original_filename = await botasaurus_service.download_task_results(
-                    order.botasaurus_task_id,
-                    format=format
-                )
-                
-                # Generate filename
-                safe_job_name = "".join(c for c in order.job_name if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
-                if not safe_job_name:
-                    safe_job_name = "results"
-                filename = f"{safe_job_name}_{str(order.id)[:8]}.{format}"
-                
-                content_type = {
-                    "csv": "text/csv",
-                    "json": "application/json",
-                    "excel": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                }.get(format, "application/octet-stream")
-                
-                return StreamingResponse(
-                    iter([file_bytes]),
-                    media_type=content_type,
-                    headers={
-                        "Content-Disposition": f'attachment; filename="{filename}"',
-                        "Content-Length": str(len(file_bytes)),
-                    }
-                )
-            except Exception as scraper_error:
-                logger.error(f"Failed to download from scraper API: {str(scraper_error)}")
-                raise HTTPException(
-                    status_code=404,
-                    detail="Results file not available. Please try again later."
-                )
-        
-        raise HTTPException(status_code=404, detail="No results available for this order")
-        
-    except HTTPException:
-        raise
+        return StreamingResponse(
+            iter([csv_content]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(csv_content)),
+            }
+        )
     except Exception as e:
-        logger.error(f"Error downloading order results: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to download from R2: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to download results file")
 
+
+@router.get("/orders/{order_id}/preview")
+async def preview_results(
+    order_id: str,
+    limit: int = Query(25, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Preview first N rows of results for a completed order.
+    """
+    order = db.query(LocalScraperOrder).filter(
+        LocalScraperOrder.id == order_id,
+        LocalScraperOrder.user_id == current_user.id
+    ).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order.status != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order is not completed (status: {order.status})"
+        )
+    
+    if not order.file_url:
+        raise HTTPException(status_code=404, detail="Results file not found")
+    
+    try:
+        csv_file_path = f"google-maps-scraper/{order.id}/results.csv"
+        
+        response = s3_client.get_object(
+            Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+            Key=csv_file_path
+        )
+        csv_content = response['Body'].read().decode('utf-8-sig')
+        
+        # Parse CSV and get first N rows
+        csv_reader = csv.DictReader(io.StringIO(csv_content))
+        rows = []
+        for i, row in enumerate(csv_reader):
+            if i >= limit:
+                break
+            rows.append(dict(row))
+        
+        columns = list(rows[0].keys()) if rows else []
+        
+        return GoogleMapsScraperPreviewResponse(
+            order_id=order_id,
+            total_rows=order.results_count or 0,
+            preview_count=len(rows),
+            columns=columns,
+            rows=rows,
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to preview from R2: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to load results preview")

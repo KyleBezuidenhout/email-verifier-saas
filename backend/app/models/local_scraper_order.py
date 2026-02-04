@@ -1,4 +1,11 @@
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Boolean, JSON
+"""
+Google Maps Scraper Order Model
+
+Stores Google Maps scraper orders - using Apify compass/crawler-google-places actor.
+Supports single city and full state (concurrent) scraping modes.
+"""
+
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Numeric, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 import uuid
@@ -8,36 +15,39 @@ from app.db.base import Base
 
 class LocalScraperOrder(Base):
     """
-    Local Lead Scraper Order - for Google Maps scraping.
-    Uses Google Maps Scraper API on AWS.
+    Google Maps Scraper Order - for scraping Google Maps via Apify.
+    Supports single_city and full_state modes with concurrent execution.
     """
     __tablename__ = "local_scraper_orders"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     
-    # Task ID (returned when creating task)
-    botasaurus_task_id = Column(Integer, unique=True, nullable=True, index=True)
-    
-    # Order status: pending, processing, completed, failed, cancelled, deleted
+    # Order status: pending, processing, completed, failed, cancelled
     status = Column(String(50), nullable=False, default="pending", index=True)
     
     # Job metadata
     job_name = Column(String(255), nullable=False)
-    scraper_config = Column(JSON, nullable=True)  # Full config sent to API
     
-    # Search parameters (for display)
-    business_types = Column(Text, nullable=True)  # Comma-separated
-    search_method = Column(String(50), nullable=True)  # "city" or "search_link"
-    search_locations = Column(JSON, nullable=True)  # List of cities or search links
-    extraction_method = Column(String(50), nullable=True)  # "overview" or "detailed"
-    max_results = Column(Integer, nullable=True)
-    enable_reviews = Column(Boolean, default=False)
-    max_reviews = Column(Integer, nullable=True)
+    # Scrape configuration
+    scrape_mode = Column(String(20), nullable=False)  # "single_city" or "full_state"
+    states = Column(JSON, nullable=False)  # List of states to scrape
+    city = Column(String(200), nullable=True)  # Null for full_state mode
+    search_term = Column(String(500), nullable=False)
+    
+    # Apify run tracking
+    apify_run_ids = Column(JSON, nullable=True)  # Array of {run_id, city, status, dataset_id, retry_count}
+    webhook_secret = Column(String(100), nullable=True)  # For verifying webhook callbacks
     
     # Progress tracking
+    total_cities = Column(Integer, default=1)
+    completed_cities = Column(Integer, default=0)
     progress_percentage = Column(Integer, default=0)
     results_count = Column(Integer, default=0)
+    
+    # Cost tracking
+    estimated_cost = Column(Numeric(10, 2), nullable=True)
+    actual_cost = Column(Numeric(10, 2), nullable=True)
     
     # File storage
     file_url = Column(Text, nullable=True)  # R2 URL for completed results
@@ -49,4 +59,3 @@ class LocalScraperOrder(Base):
     
     # Error handling
     error_message = Column(Text, nullable=True)
-

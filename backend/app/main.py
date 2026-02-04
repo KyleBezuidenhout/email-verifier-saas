@@ -9,7 +9,7 @@ import logging
 from time import time
 
 from app.core.config import settings
-from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne, vayne_direct, payments, local_scraper, website_scraper
+from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne, vayne_direct, payments, local_scraper, website_scraper, webhooks
 
 # Configure logging
 logging.basicConfig(
@@ -168,10 +168,12 @@ app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])
 app.include_router(vayne_direct.router, prefix="/api/vayne", tags=["vayne-direct"])
 # Payments router - Stripe checkout for credit top-up
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
-# Google Maps Scraper router - scraping via AWS-hosted API
+# Google Maps Scraper router - scraping via Apify compass/crawler-google-places
 app.include_router(local_scraper.router, prefix="/api/v1/local-scraper", tags=["local-scraper"])
-# Website Contact Scraper router - extract emails/phones from websites via Crawl4AI
+# Website Contact Scraper router - extract emails/phones from websites via ZenRows
 app.include_router(website_scraper.router, prefix="/api/v1/website-scraper", tags=["website-scraper"])
+# Webhooks router - handles callbacks from external services (Apify, etc.)
+app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 
 
 # Run migrations and log routes on startup
@@ -195,6 +197,7 @@ async def startup_tasks():
         from migrate_vayne_orders_columns import run_migration as migrate_vayne_orders_columns
         from migrate_add_local_scraper_orders import run_migration as migrate_local_scraper_orders
         from migrate_add_website_scraper_jobs import run_migration as migrate_website_scraper_jobs
+        from migrate_add_google_maps_cities import run_migration as migrate_google_maps_cities
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -205,8 +208,9 @@ async def startup_tasks():
         migrate_is_admin()
         migrate_job_source_and_vayne_orders()
         migrate_vayne_orders_columns()  # Add missing columns to vayne_orders table
-        migrate_local_scraper_orders()  # Add local_scraper_orders table for Google Maps scraping
-        migrate_website_scraper_jobs()  # Add website_scraper_jobs table for Crawl4AI contact extraction
+        migrate_local_scraper_orders()  # Add/update local_scraper_orders table for Google Maps scraping via Apify
+        migrate_website_scraper_jobs()  # Add website_scraper_jobs table for ZenRows contact extraction
+        migrate_google_maps_cities()  # Add google_maps_cities table for US city data
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)

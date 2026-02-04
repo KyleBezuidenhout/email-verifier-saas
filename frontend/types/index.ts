@@ -143,60 +143,53 @@ export interface VayneOrderCreate {
   estimated_leads?: number;  // Estimated lead count from URL validation (for credit deduction)
 }
 
-// Local Lead Scraper Types (Google Maps via Botasaurus)
-export interface LocalScraperConfig {
-  business_types: string[];
-  search_method: 'city' | 'search_link' | 'geo_shape';
-  cities: string[];
-  search_links: string[];
-  extraction_method: 'detailed' | 'fast';
-  max_results: number | null;
-  enable_reviews_extraction: boolean;
-  max_reviews: number;
-  enable_photos_extraction: boolean;
-  max_photos: number;
-  lang: string | null;
-  // Advanced options
-  randomize_cities: boolean;
-  include_places_outside_city: boolean;
-  geo_shape: string;
-  point_coordinates: string;
-  polygons: string | null;
-  geo_zoom_level: string;
-  exclude_outside_shape: boolean;
-  reviews_sort: string;
-  reviews_query: string;
-  api_key: string;
-}
-
-export interface LocalScraperOrderCreate {
+// Google Maps Scraper Types (via Apify compass/crawler-google-places)
+export interface GoogleMapsScraperOrderCreate {
   job_name: string;
-  config: LocalScraperConfig;
+  scrape_mode: 'single_city' | 'full_state';
+  states: string[];  // List of states (single for single_city, multiple for full_state admin)
+  city?: string | null;  // Required for single_city mode
+  search_term: string;
 }
 
-export interface LocalScraperOrder {
+export interface GoogleMapsScraperOrder {
   id: string;
   user_id: string;
-  botasaurus_task_id: number | null;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'deleted';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  scrape_mode: 'single_city' | 'full_state';
+  states: string[];  // List of states being scraped
+  city: string | null;
+  search_term: string;
   job_name: string;
-  business_types: string | null;
-  search_method: string | null;
-  extraction_method: string | null;
-  max_results: number | null;
-  enable_reviews: boolean;
+  total_cities: number;
+  completed_cities: number;
   progress_percentage: number;
   results_count: number;
+  estimated_cost: number;
+  actual_cost: number | null;
   file_url: string | null;
   created_at: string;
-  started_at: string | null;
   completed_at: string | null;
   error_message: string | null;
 }
 
-export interface LocalScraperHealthStatus {
-  botasaurus_api: 'connected' | 'disconnected';
+export interface GoogleMapsScraperHealthStatus {
+  apify_api: 'connected' | 'disconnected';
   message: string;
+}
+
+export interface GoogleMapsScraperCostEstimate {
+  num_cities: number;
+  estimated_cost: number;
+  cost_per_city: number;
+}
+
+export interface GoogleMapsScraperPreviewResponse {
+  order_id: string;
+  total_rows: number;
+  preview_count: number;
+  columns: string[];
+  rows: Record<string, string>[];
 }
 
 // Website Contact Scraper Types (ZenRows API for email/phone extraction)
