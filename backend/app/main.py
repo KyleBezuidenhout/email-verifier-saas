@@ -198,6 +198,7 @@ async def startup_tasks():
         from migrate_add_local_scraper_orders import run_migration as migrate_local_scraper_orders
         from migrate_add_website_scraper_jobs import run_migration as migrate_website_scraper_jobs
         from migrate_add_google_maps_cities import run_migration as migrate_google_maps_cities
+        from migrate_fix_swapped_cities import run_migration as migrate_fix_swapped_cities
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -211,6 +212,7 @@ async def startup_tasks():
         migrate_local_scraper_orders()  # Add/update local_scraper_orders table for Google Maps scraping via Apify
         migrate_website_scraper_jobs()  # Add website_scraper_jobs table for ZenRows contact extraction
         migrate_google_maps_cities()  # Add google_maps_cities table for US city data
+        migrate_fix_swapped_cities()  # Fix swapped state/city columns in google_maps_cities
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
