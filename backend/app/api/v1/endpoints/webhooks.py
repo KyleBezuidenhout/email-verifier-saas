@@ -252,6 +252,7 @@ async def apify_webhook(
     """
     try:
         body = await request.json()
+        logger.info(f"📬 Apify webhook raw body keys: {list(body.keys())}")
         
         # Extract data from webhook payload
         order_id = body.get("orderId")
@@ -261,6 +262,21 @@ async def apify_webhook(
         resource = body.get("resource", {})
         
         logger.info(f"📬 Apify webhook received: order={order_id}, city={city_index}, event={event_type}")
+        
+        # Handle case where template variables weren't interpolated (legacy orders)
+        # If eventType is literally "{{eventType}}", try to infer from resource.status
+        if event_type and event_type.startswith("{{"):
+            resource_status = resource.get("status", "").upper() if isinstance(resource, dict) else ""
+            logger.warning(f"⚠️ eventType not interpolated ('{event_type}'), inferring from resource.status: {resource_status}")
+            if resource_status == "SUCCEEDED":
+                event_type = "ACTOR.RUN.SUCCEEDED"
+            elif resource_status == "FAILED":
+                event_type = "ACTOR.RUN.FAILED"
+            elif resource_status == "ABORTED":
+                event_type = "ACTOR.RUN.ABORTED"
+            elif resource_status in ["TIMED-OUT", "TIMED_OUT"]:
+                event_type = "ACTOR.RUN.TIMED_OUT"
+            logger.info(f"📬 Inferred event_type: {event_type}")
         
         if not order_id or city_index is None:
             logger.warning("Webhook missing orderId or cityIndex")
