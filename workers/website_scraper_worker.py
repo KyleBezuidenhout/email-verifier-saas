@@ -711,9 +711,9 @@ async def process_job(job_id: str, website_col: str, enable_cache: bool = True, 
                         job.hit_rate_percentage = Decimal(str(round(hit_rate, 2)))
                         job.credits_spent = stats.api_requests_made
                         db.commit()
-                    
-                    logger.info(f"📊 Progress: {progress}% ({total_processed}/{len(unique_urls)}), "
-                               f"Hit rate: {hit_rate:.1f}%, API requests: {stats.api_requests_made}")
+                        
+                        logger.info(f"📊 Progress: {progress}% ({total_processed}/{len(unique_urls)}), "
+                                   f"Hit rate: {hit_rate:.1f}%, API requests: {stats.api_requests_made}")
             
             # Final progress update
             progress = int((total_processed / len(unique_urls)) * 100) if len(unique_urls) > 0 else 100
