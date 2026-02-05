@@ -28,6 +28,9 @@ class GoogleMapsScraperOrderCreate(BaseModel):
     city: Optional[str] = None  # Required for single_city mode
     search_term: str
     
+    # Cache option - if enabled, returns cached results for matching city+state+search_term
+    use_cache: bool = False
+    
     # Apify settings (optional - defaults applied if not provided)
     max_results_per_city: Optional[int] = None
     skip_closed_places: bool = True
@@ -92,6 +95,7 @@ class GoogleMapsScraperStatusResponse(BaseModel):
     status: str
     total_cities: int
     completed_cities: int
+    cached_cities: int = 0  # Cities served from cache
     progress_percentage: int
     results_count: int
     error_message: Optional[str] = None

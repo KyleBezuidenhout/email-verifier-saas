@@ -411,6 +411,8 @@ export default function GoogleMapsScraperPage() {
   const [selectedState, setSelectedState] = useState("");  // For single city mode
   const [selectedStates, setSelectedStates] = useState<string[]>([]);  // For full state mode (admin)
   const [selectedCity, setSelectedCity] = useState("");
+  const [useCache, setUseCache] = useState(false);  // Enable caching toggle
+  const [showCacheTooltip, setShowCacheTooltip] = useState(false);  // Tooltip visibility
   
   // Dropdown data
   const [states, setStates] = useState<string[]>([]);
@@ -675,6 +677,7 @@ export default function GoogleMapsScraperPage() {
         states: scrapeMode === "single_city" ? [selectedState] : selectedStates,
         city: scrapeMode === "single_city" ? selectedCity : null,
         search_term: searchTerm.trim(),
+        use_cache: useCache,
         // Apify settings
         max_results_per_city: maxResultsPerCity ? parseInt(maxResultsPerCity, 10) : null,
         skip_closed_places: skipClosedPlaces,
@@ -693,6 +696,7 @@ export default function GoogleMapsScraperPage() {
       setSelectedStates([]);
       setSelectedCity("");
       setCostEstimate(null);
+      setUseCache(false);
       // Reset advanced settings to defaults
       setMaxResultsPerCity("");
       setSkipClosedPlaces(true);
@@ -928,6 +932,34 @@ export default function GoogleMapsScraperPage() {
         <label className="block text-sm font-medium text-dashboard-text mb-2">Business Type / Search Term <span className="text-red-500">*</span></label>
         <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="e.g., 'Restaurants', 'Dentists', 'Gyms', 'Coffee Shops'" className="apple-input w-full py-3" />
         <p className="mt-2 text-xs text-dashboard-text-muted">Enter the type of business you want to find (uses Google Maps search)</p>
+        
+        {/* Cache Toggle */}
+        <div className="mt-4 flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="useCache"
+            checked={useCache}
+            onChange={(e) => setUseCache(e.target.checked)}
+            className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent cursor-pointer"
+          />
+          <label htmlFor="useCache" className="text-sm text-dashboard-text cursor-pointer">Enable Caching</label>
+          <div className="relative">
+            <button
+              type="button"
+              onMouseEnter={() => setShowCacheTooltip(true)}
+              onMouseLeave={() => setShowCacheTooltip(false)}
+              className="w-5 h-5 rounded-full bg-dashboard-card border border-dashboard-border flex items-center justify-center text-xs text-dashboard-text-muted hover:bg-dashboard-border transition-colors"
+            >
+              ?
+            </button>
+            {showCacheTooltip && (
+              <div className="absolute left-6 top-1/2 -translate-y-1/2 z-50 w-64 p-3 bg-dashboard-surface border border-dashboard-border rounded-lg shadow-xl text-xs text-dashboard-text-muted">
+                <p className="font-medium text-dashboard-text mb-1">What is caching?</p>
+                <p>When enabled, returns existing results instantly for cities we&apos;ve already scraped with the same search term. Only scrapes cities not in our database, saving time and money.</p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Single City Mode: State + City Selection */}

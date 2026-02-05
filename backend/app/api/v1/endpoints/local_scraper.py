@@ -45,6 +45,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+def find_cached_results(db: Session, city: str, state: str, search_term: str) -> Optional[LocalScraperCityJob]:
+    """
+    Find existing completed results for exact city+state+search_term match.
+    Returns the most recent completed city job with results, or None if no cache hit.
+    """
+    return db.query(LocalScraperCityJob).filter(
+        func.lower(LocalScraperCityJob.city) == city.lower().strip(),
+        func.lower(LocalScraperCityJob.state) == state.lower().strip(),
+        func.lower(LocalScraperCityJob.search_term) == search_term.lower().strip(),
+        LocalScraperCityJob.status == "completed",
+        LocalScraperCityJob.results_count > 0
+    ).order_by(desc(LocalScraperCityJob.updated_at)).first()
+
 # Initialize S3 client for Cloudflare R2
 s3_client = boto3.client(
     's3',
@@ -218,6 +232,8 @@ async def create_order(
     Orders are queued and processed by a dedicated worker.
     The worker starts Apify runs and handles results via webhooks.
     
+    If use_cache=True, checks for existing results and returns cached data instantly.
+    
     Note: Multi-state selection (more than 1 state) requires admin privileges.
     """
     try:
@@ -239,23 +255,27 @@ async def create_order(
                     detail="Multi-state selection is only available for admin users"
                 )
         
-        # Count cities to scrape (for cost estimation)
+        # Build list of cities to scrape
+        cities_with_state = []
         if payload.scrape_mode == "single_city":
-            num_cities = 1
+            cities_with_state = [(payload.states[0], payload.city)]
         else:
-            # Count cities across all selected states
-            num_cities = 0
+            # Get cities across all selected states
             for state in payload.states:
                 result = db.execute(text("""
-                    SELECT COUNT(*) FROM google_maps_cities WHERE state = :state
+                    SELECT city FROM google_maps_cities WHERE state = :state ORDER BY city
                 """), {"state": state})
-                num_cities += result.scalar() or 0
-            
-            if num_cities == 0:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"No cities found for selected states. Please seed the google_maps_cities table."
-                )
+                state_cities = [row[0] for row in result.fetchall()]
+                for city in state_cities:
+                    cities_with_state.append((state, city))
+        
+        num_cities = len(cities_with_state)
+        
+        if num_cities == 0:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"No cities found for selected states. Please seed the google_maps_cities table."
+            )
         
         estimated_cost = apify_service.estimate_cost(num_cities)
         webhook_secret = apify_service.generate_webhook_secret()
@@ -270,6 +290,7 @@ async def create_order(
         logger.info(f"📝 Creating Google Maps scraper order for user {current_user.id}")
         logger.info(f"   Mode: {payload.scrape_mode}, States: {payload.states}, Cities: {num_cities}")
         logger.info(f"   Search term: {payload.search_term}")
+        logger.info(f"   Use cache: {payload.use_cache}")
         logger.info(f"   Estimated cost: ${estimated_cost:.2f}")
         
         # Create order in database with status "queued"
@@ -305,14 +326,81 @@ async def create_order(
         
         logger.info(f"✅ Order created: {order.id}")
         
-        # Queue order for processing by worker
-        try:
-            redis_client.lpush(GOOGLE_MAPS_SCRAPER_QUEUE, str(order.id))
-            queue_length = redis_client.llen(GOOGLE_MAPS_SCRAPER_QUEUE)
-            logger.info(f"📤 Queued order {order.id} to {GOOGLE_MAPS_SCRAPER_QUEUE} (queue length: {queue_length})")
-        except Exception as e:
-            logger.error(f"❌ Failed to queue order {order.id}: {e}")
-            # Don't fail the request - order is created, worker can pick it up later
+        # Handle caching if enabled
+        cached_count = 0
+        pending_count = 0
+        total_cached_results = 0
+        
+        if payload.use_cache:
+            # Check cache for each city and create city_jobs
+            search_term = payload.search_term.strip()
+            
+            for i, (state, city) in enumerate(cities_with_state):
+                cached_job = find_cached_results(db, city, state, search_term)
+                
+                if cached_job:
+                    # Cache hit - create city_job with cached results
+                    city_job = LocalScraperCityJob(
+                        order_id=order.id,
+                        city_index=i,
+                        city=city,
+                        state=state,
+                        search_term=search_term,
+                        status="cached",
+                        results=cached_job.results,
+                        results_count=cached_job.results_count,
+                    )
+                    db.add(city_job)
+                    cached_count += 1
+                    total_cached_results += cached_job.results_count
+                    logger.info(f"   💾 Cache hit: {city}, {state} ({cached_job.results_count} results)")
+                else:
+                    # Cache miss - create pending city_job for worker
+                    city_job = LocalScraperCityJob(
+                        order_id=order.id,
+                        city_index=i,
+                        city=city,
+                        state=state,
+                        search_term=search_term,
+                        status="pending",
+                    )
+                    db.add(city_job)
+                    pending_count += 1
+            
+            db.commit()
+            
+            # Update order progress based on cache hits
+            order.completed_cities = cached_count
+            order.results_count = total_cached_results
+            order.progress_percentage = int((cached_count / num_cities) * 100)
+            
+            logger.info(f"   📊 Cache results: {cached_count} cached, {pending_count} pending")
+            
+            if pending_count == 0:
+                # All cities were cached - mark order complete
+                order.status = "completed"
+                order.completed_at = datetime.utcnow()
+                logger.info(f"   ✅ Order fully served from cache!")
+            else:
+                # Some cities need scraping - queue for worker
+                order.status = "processing"
+                try:
+                    redis_client.lpush(GOOGLE_MAPS_SCRAPER_QUEUE, str(order.id))
+                    queue_length = redis_client.llen(GOOGLE_MAPS_SCRAPER_QUEUE)
+                    logger.info(f"📤 Queued order {order.id} to {GOOGLE_MAPS_SCRAPER_QUEUE} (queue length: {queue_length})")
+                except Exception as e:
+                    logger.error(f"❌ Failed to queue order {order.id}: {e}")
+            
+            db.commit()
+        else:
+            # No caching - queue order for processing by worker (original behavior)
+            try:
+                redis_client.lpush(GOOGLE_MAPS_SCRAPER_QUEUE, str(order.id))
+                queue_length = redis_client.llen(GOOGLE_MAPS_SCRAPER_QUEUE)
+                logger.info(f"📤 Queued order {order.id} to {GOOGLE_MAPS_SCRAPER_QUEUE} (queue length: {queue_length})")
+            except Exception as e:
+                logger.error(f"❌ Failed to queue order {order.id}: {e}")
+                # Don't fail the request - order is created, worker can pick it up later
         
         return order_to_response(order)
         
@@ -398,24 +486,35 @@ async def get_order_status(
     
     if city_jobs_count > 0:
         # New schema: calculate progress from city_jobs table
+        # Count completed (scraped) jobs
         completed_count = db.query(LocalScraperCityJob).filter(
             LocalScraperCityJob.order_id == order.id,
             LocalScraperCityJob.status.in_(["completed", "failed"])
         ).count()
         
+        # Count cached jobs separately
+        cached_count = db.query(LocalScraperCityJob).filter(
+            LocalScraperCityJob.order_id == order.id,
+            LocalScraperCityJob.status == "cached"
+        ).count()
+        
+        # Total results from both completed and cached jobs
         total_results = db.query(func.sum(LocalScraperCityJob.results_count)).filter(
             LocalScraperCityJob.order_id == order.id,
-            LocalScraperCityJob.status == "completed"
+            LocalScraperCityJob.status.in_(["completed", "cached"])
         ).scalar() or 0
         
         total_cities = city_jobs_count
-        progress = int((completed_count / total_cities) * 100) if total_cities > 0 else 0
+        # Progress includes both cached and completed
+        done_count = completed_count + cached_count
+        progress = int((done_count / total_cities) * 100) if total_cities > 0 else 0
         
         return GoogleMapsScraperStatusResponse(
             order_id=str(order.id),
             status=order.status,
             total_cities=total_cities,
-            completed_cities=completed_count,
+            completed_cities=done_count,
+            cached_cities=cached_count,
             progress_percentage=progress,
             results_count=total_results,
             error_message=order.error_message,
@@ -427,6 +526,7 @@ async def get_order_status(
             status=order.status,
             total_cities=order.total_cities or 1,
             completed_cities=order.completed_cities or 0,
+            cached_cities=0,
             progress_percentage=order.progress_percentage or 0,
             results_count=order.results_count or 0,
             error_message=order.error_message,

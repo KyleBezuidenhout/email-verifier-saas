@@ -161,6 +161,8 @@ export interface GoogleMapsScraperOrderCreate {
   states: string[];  // List of states (single for single_city, multiple for full_state admin)
   city?: string | null;  // Required for single_city mode
   search_term: string;
+  // Cache option - returns cached results for matching city+state+search_term
+  use_cache?: boolean;
   // Apify settings (optional - defaults applied if not provided)
   max_results_per_city?: number | null;
   skip_closed_places?: boolean;

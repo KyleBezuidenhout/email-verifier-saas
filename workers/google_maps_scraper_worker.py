@@ -295,8 +295,8 @@ def get_cities_for_order(db, order: LocalScraperOrder) -> List[Tuple[str, str]]:
 async def process_order(order_id: str) -> bool:
     """
     Process a new Google Maps scraper order:
-    1. Create city_job rows for each city
-    2. Start initial batch of Apify runs
+    1. Create city_job rows for each city (if not already created by endpoint)
+    2. Start initial batch of Apify runs for pending jobs (skip cached)
     """
     db = SessionLocal()
     
@@ -312,26 +312,14 @@ async def process_order(order_id: str) -> bool:
             logger.error(f"Order {order_id} not found")
             return False
         
-        if order.status not in ['queued', 'pending']:
+        # Accept 'processing' status for cache-enabled orders (endpoint already set status)
+        if order.status not in ['queued', 'pending', 'processing']:
             logger.warning(f"Order {order_id} has status '{order.status}', skipping")
             return False
         
         logger.info(f"🔄 Processing Google Maps scraper order {order_id}")
         logger.info(f"   Mode: {order.scrape_mode}, States: {order.states}")
         logger.info(f"   Search term: {order.search_term}")
-        
-        # Get cities to scrape
-        cities_with_state = get_cities_for_order(db, order)
-        
-        if not cities_with_state:
-            logger.error(f"No cities found for order {order_id}")
-            order.status = "failed"
-            order.error_message = "No cities found for selected states"
-            db.commit()
-            return False
-        
-        num_cities = len(cities_with_state)
-        logger.info(f"   Total cities to scrape: {num_cities}")
         
         webhook_url = order.webhook_url
         if not webhook_url:
@@ -341,28 +329,79 @@ async def process_order(order_id: str) -> bool:
             db.commit()
             return False
         
+        # Check if city_jobs already exist (created by endpoint when use_cache=True)
+        existing_jobs_count = db.query(LocalScraperCityJob).filter(
+            LocalScraperCityJob.order_id == order.id
+        ).count()
+        
+        if existing_jobs_count > 0:
+            # Cache-enabled order: city_jobs already created by endpoint
+            # Only process pending jobs (skip cached ones)
+            logger.info(f"📋 Found {existing_jobs_count} existing city_jobs (cache-enabled order)")
+            
+            cached_count = db.query(LocalScraperCityJob).filter(
+                LocalScraperCityJob.order_id == order.id,
+                LocalScraperCityJob.status == "cached"
+            ).count()
+            
+            pending_count = db.query(LocalScraperCityJob).filter(
+                LocalScraperCityJob.order_id == order.id,
+                LocalScraperCityJob.status == "pending"
+            ).count()
+            
+            logger.info(f"   💾 Cached: {cached_count}, Pending: {pending_count}")
+            
+            if pending_count == 0:
+                # All cached - finalize immediately
+                logger.info(f"   ✅ All cities cached, finalizing order")
+                await finalize_order_new_schema(db, order)
+                return True
+            
+            num_cities = existing_jobs_count
+        else:
+            # Standard order: create city_jobs now
+            cities_with_state = get_cities_for_order(db, order)
+            
+            if not cities_with_state:
+                logger.error(f"No cities found for order {order_id}")
+                order.status = "failed"
+                order.error_message = "No cities found for selected states"
+                db.commit()
+                return False
+            
+            num_cities = len(cities_with_state)
+            logger.info(f"   Total cities to scrape: {num_cities}")
+            
+            # Create city_job rows for ALL cities
+            for i, (state, city) in enumerate(cities_with_state):
+                city_job = LocalScraperCityJob(
+                    order_id=order.id,
+                    city_index=i,
+                    city=city,
+                    state=state,
+                    search_term=order.search_term,  # Include search_term for cache lookups
+                    status="pending"
+                )
+                db.add(city_job)
+            
+            db.commit()
+            logger.info(f"📋 Created {num_cities} city_job rows")
+        
         # Update order status
         order.status = "processing"
-        order.started_at = datetime.utcnow()
+        if not order.started_at:
+            order.started_at = datetime.utcnow()
         order.total_cities = num_cities
         db.commit()
         
-        # Create city_job rows for ALL cities
-        for i, (state, city) in enumerate(cities_with_state):
-            city_job = LocalScraperCityJob(
-                order_id=order.id,
-                city_index=i,
-                city=city,
-                state=state,
-                status="pending"
-            )
-            db.add(city_job)
-        
-        db.commit()
-        logger.info(f"📋 Created {num_cities} city_job rows")
+        # Get pending jobs to start (skip cached ones)
+        pending_jobs = db.query(LocalScraperCityJob).filter(
+            LocalScraperCityJob.order_id == order.id,
+            LocalScraperCityJob.status == "pending"
+        ).order_by(LocalScraperCityJob.city_index).all()
         
         # Start initial batch of MAX_CONCURRENT_RUNS jobs
-        initial_batch_size = min(MAX_CONCURRENT_RUNS, num_cities)
+        initial_batch_size = min(MAX_CONCURRENT_RUNS, len(pending_jobs))
         
         logger.info(f"🚀 Starting initial batch of {initial_batch_size} jobs")
         
@@ -370,8 +409,9 @@ async def process_order(order_id: str) -> bool:
         failed_runs = 0
         
         async with httpx.AsyncClient() as client:
-            for i in range(initial_batch_size):
-                state, city = cities_with_state[i]
+            for job in pending_jobs[:initial_batch_size]:
+                city = job.city
+                state = job.state
                 
                 # Build input with user's Apify settings
                 input_payload = build_input_payload(
@@ -391,7 +431,7 @@ async def process_order(order_id: str) -> bool:
                         input_payload=input_payload,
                         webhook_url=webhook_url,
                         order_id=str(order.id),
-                        city_index=i,
+                        city_index=job.city_index,
                         webhook_secret=order.webhook_secret
                     )
                     
@@ -399,43 +439,36 @@ async def process_order(order_id: str) -> bool:
                     logger.info(f"✅ Started run {run_id} for {city}, {state}")
                     
                     # Update city_job row
-                    db.query(LocalScraperCityJob).filter(
-                        LocalScraperCityJob.order_id == order.id,
-                        LocalScraperCityJob.city_index == i
-                    ).update({
-                        "run_id": run_id,
-                        "status": "running",
-                        "updated_at": datetime.utcnow()
-                    })
+                    job.run_id = run_id
+                    job.status = "running"
+                    job.updated_at = datetime.utcnow()
                     
                     successful_runs += 1
                     
                 except Exception as e:
                     logger.error(f"Failed to start run for city {city}, {state}: {e}")
                     
-                    db.query(LocalScraperCityJob).filter(
-                        LocalScraperCityJob.order_id == order.id,
-                        LocalScraperCityJob.city_index == i
-                    ).update({
-                        "status": "failed",
-                        "error": str(e),
-                        "updated_at": datetime.utcnow()
-                    })
+                    job.status = "failed"
+                    job.error = str(e)
+                    job.updated_at = datetime.utcnow()
                     
                     failed_runs += 1
         
         db.commit()
         
         # Log performance report
-        pending_count = num_cities - initial_batch_size
+        remaining_pending = len(pending_jobs) - initial_batch_size
+        cached_jobs = num_cities - len(pending_jobs)
         logger.info("=" * 60)
         logger.info("SCRAPE JOB INITIATED")
         logger.info("=" * 60)
         logger.info(f"Order ID: {order_id}")
         logger.info(f"Total Cities: {num_cities}")
+        if cached_jobs > 0:
+            logger.info(f"Cached (from previous scrapes): {cached_jobs}")
         logger.info(f"Initial Batch Started: {successful_runs}")
         logger.info(f"Initial Batch Failed: {failed_runs}")
-        logger.info(f"Pending (rolling queue): {pending_count}")
+        logger.info(f"Pending (rolling queue): {remaining_pending}")
         logger.info("=" * 60)
         
         if successful_runs == 0 and initial_batch_size > 0:
@@ -702,10 +735,10 @@ async def process_webhook_legacy_schema(
 async def check_progress_and_continue(db, order: LocalScraperOrder, webhook_url: str) -> None:
     """Check order progress and start next pending job or finalize."""
     
-    # Count job statuses
-    completed_count = db.query(LocalScraperCityJob).filter(
+    # Count job statuses (include cached as done)
+    done_count = db.query(LocalScraperCityJob).filter(
         LocalScraperCityJob.order_id == order.id,
-        LocalScraperCityJob.status.in_(["completed", "failed"])
+        LocalScraperCityJob.status.in_(["completed", "failed", "cached"])
     ).count()
     
     total_count = db.query(LocalScraperCityJob).filter(
@@ -717,9 +750,9 @@ async def check_progress_and_continue(db, order: LocalScraperOrder, webhook_url:
         LocalScraperCityJob.status == "running"
     ).count()
     
-    logger.info(f"📊 Progress: {completed_count}/{total_count} done, {running_count} running")
+    logger.info(f"📊 Progress: {done_count}/{total_count} done, {running_count} running")
     
-    if completed_count >= total_count:
+    if done_count >= total_count:
         # All done - finalize order
         await finalize_order_new_schema(db, order)
     else:
@@ -856,15 +889,15 @@ async def finalize_order_new_schema(db, order: LocalScraperOrder) -> None:
     
     logger.info(f"🏁 Finalizing order {order.id}")
     
-    # Get all completed city jobs
-    completed_jobs = db.query(LocalScraperCityJob).filter(
+    # Get all completed and cached city jobs (both have results)
+    jobs_with_results = db.query(LocalScraperCityJob).filter(
         LocalScraperCityJob.order_id == order.id,
-        LocalScraperCityJob.status == "completed"
+        LocalScraperCityJob.status.in_(["completed", "cached"])
     ).all()
     
     # Collect and deduplicate results by placeId
     all_results = {}
-    for job in completed_jobs:
+    for job in jobs_with_results:
         for place in (job.results or []):
             place_id = place.get("placeId")
             if place_id and place_id not in all_results:
@@ -879,11 +912,17 @@ async def finalize_order_new_schema(db, order: LocalScraperOrder) -> None:
         LocalScraperCityJob.status == "failed"
     ).count()
     
+    cached_count = db.query(LocalScraperCityJob).filter(
+        LocalScraperCityJob.order_id == order.id,
+        LocalScraperCityJob.status == "cached"
+    ).count()
+    
     total_count = db.query(LocalScraperCityJob).filter(
         LocalScraperCityJob.order_id == order.id
     ).count()
     
-    logger.info(f"Order {order.id} finalized: {len(results_list)} unique results from {total_count} cities ({failed_count} failed)")
+    cache_info = f", {cached_count} cached" if cached_count > 0 else ""
+    logger.info(f"Order {order.id} finalized: {len(results_list)} unique results from {total_count} cities ({failed_count} failed{cache_info})")
     
     if results_list:
         # Create CSV

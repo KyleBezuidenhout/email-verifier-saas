@@ -29,6 +29,7 @@ class LocalScraperCityJob(Base):
     city_index = Column(Integer, nullable=False)  # Position in the order's city list
     city = Column(String(200), nullable=False)
     state = Column(String(100), nullable=False)
+    search_term = Column(String(500), nullable=True, index=True)  # For cache lookups
     
     # Apify run tracking
     run_id = Column(String(100), nullable=True)  # Apify run ID
