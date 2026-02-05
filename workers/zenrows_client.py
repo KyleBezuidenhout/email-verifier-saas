@@ -206,6 +206,113 @@ def extract_domain(url: str) -> str:
         return url.lower().strip()
 
 
+def extract_base_url(url: str) -> str:
+    """Extract base URL (scheme + netloc) from a URL."""
+    try:
+        if '://' not in url:
+            url = f'https://{url}'
+        parsed = urlparse(url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+    except Exception:
+        return url
+
+
+# ============================================
+# SUBLINK EXTRACTION FOR CONTACT PAGES
+# ============================================
+
+# Keywords that indicate a link might lead to a contact page
+CONTACT_PATH_KEYWORDS = [
+    'contact', 'about', 'team', 'reach', 'touch', 
+    'support', 'help', 'info', 'inquir', 'connect',
+    'get-in', 'getintouch', 'email', 'mail'
+]
+
+
+def extract_contact_links(html: str, base_url: str, max_links: int = 3) -> List[str]:
+    """
+    Extract internal links from HTML that look like contact pages.
+    
+    Uses the href links already extracted from HTML and filters for
+    paths containing contact-related keywords.
+    
+    Args:
+        html: Raw HTML content
+        base_url: Base URL of the page (e.g., https://example.com)
+        max_links: Maximum number of contact links to return
+    
+    Returns:
+        List of full URLs to potential contact pages
+    """
+    if not html or not base_url:
+        return []
+    
+    # Extract all href links
+    link_pattern = re.compile(r'href=["\']([^"\']+)["\']', re.IGNORECASE)
+    links = link_pattern.findall(html)
+    
+    # Parse the base URL
+    try:
+        parsed_base = urlparse(base_url)
+        base_domain = parsed_base.netloc.lower()
+        if base_domain.startswith('www.'):
+            base_domain = base_domain[4:]
+    except Exception:
+        return []
+    
+    contact_links = []
+    seen_paths = set()
+    
+    for link in links:
+        link_lower = link.lower().strip()
+        
+        # Skip empty, javascript, or anchor-only links
+        if not link_lower or link_lower.startswith(('#', 'javascript:', 'mailto:', 'tel:')):
+            continue
+        
+        # Check if link path contains any contact keyword
+        has_contact_keyword = any(keyword in link_lower for keyword in CONTACT_PATH_KEYWORDS)
+        if not has_contact_keyword:
+            continue
+        
+        # Build full URL
+        try:
+            if link.startswith('//'):
+                full_url = f"https:{link}"
+            elif link.startswith('/'):
+                full_url = f"{base_url.rstrip('/')}{link}"
+            elif link.startswith('http'):
+                full_url = link
+            else:
+                full_url = f"{base_url.rstrip('/')}/{link}"
+            
+            # Parse and validate it's the same domain (internal link)
+            parsed_link = urlparse(full_url)
+            link_domain = parsed_link.netloc.lower()
+            if link_domain.startswith('www.'):
+                link_domain = link_domain[4:]
+            
+            # Only keep internal links (same domain)
+            if link_domain != base_domain:
+                continue
+            
+            # Normalize path for deduplication
+            path = parsed_link.path.lower().rstrip('/')
+            if path in seen_paths:
+                continue
+            seen_paths.add(path)
+            
+            contact_links.append(full_url)
+            
+            if len(contact_links) >= max_links:
+                break
+                
+        except Exception:
+            continue
+    
+    return contact_links
+
+
 # ============================================
 # ZENROWS CLIENT (Simplified with mode=auto)
 # ============================================
@@ -218,6 +325,8 @@ class ScrapeResult:
     contacts: ExtractedContacts
     classification: str
     error: Optional[str] = None
+    html: Optional[str] = None  # Raw HTML (only populated when needed for sublink extraction)
+    sublinks_scraped: int = 0  # Number of sublinks scraped for this URL
 
 
 class RateLimiter:
@@ -319,7 +428,7 @@ class ZenRowsClient:
         
         return await self.http_client.get(ZENROWS_API_URL, params=params)
     
-    async def scrape_url(self, url: str) -> ScrapeResult:
+    async def scrape_url(self, url: str, return_html: bool = False) -> ScrapeResult:
         """
         Scrape a URL using ZenRows Adaptive Stealth Mode (mode=auto).
         
@@ -330,6 +439,7 @@ class ZenRowsClient:
         
         Args:
             url: URL to scrape
+            return_html: If True, include raw HTML in result (for sublink extraction)
         
         Returns:
             ScrapeResult with contacts and metadata
@@ -365,6 +475,7 @@ class ZenRowsClient:
                             url=url,
                             contacts=contacts,
                             classification="SUCCESS",
+                            html=html if return_html else None,
                         )
                     
                     elif response.status_code == 422:
@@ -432,6 +543,68 @@ class ZenRowsClient:
                         classification="ERROR",
                         error=str(e),
                     )
+    
+    async def scrape_url_with_fallback(
+        self, 
+        url: str, 
+        enable_sublink: bool = True,
+        max_sublinks: int = 3
+    ) -> Tuple[ScrapeResult, int]:
+        """
+        Scrape a URL with optional sublink fallback for contact pages.
+        
+        If main page is successfully scraped but has no emails, this method
+        extracts contact-related links from the HTML and scrapes them.
+        
+        Args:
+            url: URL to scrape
+            enable_sublink: Whether to try sublinks if no email found
+            max_sublinks: Maximum number of sublinks to try
+        
+        Returns:
+            Tuple of (ScrapeResult, api_calls_made)
+        """
+        api_calls = 1
+        
+        # Scrape main page (with HTML if sublink scraping is enabled)
+        result = await self.scrape_url(url, return_html=enable_sublink)
+        
+        # If successful but no emails found, and sublink scraping is enabled
+        if (result.success and 
+            not result.contacts.emails and 
+            enable_sublink and 
+            result.html):
+            
+            # Extract contact page links from the HTML
+            base_url = extract_base_url(url)
+            contact_links = extract_contact_links(result.html, base_url, max_links=max_sublinks)
+            
+            if contact_links:
+                logger.debug(f"No email on {url}, trying {len(contact_links)} sublinks: {contact_links}")
+                
+                # Try each contact link until we find an email
+                for sublink in contact_links:
+                    api_calls += 1
+                    sublink_result = await self.scrape_url(sublink, return_html=False)
+                    
+                    if sublink_result.success and sublink_result.contacts.emails:
+                        # Found emails! Merge contacts back to main result
+                        result.contacts.emails = sublink_result.contacts.emails
+                        # Only update phones if we didn't have any
+                        if not result.contacts.phones and sublink_result.contacts.phones:
+                            result.contacts.phones = sublink_result.contacts.phones
+                        result.classification = "SUBLINK_SUCCESS"
+                        result.sublinks_scraped = api_calls - 1
+                        logger.debug(f"Found email via sublink {sublink} for {url}")
+                        break
+                else:
+                    # No emails found in any sublink
+                    result.sublinks_scraped = api_calls - 1
+        
+        # Clear HTML from result to save memory
+        result.html = None
+        
+        return result, api_calls
 
 
 # ============================================

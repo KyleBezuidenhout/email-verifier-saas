@@ -205,6 +205,8 @@ async def startup_tasks():
         from migrate_add_website_scraper_jobs import run_migration as migrate_website_scraper_jobs
         from migrate_add_google_maps_cities import run_migration as migrate_google_maps_cities
         from migrate_fix_swapped_cities import run_migration as migrate_fix_swapped_cities
+        from migrate_add_website_scraper_cache import run_migration as migrate_website_scraper_cache
+        from migrate_add_scraper_options import run_migration as migrate_scraper_options
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -219,6 +221,8 @@ async def startup_tasks():
         migrate_website_scraper_jobs()  # Add website_scraper_jobs table for ZenRows contact extraction
         migrate_google_maps_cities()  # Add google_maps_cities table for US city data
         migrate_fix_swapped_cities()  # Fix swapped state/city columns in google_maps_cities
+        migrate_website_scraper_cache()  # Add cache table for URL results
+        migrate_scraper_options()  # Add enable_cache and enable_sublink_scraping columns
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)

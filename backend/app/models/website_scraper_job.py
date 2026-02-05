@@ -5,7 +5,7 @@ Stores website contact scraper jobs - for extracting emails and phones from webs
 Uses ZenRows API for web scraping with tiered escalation.
 """
 
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Numeric
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Numeric, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 import uuid
@@ -38,6 +38,10 @@ class WebsiteScraperJob(Base):
     
     # Cost tracking (ZenRows credits)
     credits_spent = Column(Integer, default=0)  # Total ZenRows API credits consumed
+    
+    # Optional features (toggles)
+    enable_cache = Column(Boolean, default=True)  # Use cached results for previously scraped URLs
+    enable_sublink_scraping = Column(Boolean, default=True)  # Scrape contact pages if no email on main page
     
     # File storage (R2 paths)
     input_file_path = Column(Text, nullable=True)

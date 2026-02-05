@@ -152,6 +152,8 @@ async def upload_csv(
     file: UploadFile = File(...),
     column_website: Optional[str] = Form(None),
     job_name: Optional[str] = Form(None),
+    enable_cache: Optional[bool] = Form(True),
+    enable_sublink_scraping: Optional[bool] = Form(True),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -160,6 +162,10 @@ async def upload_csv(
     
     The CSV must contain a column with website URLs.
     Column detection is automatic but can be overridden with column_website parameter.
+    
+    Optional features:
+    - enable_cache: Use cached results for previously scraped URLs (default: True)
+    - enable_sublink_scraping: Scrape contact pages if no email on main page (default: True)
     
     Max file size: 250MB
     Max rows: 50,000
@@ -270,6 +276,8 @@ async def upload_csv(
         completed_leads=0,
         progress_percentage=0,
         hit_rate_percentage=0.00,
+        enable_cache=enable_cache if enable_cache is not None else True,
+        enable_sublink_scraping=enable_sublink_scraping if enable_sublink_scraping is not None else True,
     )
     db.add(job)
     db.commit()
@@ -298,7 +306,9 @@ async def upload_csv(
     
     # Queue job for processing
     try:
-        job_data = f"{job.id}|{website_col}"  # Pass job ID and detected column
+        # Pass job ID, website column, and optional feature flags
+        # Format: job_id|website_col|enable_cache|enable_sublink_scraping
+        job_data = f"{job.id}|{website_col}|{int(job.enable_cache)}|{int(job.enable_sublink_scraping)}"
         
         # #region agent log
         log_data = {
@@ -307,6 +317,8 @@ async def upload_csv(
             "data": {
                 "job_id": str(job.id),
                 "website_col": website_col,
+                "enable_cache": job.enable_cache,
+                "enable_sublink_scraping": job.enable_sublink_scraping,
                 "queue_data": job_data
             },
             "timestamp": int(time.time() * 1000),
