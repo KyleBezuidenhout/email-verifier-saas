@@ -247,14 +247,6 @@ async def create_order(
         if payload.scrape_mode == "single_city" and not payload.city:
             raise HTTPException(status_code=400, detail="City is required for single city mode")
         
-        # Check admin for multi-state selection
-        if payload.scrape_mode == "full_state" and len(payload.states) > 1:
-            if not current_user.is_admin:
-                raise HTTPException(
-                    status_code=403, 
-                    detail="Multi-state selection is only available for admin users"
-                )
-        
         # Build list of cities to scrape
         cities_with_state = []
         if payload.scrape_mode == "single_city":
