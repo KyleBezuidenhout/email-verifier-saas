@@ -10,7 +10,7 @@ This is completely separate from the Sales Nav, Enrichment, and Verification fea
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, text
+from sqlalchemy import desc, text, func
 from typing import Optional
 from datetime import datetime
 from decimal import Decimal
@@ -403,7 +403,7 @@ async def get_order_status(
             LocalScraperCityJob.status.in_(["completed", "failed"])
         ).count()
         
-        total_results = db.query(db.func.sum(LocalScraperCityJob.results_count)).filter(
+        total_results = db.query(func.sum(LocalScraperCityJob.results_count)).filter(
             LocalScraperCityJob.order_id == order.id,
             LocalScraperCityJob.status == "completed"
         ).scalar() or 0
