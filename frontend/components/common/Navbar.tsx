@@ -19,20 +19,20 @@ export function Navbar() {
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-omni-black border-b border-omni-border">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-white/5">
       <div className="max-w-[1280px] mx-auto px-4 md:px-16 h-[70px] flex items-center justify-between">
         {/* Logo */}
         <Link href={user ? "/dashboard" : "/"} className="flex items-center gap-2.5 group">
           <svg 
             className="w-7 h-7 transition-opacity group-hover:opacity-90" 
-            fill="#007AFF" 
+            fill="#0099FF" 
             viewBox="0 0 24 24" 
             xmlns="http://www.w3.org/2000/svg"
           >
             <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
           </svg>
           <span 
-            className="text-[#007AFF] font-bold text-xl tracking-tight"
+            className="text-[#0099FF] font-bold text-xl tracking-tight"
             style={{ fontFamily: '"Helvetica Neue", "Arial", sans-serif', fontWeight: 700 }}
           >
             Billion Verifier
@@ -45,13 +45,13 @@ export function Navbar() {
             <div className="hidden md:flex items-center gap-8">
               <Link
                 href="/dashboard"
-                className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity"
+                className="text-white font-medium text-sm hover:opacity-80 transition-opacity"
               >
                 Dashboard
               </Link>
               <Link
                 href="/settings"
-                className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity"
+                className="text-white font-medium text-sm hover:opacity-80 transition-opacity"
               >
                 Settings
               </Link>
@@ -59,7 +59,7 @@ export function Navbar() {
             <div className="flex items-center gap-4">
               <button
                 onClick={toggleTheme}
-                className="p-2 rounded-lg hover:bg-omni-dark text-omni-white transition-colors"
+                className="p-2 rounded-lg hover:bg-white/5 text-white transition-colors"
                 aria-label="Toggle theme"
               >
                 {theme === "dark" ? (
@@ -75,7 +75,7 @@ export function Navbar() {
               <div className="relative">
                 <button
                   onClick={() => setShowMenu(!showMenu)}
-                  className="flex items-center gap-2 text-omni-white font-medium text-sm hover:opacity-80"
+                  className="flex items-center gap-2 text-white font-medium text-sm hover:opacity-80"
                 >
                   {user.email}
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,10 +83,10 @@ export function Navbar() {
                   </svg>
                 </button>
                 {showMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-omni-dark border border-omni-border rounded-lg py-2 z-50">
+                  <div className="absolute right-0 mt-2 w-48 glass-card py-2 z-50">
                     <Link
                       href="/settings"
-                      className="block px-4 py-2 text-sm text-omni-white hover:bg-omni-black/50"
+                      className="block px-4 py-2 text-sm text-white hover:bg-white/5"
                       onClick={() => setShowMenu(false)}
                     >
                       Settings
@@ -96,7 +96,7 @@ export function Navbar() {
                         handleLogout();
                         setShowMenu(false);
                       }}
-                      className="block w-full text-left px-4 py-2 text-sm text-omni-white hover:bg-omni-black/50"
+                      className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-white/5"
                     >
                       Logout
                     </button>
@@ -109,30 +109,30 @@ export function Navbar() {
           <>
             {/* Public Navigation */}
             <div className="hidden lg:flex items-center gap-8">
-              <Link href="#features" className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity">
+              <Link href="#features" className="text-white font-medium text-sm hover:opacity-80 transition-opacity">
                 Features
               </Link>
-              <span className="text-omni-gray">•</span>
-              <Link href="#process" className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity">
+              <span className="text-gray-600">•</span>
+              <Link href="#process" className="text-white font-medium text-sm hover:opacity-80 transition-opacity">
                 Process
               </Link>
-              <span className="text-omni-gray">•</span>
-              <Link href="#benefits" className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity">
+              <span className="text-gray-600">•</span>
+              <Link href="#benefits" className="text-white font-medium text-sm hover:opacity-80 transition-opacity">
                 Benefits
               </Link>
-              <span className="text-omni-gray">•</span>
-              <Link href="#pricing" className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity">
+              <span className="text-gray-600">•</span>
+              <Link href="#pricing" className="text-white font-medium text-sm hover:opacity-80 transition-opacity">
                 Pricing
               </Link>
-              <span className="text-omni-gray">•</span>
-              <Link href="#testimonials" className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity">
+              <span className="text-gray-600">•</span>
+              <Link href="#testimonials" className="text-white font-medium text-sm hover:opacity-80 transition-opacity">
                 Testimonials
               </Link>
             </div>
             <div className="flex items-center gap-4">
               <button
                 onClick={toggleTheme}
-                className="p-2 rounded-lg hover:bg-omni-dark text-omni-white transition-colors hidden md:block"
+                className="p-2 rounded-lg hover:bg-white/5 text-white transition-colors hidden md:block"
                 aria-label="Toggle theme"
               >
                 {theme === "dark" ? (
@@ -147,13 +147,14 @@ export function Navbar() {
               </button>
               <Link
                 href="/login"
-                className="text-omni-white font-medium text-sm hover:opacity-80 transition-opacity hidden md:block"
+                className="text-white font-medium text-sm hover:opacity-80 transition-opacity hidden md:block"
               >
                 Sign In
               </Link>
               <Link
                 href="/register"
-                className="bg-omni-cyan text-omni-black px-6 py-3 rounded-xl font-medium text-sm hover:opacity-90 transition-opacity flex items-center gap-2"
+                className="bg-[#0099FF] text-black px-6 py-3 rounded-xl font-medium text-sm hover:opacity-90 transition-opacity flex items-center gap-2"
+                style={{ boxShadow: '0 0 20px rgba(0, 153, 255, 0.25)' }}
               >
                 Get Free Credits
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -163,7 +164,7 @@ export function Navbar() {
               {/* Mobile Menu Button */}
               <button
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
-                className="md:hidden p-2 text-omni-white"
+                className="md:hidden p-2 text-white"
                 aria-label="Toggle menu"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -180,24 +181,24 @@ export function Navbar() {
       </div>
       {/* Mobile Menu */}
       {showMobileMenu && !user && (
-        <div className="md:hidden bg-omni-dark border-t border-omni-border">
+        <div className="md:hidden bg-black/90 backdrop-blur-md border-t border-white/5">
           <div className="px-4 py-4 space-y-3">
-            <Link href="#features" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+            <Link href="#features" className="block text-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
               Features
             </Link>
-            <Link href="#process" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+            <Link href="#process" className="block text-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
               Process
             </Link>
-            <Link href="#benefits" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+            <Link href="#benefits" className="block text-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
               Benefits
             </Link>
-            <Link href="#pricing" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+            <Link href="#pricing" className="block text-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
               Pricing
             </Link>
-            <Link href="#testimonials" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+            <Link href="#testimonials" className="block text-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
               Testimonials
             </Link>
-            <Link href="/login" className="block text-omni-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
+            <Link href="/login" className="block text-white font-medium text-sm" onClick={() => setShowMobileMenu(false)}>
               Sign In
             </Link>
           </div>

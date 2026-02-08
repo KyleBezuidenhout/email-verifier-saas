@@ -101,13 +101,13 @@ export function RegisterForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-apple-error/20 border border-apple-error/30 text-apple-error px-4 py-3 rounded-lg text-sm">
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
           {error}
         </div>
       )}
 
       <div>
-        <label htmlFor="full_name" className="block text-sm font-medium text-apple-text mb-2">
+        <label htmlFor="full_name" className="block text-sm font-medium text-white mb-2">
           Full Name
         </label>
         <input
@@ -116,13 +116,13 @@ export function RegisterForm() {
           required
           value={formData.full_name}
           onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-          className="w-full px-4 py-2 bg-apple-surface border border-apple-border text-apple-text placeholder-apple-text-muted rounded-lg focus:ring-2 focus:ring-apple-accent focus:border-apple-accent focus:outline-none"
+          className="glass-input w-full"
           placeholder="John Doe"
         />
       </div>
 
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-apple-text mb-2">
+        <label htmlFor="email" className="block text-sm font-medium text-white mb-2">
           Email address
         </label>
         <input
@@ -131,27 +131,27 @@ export function RegisterForm() {
           required
           value={formData.email}
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-          className="w-full px-4 py-2 bg-apple-surface border border-apple-border text-apple-text placeholder-apple-text-muted rounded-lg focus:ring-2 focus:ring-apple-accent focus:border-apple-accent focus:outline-none"
+          className="glass-input w-full"
           placeholder="you@company.com"
         />
       </div>
 
       <div>
-        <label htmlFor="company_name" className="block text-sm font-medium text-apple-text mb-2">
-          Company Name <span className="text-apple-text-muted">(optional)</span>
+        <label htmlFor="company_name" className="block text-sm font-medium text-white mb-2">
+          Company Name <span className="text-gray-500">(optional)</span>
         </label>
         <input
           id="company_name"
           type="text"
           value={formData.company_name}
           onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-          className="w-full px-4 py-2 bg-apple-surface border border-apple-border text-apple-text placeholder-apple-text-muted rounded-lg focus:ring-2 focus:ring-apple-accent focus:border-apple-accent focus:outline-none"
+          className="glass-input w-full"
           placeholder="Acme Inc."
         />
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-apple-text mb-2">
+        <label htmlFor="password" className="block text-sm font-medium text-white mb-2">
           Password
         </label>
         <input
@@ -160,31 +160,31 @@ export function RegisterForm() {
           required
           value={formData.password}
           onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-          className="w-full px-4 py-2 bg-apple-surface border border-apple-border text-apple-text placeholder-apple-text-muted rounded-lg focus:ring-2 focus:ring-apple-accent focus:border-apple-accent focus:outline-none"
+          className="glass-input w-full"
           placeholder="••••••••"
         />
         {formData.password && (
           <div className="mt-2">
             <div className="flex items-center gap-2">
-              <div className="flex-1 bg-apple-surface-hover rounded-full h-2">
+              <div className="flex-1 bg-white/5 rounded-full h-2">
                 <div
                   className={`h-2 rounded-full transition-all ${
                     passwordStrength.strength === 1
-                      ? "bg-apple-error w-1/3"
+                      ? "bg-red-500 w-1/3"
                       : passwordStrength.strength === 2
-                      ? "bg-apple-warning w-2/3"
-                      : "bg-apple-success w-full"
+                      ? "bg-yellow-500 w-2/3"
+                      : "bg-green-500 w-full"
                   }`}
                 />
               </div>
-              <span className="text-xs text-apple-text-muted">{passwordStrength.label}</span>
+              <span className="text-xs text-gray-400">{passwordStrength.label}</span>
             </div>
           </div>
         )}
       </div>
 
       <div>
-        <label htmlFor="confirmPassword" className="block text-sm font-medium text-apple-text mb-2">
+        <label htmlFor="confirmPassword" className="block text-sm font-medium text-white mb-2">
           Confirm Password
         </label>
         <input
@@ -193,7 +193,7 @@ export function RegisterForm() {
           required
           value={formData.confirmPassword}
           onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-          className="w-full px-4 py-2 bg-apple-surface border border-apple-border text-apple-text placeholder-apple-text-muted rounded-lg focus:ring-2 focus:ring-apple-accent focus:border-apple-accent focus:outline-none"
+          className="glass-input w-full"
           placeholder="••••••••"
         />
       </div>
@@ -204,15 +204,15 @@ export function RegisterForm() {
           type="checkbox"
           checked={acceptTerms}
           onChange={(e) => setAcceptTerms(e.target.checked)}
-          className="h-4 w-4 text-apple-accent focus:ring-apple-accent border-apple-border rounded bg-apple-surface"
+          className="h-4 w-4 text-[#0099FF] focus:ring-[#0099FF] border-white/10 rounded bg-white/5"
         />
-        <label htmlFor="terms" className="ml-2 block text-sm text-apple-text-muted">
+        <label htmlFor="terms" className="ml-2 block text-sm text-gray-400">
           I agree to the{" "}
-          <Link href="/terms" className="text-apple-accent hover:text-apple-accent/80">
+          <Link href="/terms" className="text-[#0099FF] hover:text-[#0099FF]/80">
             Terms of Service
           </Link>{" "}
           and{" "}
-          <Link href="/privacy" className="text-apple-accent hover:text-apple-accent/80">
+          <Link href="/privacy" className="text-[#0099FF] hover:text-[#0099FF]/80">
             Privacy Policy
           </Link>
         </label>
@@ -221,18 +221,18 @@ export function RegisterForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-apple-accent text-white py-2 px-4 rounded-lg hover:bg-apple-accent/90 focus:outline-none focus:ring-2 focus:ring-apple-accent focus:ring-offset-2 focus:ring-offset-apple-bg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+        className="w-full bg-[#0099FF] text-white py-2 px-4 rounded-lg hover:bg-[#0099FF]/90 focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-all"
+        style={{ boxShadow: '0 0 20px rgba(0, 153, 255, 0.2)' }}
       >
         {loading ? <LoadingSpinner size="sm" /> : "Create account"}
       </button>
 
-      <p className="text-center text-sm text-apple-text-muted">
+      <p className="text-center text-sm text-gray-400">
         Already have an account?{" "}
-        <Link href="/login" className="text-apple-accent hover:text-apple-accent/80 font-medium">
+        <Link href="/login" className="text-[#0099FF] hover:text-[#0099FF]/80 font-medium">
           Sign in
         </Link>
       </p>
     </form>
   );
 }
-

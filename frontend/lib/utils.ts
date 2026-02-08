@@ -26,17 +26,17 @@ export function formatFileSize(bytes: number): string {
 export function getStatusColor(status: string): string {
   switch (status) {
     case "completed":
-      return "bg-apple-success/20 text-apple-success border border-apple-success/30";
+      return "bg-green-500/20 text-green-400 border border-green-500/30";
     case "processing":
-      return "bg-apple-accent/20 text-apple-accent border border-apple-accent/30";
+      return "bg-[#0099FF]/20 text-[#0099FF] border border-[#0099FF]/30";
     case "pending":
-      return "bg-apple-text-muted/20 text-apple-text-muted border border-apple-text-muted/30";
+      return "bg-gray-500/20 text-gray-400 border border-gray-500/30";
     case "failed":
-      return "bg-apple-error/20 text-apple-error border border-apple-error/30";
+      return "bg-red-500/20 text-red-400 border border-red-500/30";
     case "waiting_for_csv":
       return "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30";
     default:
-      return "bg-apple-text-muted/20 text-apple-text-muted border border-apple-text-muted/30";
+      return "bg-gray-500/20 text-gray-400 border border-gray-500/30";
   }
 }
 
