@@ -6,11 +6,11 @@
 
 @layer base {
   * {
-    @apply border-apple-border;
+    @apply border-dashboard-border;
   }
 
   body {
-    @apply bg-apple-bg text-apple-text font-sans;
+    @apply bg-black text-apple-text font-sans;
     font-family: 'Inter', 'Segoe UI', sans-serif;
   }
 
@@ -104,9 +104,38 @@
     background: rgba(13, 15, 18, 0.6);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    @apply border border-dashboard-border rounded-lg px-4 py-2 text-dashboard-text placeholder-dashboard-text-muted;
-    @apply focus:outline-none focus:ring-2 focus:ring-dashboard-accent focus:border-dashboard-accent;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    @apply rounded-lg px-4 py-2 text-dashboard-text placeholder-dashboard-text-muted;
+    @apply focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:border-[#0099FF];
     transition: all 0.2s ease;
+  }
+
+  /* Glass input - explicit glass treatment for form fields */
+  .glass-input {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.5rem;
+    @apply px-4 py-2 text-white placeholder-gray-500;
+    @apply focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:border-[#0099FF];
+    transition: all 0.2s ease;
+  }
+
+  .glass-input:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  /* Glass surface - for auth cards, modals, overlays */
+  .glass-surface {
+    background: rgba(13, 15, 18, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 
   /* Badge variations */
@@ -123,18 +152,26 @@
   }
 
   .badge-info {
-    @apply bg-apple-accent/20 text-apple-accent border border-apple-accent/30;
+    @apply bg-[#0099FF]/20 text-[#0099FF] border border-[#0099FF]/30;
   }
 
   /* Button styles */
   .btn-primary {
-    @apply bg-apple-accent text-white px-4 py-2 rounded-lg font-medium;
-    @apply hover:bg-apple-accent/90 transition-colors;
+    @apply bg-[#0099FF] text-white px-4 py-2 rounded-lg font-medium;
+    @apply hover:bg-[#0099FF]/90 transition-all;
+    box-shadow: 0 0 20px rgba(0, 153, 255, 0.15);
+  }
+
+  .btn-primary:hover {
+    box-shadow: 0 0 30px rgba(0, 153, 255, 0.3);
   }
 
   .btn-secondary {
-    @apply bg-apple-surface border border-apple-border text-apple-text px-4 py-2 rounded-lg font-medium;
-    @apply hover:bg-apple-surface-hover transition-colors;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    @apply border border-white/10 text-white px-4 py-2 rounded-lg font-medium;
+    @apply hover:bg-white/10 transition-all;
   }
 }
 

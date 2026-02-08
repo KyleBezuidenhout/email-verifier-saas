@@ -799,7 +799,12 @@ class ApiClient {
     return this.request("/api/v1/website-scraper/health");
   }
 
-  async uploadWebsiteScraperFile(file: File, options?: { column_website?: string; job_name?: string }): Promise<WebsiteScraperUploadResponse> {
+  async uploadWebsiteScraperFile(file: File, options?: { 
+    column_website?: string; 
+    job_name?: string;
+    enable_cache?: boolean;
+    enable_sublink_scraping?: boolean;
+  }): Promise<WebsiteScraperUploadResponse> {
     return this.requestWithFile<WebsiteScraperUploadResponse>("/api/v1/website-scraper/upload", file, options);
   }
 

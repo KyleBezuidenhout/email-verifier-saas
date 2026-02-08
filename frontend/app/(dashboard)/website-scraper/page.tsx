@@ -34,6 +34,10 @@ export default function WebsiteScraperPage() {
   const [isMappingValid, setIsMappingValid] = useState(false);
   const [jobName, setJobName] = useState("");
   
+  // Optional feature toggles (both default to ON)
+  const [enableCache, setEnableCache] = useState(true);
+  const [enableSublinkScraping, setEnableSublinkScraping] = useState(true);
+  
   // Preview modal state
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewData, setPreviewData] = useState<WebsiteScraperPreviewResponse | null>(null);
@@ -203,6 +207,8 @@ export default function WebsiteScraperPage() {
       const result = await apiClient.uploadWebsiteScraperFile(selectedFile, {
         column_website: columnMapping.website,
         job_name: jobName.trim() || undefined,
+        enable_cache: enableCache,
+        enable_sublink_scraping: enableSublinkScraping,
       });
       
       // Clear file selection and mapping
@@ -210,6 +216,8 @@ export default function WebsiteScraperPage() {
       setColumnMapping(null);
       setIsMappingValid(false);
       setJobName("");
+      setEnableCache(true);
+      setEnableSublinkScraping(true);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -554,7 +562,52 @@ export default function WebsiteScraperPage() {
                 </p>
               </div>
               
-              <div className="flex items-center justify-center gap-3">
+              {/* Optional Feature Toggles */}
+              <div className="mt-4 text-left space-y-3">
+                <label className="block text-sm font-medium text-dashboard-text mb-2">
+                  Scraping Options
+                </label>
+                
+                {/* Cache Toggle */}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="enableCache"
+                    checked={enableCache}
+                    onChange={(e) => setEnableCache(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
+                  />
+                  <div>
+                    <label htmlFor="enableCache" className="text-sm text-dashboard-text cursor-pointer">
+                      Use cached results
+                    </label>
+                    <p className="text-xs text-dashboard-text-muted">
+                      Reuse previously scraped results for matching URLs (saves credits)
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Sublink Scraping Toggle */}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="enableSublinkScraping"
+                    checked={enableSublinkScraping}
+                    onChange={(e) => setEnableSublinkScraping(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
+                  />
+                  <div>
+                    <label htmlFor="enableSublinkScraping" className="text-sm text-dashboard-text cursor-pointer">
+                      Scrape contact pages
+                    </label>
+                    <p className="text-xs text-dashboard-text-muted">
+                      If no email on main page, try /contact, /about pages (uses extra credits)
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-center gap-3 mt-4">
                 <button
                   onClick={handleUpload}
                   disabled={uploading || !isMappingValid}
@@ -575,6 +628,8 @@ export default function WebsiteScraperPage() {
                     setColumnMapping(null);
                     setIsMappingValid(false);
                     setJobName("");
+                    setEnableCache(true);
+                    setEnableSublinkScraping(true);
                     if (fileInputRef.current) fileInputRef.current.value = "";
                   }}
                   className="px-4 py-2 text-dashboard-text-muted hover:text-dashboard-text transition-colors"

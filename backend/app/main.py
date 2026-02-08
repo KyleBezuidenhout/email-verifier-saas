@@ -195,6 +195,8 @@ async def startup_tasks():
         from migrate_vayne_orders_columns import run_migration as migrate_vayne_orders_columns
         from migrate_add_local_scraper_orders import run_migration as migrate_local_scraper_orders
         from migrate_add_website_scraper_jobs import run_migration as migrate_website_scraper_jobs
+        from migrate_add_website_scraper_cache import run_migration as migrate_website_scraper_cache
+        from migrate_add_scraper_options import run_migration as migrate_scraper_options
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -207,6 +209,8 @@ async def startup_tasks():
         migrate_vayne_orders_columns()  # Add missing columns to vayne_orders table
         migrate_local_scraper_orders()  # Add local_scraper_orders table for Google Maps scraping
         migrate_website_scraper_jobs()  # Add website_scraper_jobs table for Crawl4AI contact extraction
+        migrate_website_scraper_cache()  # Add cache table for URL results
+        migrate_scraper_options()  # Add enable_cache and enable_sublink_scraping columns
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)

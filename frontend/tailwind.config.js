@@ -21,15 +21,15 @@ module.exports = {
           'border': '#252A31',        // Subtle border color (neutral gray)
           'muted': '#6B7280',         // Muted text for secondary content
         },
-        // Apple-Inspired Enterprise Design System
+        // Unified Black Glass Design System (formerly Apple-inspired)
         'apple': {
-          'bg': '#1C1C1E',           // Graphite - Main background
-          'surface': '#2C2C2E',       // Dark Gray - Cards, modals, sidebars
-          'surface-hover': '#3A3A3C', // Hover state for surfaces
-          'border': '#38383A',        // Subtle borders
-          'accent': '#007AFF',        // Functional Blue - Primary actions
+          'bg': '#000000',            // Pure Black - Main background
+          'surface': '#0A0C0F',       // Near black - Cards, modals, sidebars
+          'surface-hover': '#161A1F', // Hover state for surfaces
+          'border': '#1E2228',        // Subtle dark borders
+          'accent': '#0099FF',        // Vibrant Blue - Primary actions
           'text': '#F5F5F7',          // Off-White - Primary text and icons
-          'text-muted': '#98989D',    // Secondary/muted text
+          'text-muted': '#6B7280',    // Secondary/muted text
           'success': '#34C759',       // Standard Green - Success states
           'warning': '#FF9500',       // Orange for warnings
           'error': '#FF3B30',         // System Red for errors
@@ -47,48 +47,48 @@ module.exports = {
           'text': '#F0F4F8',          // Off-White text
           'text-muted': '#6B7280',    // Muted text
         },
-        // Legacy Dashbrd support (mapped to Apple colors for backward compatibility)
+        // Legacy Dashbrd support (mapped to black glass for consistency)
         'dashbrd': {
-          'bg': '#1C1C1E',
-          'card': '#2C2C2E',
-          'card-hover': '#3A3A3C',
-          'border': '#38383A',
-          'border-light': '#38383A',
-          'accent': '#007AFF',
-          'accent-glow': 'rgba(0, 122, 255, 0.2)',
+          'bg': '#000000',
+          'card': '#0D0F12',
+          'card-hover': '#161A1F',
+          'border': '#1E2228',
+          'border-light': '#252A31',
+          'accent': '#0099FF',
+          'accent-glow': 'rgba(0, 153, 255, 0.2)',
           'text': '#F5F5F7',
-          'text-muted': '#98989D',
-          'text-subtle': '#98989D',
+          'text-muted': '#6B7280',
+          'text-subtle': '#6B7280',
           'success': '#34C759',
           'warning': '#FF9500',
           'error': '#FF3B30',
         },
-        // OmniVerifier Design System (legacy - kept for backward compatibility)
-        'omni-black': '#1C1C1E',
-        'omni-dark': '#2C2C2E',
-        'omni-cyan': '#007AFF',
+        // OmniVerifier Design System (legacy - mapped to black glass)
+        'omni-black': '#000000',
+        'omni-dark': '#0D0F12',
+        'omni-cyan': '#0099FF',
         'omni-white': '#F5F5F7',
-        'omni-gray': '#98989D',
-        'omni-light-gray': '#98989D',
-        'omni-border': '#38383A',
+        'omni-gray': '#6B7280',
+        'omni-light-gray': '#6B7280',
+        'omni-border': '#1E2228',
         // Legacy support
-        border: '#38383A',
-        background: '#1C1C1E',
+        border: '#1E2228',
+        background: '#000000',
         foreground: '#F5F5F7',
         primary: {
-          DEFAULT: '#007AFF',
+          DEFAULT: '#0099FF',
           foreground: '#FFFFFF',
         },
         secondary: {
-          DEFAULT: '#2C2C2E',
+          DEFAULT: '#0D0F12',
           foreground: '#F5F5F7',
         },
         muted: {
-          DEFAULT: '#98989D',
-          foreground: '#98989D',
+          DEFAULT: '#6B7280',
+          foreground: '#6B7280',
         },
         accent: {
-          DEFAULT: '#007AFF',
+          DEFAULT: '#0099FF',
           foreground: '#FFFFFF',
         },
       },

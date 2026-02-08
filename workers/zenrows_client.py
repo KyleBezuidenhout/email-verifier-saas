@@ -206,6 +206,113 @@ def extract_domain(url: str) -> str:
         return url.lower().strip()
 
 
+def extract_base_url(url: str) -> str:
+    """Extract base URL (scheme + netloc) from a URL."""
+    try:
+        if '://' not in url:
+            url = f'https://{url}'
+        parsed = urlparse(url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+    except Exception:
+        return url
+
+
+# ============================================
+# SUBLINK EXTRACTION FOR CONTACT PAGES
+# ============================================
+
+# Keywords that indicate a link might lead to a contact page
+CONTACT_PATH_KEYWORDS = [
+    'contact', 'about', 'team', 'reach', 'touch', 
+    'support', 'help', 'info', 'inquir', 'connect',
+    'get-in', 'getintouch', 'email', 'mail'
+]
+
+
+def extract_contact_links(html: str, base_url: str, max_links: int = 3) -> List[str]:
+    """
+    Extract internal links from HTML that look like contact pages.
+    
+    Uses the href links already extracted from HTML and filters for
+    paths containing contact-related keywords.
+    
+    Args:
+        html: Raw HTML content
+        base_url: Base URL of the page (e.g., https://example.com)
+        max_links: Maximum number of contact links to return
+    
+    Returns:
+        List of full URLs to potential contact pages
+    """
+    if not html or not base_url:
+        return []
+    
+    # Extract all href links
+    link_pattern = re.compile(r'href=["\']([^"\']+)["\']', re.IGNORECASE)
+    links = link_pattern.findall(html)
+    
+    # Parse the base URL
+    try:
+        parsed_base = urlparse(base_url)
+        base_domain = parsed_base.netloc.lower()
+        if base_domain.startswith('www.'):
+            base_domain = base_domain[4:]
+    except Exception:
+        return []
+    
+    contact_links = []
+    seen_paths = set()
+    
+    for link in links:
+        link_lower = link.lower().strip()
+        
+        # Skip empty, javascript, or anchor-only links
+        if not link_lower or link_lower.startswith(('#', 'javascript:', 'mailto:', 'tel:')):
+            continue
+        
+        # Check if link path contains any contact keyword
+        has_contact_keyword = any(keyword in link_lower for keyword in CONTACT_PATH_KEYWORDS)
+        if not has_contact_keyword:
+            continue
+        
+        # Build full URL
+        try:
+            if link.startswith('//'):
+                full_url = f"https:{link}"
+            elif link.startswith('/'):
+                full_url = f"{base_url.rstrip('/')}{link}"
+            elif link.startswith('http'):
+                full_url = link
+            else:
+                full_url = f"{base_url.rstrip('/')}/{link}"
+            
+            # Parse and validate it's the same domain (internal link)
+            parsed_link = urlparse(full_url)
+            link_domain = parsed_link.netloc.lower()
+            if link_domain.startswith('www.'):
+                link_domain = link_domain[4:]
+            
+            # Only keep internal links (same domain)
+            if link_domain != base_domain:
+                continue
+            
+            # Normalize path for deduplication
+            path = parsed_link.path.lower().rstrip('/')
+            if path in seen_paths:
+                continue
+            seen_paths.add(path)
+            
+            contact_links.append(full_url)
+            
+            if len(contact_links) >= max_links:
+                break
+                
+        except Exception:
+            continue
+    
+    return contact_links
+
+
 # ============================================
 # ZENROWS CLIENT (Simplified with mode=auto)
 # ============================================
@@ -218,19 +325,66 @@ class ScrapeResult:
     contacts: ExtractedContacts
     classification: str
     error: Optional[str] = None
+    html: Optional[str] = None  # Raw HTML (only populated when needed for sublink extraction)
+    sublinks_scraped: int = 0  # Number of sublinks scraped for this URL
+
+
+class RateLimiter:
+    """
+    Token bucket rate limiter for controlling requests per second.
+    """
+    
+    def __init__(self, rate: float = 30.0):
+        """
+        Initialize rate limiter.
+        
+        Args:
+            rate: Maximum requests per second (default 30)
+        """
+        self.rate = rate
+        self.tokens = rate
+        self.last_update = asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else 0
+        self._lock = asyncio.Lock()
+    
+    async def acquire(self):
+        """Wait until a token is available, then consume it."""
+        async with self._lock:
+            now = asyncio.get_event_loop().time()
+            
+            # Refill tokens based on time elapsed
+            time_passed = now - self.last_update
+            self.tokens = min(self.rate, self.tokens + time_passed * self.rate)
+            self.last_update = now
+            
+            if self.tokens < 1:
+                # Wait for token to become available
+                wait_time = (1 - self.tokens) / self.rate
+                await asyncio.sleep(wait_time)
+                self.tokens = 0
+            else:
+                self.tokens -= 1
 
 
 class ZenRowsClient:
     """
     ZenRows API client using Adaptive Stealth Mode (mode=auto).
     
-    No tier escalation - ZenRows automatically handles anti-bot detection.
+    Features:
+    - Concurrency limit via semaphore (default 40)
+    - Rate limit of 30 requests per second
+    - Retry logic for 429 errors with exponential backoff
     """
+    
+    # Retry configuration
+    MAX_RETRIES = 3
+    INITIAL_BACKOFF = 1.0  # seconds
+    MAX_BACKOFF = 10.0  # seconds
     
     def __init__(
         self,
         api_key: str,
         concurrency_limit: int = MAX_CONCURRENT_REQUESTS,
+        rate_limit: float = 30.0,
     ):
         """
         Initialize ZenRows client.
@@ -238,9 +392,11 @@ class ZenRowsClient:
         Args:
             api_key: ZenRows API key
             concurrency_limit: Max concurrent requests (default 40)
+            rate_limit: Max requests per second (default 30)
         """
         self.api_key = api_key
         self.semaphore = asyncio.Semaphore(concurrency_limit)
+        self.rate_limiter = RateLimiter(rate=rate_limit)
         self.http_client: Optional[httpx.AsyncClient] = None
     
     async def __aenter__(self):
@@ -256,103 +412,199 @@ class ZenRowsClient:
         if self.http_client:
             await self.http_client.aclose()
     
-    async def scrape_url(self, url: str) -> ScrapeResult:
+    async def _make_request(self, url: str) -> httpx.Response:
+        """
+        Make a single HTTP request to ZenRows API.
+        Waits for rate limiter before sending.
+        """
+        # Wait for rate limiter
+        await self.rate_limiter.acquire()
+        
+        params = {
+            "apikey": self.api_key,
+            "url": url,
+            "mode": "auto",
+        }
+        
+        return await self.http_client.get(ZENROWS_API_URL, params=params)
+    
+    async def scrape_url(self, url: str, return_html: bool = False) -> ScrapeResult:
         """
         Scrape a URL using ZenRows Adaptive Stealth Mode (mode=auto).
         
-        Single API call - ZenRows automatically selects the best scraping approach.
+        Features:
+        - Rate limited to 30 req/sec
+        - Retries 429 errors with exponential backoff (up to 3 retries)
+        - Respects concurrency limit via semaphore
         
         Args:
             url: URL to scrape
+            return_html: If True, include raw HTML in result (for sublink extraction)
         
         Returns:
             ScrapeResult with contacts and metadata
         """
         async with self.semaphore:
-            try:
-                # Build request URL with mode=auto (Adaptive Stealth Mode)
-                # Using the exact curl format provided:
-                # curl "https://api.zenrows.com/v1/?apikey=XXX&url=YYY&mode=auto"
-                params = {
-                    "apikey": self.api_key,
-                    "url": url,
-                    "mode": "auto",  # Adaptive Stealth Mode
-                }
-                
-                logger.debug(f"Scraping {url} with mode=auto")
-                
-                response = await self.http_client.get(ZENROWS_API_URL, params=params)
-                
-                if response.status_code == 200:
-                    html = response.text
+            retries = 0
+            backoff = self.INITIAL_BACKOFF
+            
+            while True:
+                try:
+                    logger.debug(f"Scraping {url} with mode=auto (attempt {retries + 1})")
                     
-                    # Check if we got meaningful content
-                    if not html or len(html.strip()) < 100:
+                    response = await self._make_request(url)
+                    
+                    if response.status_code == 200:
+                        html = response.text
+                        
+                        # Check if we got meaningful content
+                        if not html or len(html.strip()) < 100:
+                            return ScrapeResult(
+                                success=False,
+                                url=url,
+                                contacts=ExtractedContacts(),
+                                classification="NO_CONTENT",
+                                error="Empty or minimal response",
+                            )
+                        
+                        # Extract contacts from HTML
+                        contacts = extract_contacts_from_html(html)
+                        
+                        return ScrapeResult(
+                            success=True,
+                            url=url,
+                            contacts=contacts,
+                            classification="SUCCESS",
+                            html=html if return_html else None,
+                        )
+                    
+                    elif response.status_code == 422:
+                        # Unprocessable - URL is invalid/unreachable, no retry
                         return ScrapeResult(
                             success=False,
                             url=url,
                             contacts=ExtractedContacts(),
-                            classification="NO_CONTENT",
-                            error="Empty or minimal response",
+                            classification="UNPROCESSABLE",
+                            error="ZenRows could not process URL (422)",
                         )
                     
-                    # Extract contacts from HTML using our Python extraction
-                    contacts = extract_contacts_from_html(html)
+                    elif response.status_code == 429:
+                        # Rate limited - retry with backoff
+                        retries += 1
+                        if retries > self.MAX_RETRIES:
+                            logger.warning(f"Max retries ({self.MAX_RETRIES}) exceeded for {url}")
+                            return ScrapeResult(
+                                success=False,
+                                url=url,
+                                contacts=ExtractedContacts(),
+                                classification="RATE_LIMITED",
+                                error=f"Rate limited after {self.MAX_RETRIES} retries",
+                            )
+                        
+                        logger.debug(f"Rate limited on {url}, retry {retries}/{self.MAX_RETRIES} after {backoff:.1f}s")
+                        await asyncio.sleep(backoff)
+                        backoff = min(backoff * 2, self.MAX_BACKOFF)
+                        continue  # Retry
                     
-                    return ScrapeResult(
-                        success=True,
-                        url=url,
-                        contacts=contacts,
-                        classification="SUCCESS",
-                    )
-                
-                elif response.status_code == 422:
-                    # Unprocessable - URL might be invalid or unreachable
-                    return ScrapeResult(
-                        success=False,
-                        url=url,
-                        contacts=ExtractedContacts(),
-                        classification="UNPROCESSABLE",
-                        error=f"ZenRows could not process URL (422)",
-                    )
-                
-                elif response.status_code == 429:
-                    # Rate limited
-                    return ScrapeResult(
-                        success=False,
-                        url=url,
-                        contacts=ExtractedContacts(),
-                        classification="RATE_LIMITED",
-                        error="Rate limited by ZenRows",
-                    )
-                
-                else:
+                    else:
+                        # Other HTTP errors - no retry
+                        return ScrapeResult(
+                            success=False,
+                            url=url,
+                            contacts=ExtractedContacts(),
+                            classification="ERROR",
+                            error=f"HTTP {response.status_code}",
+                        )
+                        
+                except httpx.TimeoutException:
+                    # Timeout - retry with backoff
+                    retries += 1
+                    if retries > self.MAX_RETRIES:
+                        logger.warning(f"Timeout after {self.MAX_RETRIES} retries for {url}")
+                        return ScrapeResult(
+                            success=False,
+                            url=url,
+                            contacts=ExtractedContacts(),
+                            classification="TIMEOUT",
+                            error=f"Timeout after {self.MAX_RETRIES} retries",
+                        )
+                    
+                    logger.debug(f"Timeout on {url}, retry {retries}/{self.MAX_RETRIES} after {backoff:.1f}s")
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, self.MAX_BACKOFF)
+                    continue  # Retry
+                    
+                except Exception as e:
+                    logger.error(f"Error scraping {url}: {e}")
                     return ScrapeResult(
                         success=False,
                         url=url,
                         contacts=ExtractedContacts(),
                         classification="ERROR",
-                        error=f"HTTP {response.status_code}",
+                        error=str(e),
                     )
+    
+    async def scrape_url_with_fallback(
+        self, 
+        url: str, 
+        enable_sublink: bool = True,
+        max_sublinks: int = 3
+    ) -> Tuple[ScrapeResult, int]:
+        """
+        Scrape a URL with optional sublink fallback for contact pages.
+        
+        If main page is successfully scraped but has no emails, this method
+        extracts contact-related links from the HTML and scrapes them.
+        
+        Args:
+            url: URL to scrape
+            enable_sublink: Whether to try sublinks if no email found
+            max_sublinks: Maximum number of sublinks to try
+        
+        Returns:
+            Tuple of (ScrapeResult, api_calls_made)
+        """
+        api_calls = 1
+        
+        # Scrape main page (with HTML if sublink scraping is enabled)
+        result = await self.scrape_url(url, return_html=enable_sublink)
+        
+        # If successful but no emails found, and sublink scraping is enabled
+        if (result.success and 
+            not result.contacts.emails and 
+            enable_sublink and 
+            result.html):
+            
+            # Extract contact page links from the HTML
+            base_url = extract_base_url(url)
+            contact_links = extract_contact_links(result.html, base_url, max_links=max_sublinks)
+            
+            if contact_links:
+                logger.debug(f"No email on {url}, trying {len(contact_links)} sublinks: {contact_links}")
+                
+                # Try each contact link until we find an email
+                for sublink in contact_links:
+                    api_calls += 1
+                    sublink_result = await self.scrape_url(sublink, return_html=False)
                     
-            except httpx.TimeoutException:
-                logger.warning(f"Timeout scraping {url}")
-                return ScrapeResult(
-                    success=False,
-                    url=url,
-                    contacts=ExtractedContacts(),
-                    classification="TIMEOUT",
-                    error="Request timeout",
-                )
-            except Exception as e:
-                logger.error(f"Error scraping {url}: {e}")
-                return ScrapeResult(
-                    success=False,
-                    url=url,
-                    contacts=ExtractedContacts(),
-                    classification="ERROR",
-                    error=str(e),
-                )
+                    if sublink_result.success and sublink_result.contacts.emails:
+                        # Found emails! Merge contacts back to main result
+                        result.contacts.emails = sublink_result.contacts.emails
+                        # Only update phones if we didn't have any
+                        if not result.contacts.phones and sublink_result.contacts.phones:
+                            result.contacts.phones = sublink_result.contacts.phones
+                        result.classification = "SUBLINK_SUCCESS"
+                        result.sublinks_scraped = api_calls - 1
+                        logger.debug(f"Found email via sublink {sublink} for {url}")
+                        break
+                else:
+                    # No emails found in any sublink
+                    result.sublinks_scraped = api_calls - 1
+        
+        # Clear HTML from result to save memory
+        result.html = None
+        
+        return result, api_calls
 
 
 # ============================================
