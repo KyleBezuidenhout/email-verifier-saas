@@ -103,7 +103,7 @@ export function DropZone({ onFileSelect, selectedFile }: DropZoneProps) {
             </p>
             <div className="space-y-1">
               <p className="text-sm text-dashboard-text-muted">
-                Maximum file size: 50 MB (10K records MAX)
+                Maximum file size: 200 MB (10K records MAX)
               </p>
               <p className="text-sm text-dashboard-text-muted">
                 Supported format:{" "}

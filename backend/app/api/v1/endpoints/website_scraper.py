@@ -53,8 +53,8 @@ s3_client = boto3.client(
     region_name='auto'
 )
 
-# Max file size: 250MB
-MAX_FILE_SIZE_BYTES = 250 * 1024 * 1024
+# Max file size: 200MB
+MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024
 # Max rows: 50K
 MAX_ROWS = 50000
 
@@ -167,7 +167,7 @@ async def upload_csv(
     - enable_cache: Use cached results for previously scraped URLs (default: True)
     - enable_sublink_scraping: Scrape contact pages if no email on main page (default: True)
     
-    Max file size: 250MB
+    Max file size: 200MB
     Max rows: 50,000
     """
     # Validate file type
@@ -184,7 +184,7 @@ async def upload_csv(
     if len(contents) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File too large. Maximum size is 250MB."
+            detail=f"File too large. Maximum size is 200MB."
         )
     
     # Parse CSV (handle UTF-8 BOM)

@@ -50,8 +50,9 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""  # Optional for now, needed for production webhooks
     FRONTEND_URL: str = "http://localhost:3000"  # For redirect URLs
     
-    # Google Maps Scraper API (AWS instance)
-    BOTASAURUS_API_URL: str = "http://16.16.4.71:8000"  # AWS-hosted Google Maps Scraper API
+    # Apify API (Google Maps Scraper)
+    APIFY_API_TOKEN: str = ""  # Apify API token for compass/crawler-google-places
+    APIFY_WEBHOOK_SECRET: str = ""  # Secret for verifying Apify webhook callbacks
     
     # ZenRows API (Website contact scraping)
     ZENROWS_API_KEY: str = ""  # ZenRows API key

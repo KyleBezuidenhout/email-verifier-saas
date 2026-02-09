@@ -168,7 +168,7 @@ export function Speedometer({ value, max = 170, label, isActive = false }: Speed
           </g>
           
           {/* Center pivot */}
-          <circle cx="60" cy="60" r="5" fill="#1C1C1E" stroke={primaryColor} strokeWidth="2" />
+          <circle cx="60" cy="60" r="5" fill="#000000" stroke={primaryColor} strokeWidth="2" />
           <circle cx="60" cy="60" r="2" fill={primaryColor} />
         </svg>
       </div>
@@ -178,20 +178,20 @@ export function Speedometer({ value, max = 170, label, isActive = false }: Speed
         <span className={`text-xl font-bold ${isActive ? 'text-[#FF3B30]' : 'text-[#007AFF]'}`}>
           {needleValue}
         </span>
-        <span className="text-xs text-apple-text-muted ml-1">req/30s</span>
+        <span className="text-xs text-dashboard-text-muted ml-1">req/30s</span>
       </div>
       
       {/* Status indicator */}
       <div className="flex items-center gap-1.5 mt-1">
-        <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-[#FF3B30] animate-pulse' : 'bg-apple-text-muted'}`} />
-        <span className={`text-xs ${isActive ? 'text-[#FF3B30]' : 'text-apple-text-muted'}`}>
+        <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-[#FF3B30] animate-pulse' : 'bg-dashboard-text-muted'}`} />
+        <span className={`text-xs ${isActive ? 'text-[#FF3B30]' : 'text-dashboard-text-muted'}`}>
           {isActive ? 'Active' : 'Idle'}
         </span>
       </div>
       
       {/* Optional label */}
       {label && (
-        <p className="text-xs text-apple-text-muted mt-1">{label}</p>
+        <p className="text-xs text-dashboard-text-muted mt-1">{label}</p>
       )}
     </div>
   );

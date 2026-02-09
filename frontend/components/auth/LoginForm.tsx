@@ -33,13 +33,13 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-apple-error/20 border border-apple-error/30 text-apple-error px-4 py-3 rounded-lg text-sm">
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
           {error}
         </div>
       )}
 
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-apple-text mb-2">
+        <label htmlFor="email" className="block text-sm font-medium text-white mb-2">
           Email address
         </label>
         <input
@@ -48,13 +48,13 @@ export function LoginForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-4 py-2 bg-apple-surface border border-apple-border text-apple-text placeholder-apple-text-muted rounded-lg focus:ring-2 focus:ring-apple-accent focus:border-apple-accent focus:outline-none"
+          className="glass-input w-full"
           placeholder="you@example.com"
         />
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-apple-text mb-2">
+        <label htmlFor="password" className="block text-sm font-medium text-white mb-2">
           Password
         </label>
         <input
@@ -63,7 +63,7 @@ export function LoginForm() {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full px-4 py-2 bg-apple-surface border border-apple-border text-apple-text placeholder-apple-text-muted rounded-lg focus:ring-2 focus:ring-apple-accent focus:border-apple-accent focus:outline-none"
+          className="glass-input w-full"
           placeholder="••••••••"
         />
       </div>
@@ -75,16 +75,16 @@ export function LoginForm() {
             type="checkbox"
             checked={rememberMe}
             onChange={(e) => setRememberMe(e.target.checked)}
-            className="h-4 w-4 text-apple-accent focus:ring-apple-accent border-apple-border rounded bg-apple-surface"
+            className="h-4 w-4 text-[#0099FF] focus:ring-[#0099FF] border-white/10 rounded bg-white/5"
           />
-          <label htmlFor="remember-me" className="ml-2 block text-sm text-apple-text-muted">
+          <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-400">
             Remember me
           </label>
         </div>
 
         <Link
           href="/forgot-password"
-          className="text-sm text-apple-accent hover:text-apple-accent/80"
+          className="text-sm text-[#0099FF] hover:text-[#0099FF]/80"
         >
           Forgot password?
         </Link>
@@ -93,18 +93,18 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-apple-accent text-white py-2 px-4 rounded-lg hover:bg-apple-accent/90 focus:outline-none focus:ring-2 focus:ring-apple-accent focus:ring-offset-2 focus:ring-offset-apple-bg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+        className="w-full bg-[#0099FF] text-white py-2 px-4 rounded-lg hover:bg-[#0099FF]/90 focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-all"
+        style={{ boxShadow: '0 0 20px rgba(0, 153, 255, 0.2)' }}
       >
         {loading ? <LoadingSpinner size="sm" /> : "Sign in"}
       </button>
 
-      <p className="text-center text-sm text-apple-text-muted">
+      <p className="text-center text-sm text-gray-400">
         Don&apos;t have an account?{" "}
-        <Link href="/register" className="text-apple-accent hover:text-apple-accent/80 font-medium">
+        <Link href="/register" className="text-[#0099FF] hover:text-[#0099FF]/80 font-medium">
           Sign up
         </Link>
       </p>
     </form>
   );
 }
-

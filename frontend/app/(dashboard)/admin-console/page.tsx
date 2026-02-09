@@ -275,7 +275,7 @@ export default function AdminConsolePage() {
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-apple-accent"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-dashboard-accent"></div>
       </div>
     );
   }
@@ -284,8 +284,8 @@ export default function AdminConsolePage() {
   if (!user?.is_admin) {
     return (
       <div className="text-center py-12">
-        <h1 className="text-2xl font-bold text-apple-text mb-4">Access Denied</h1>
-        <p className="text-apple-text-muted">You do not have permission to access this page.</p>
+        <h1 className="text-2xl font-bold text-dashboard-text mb-4">Access Denied</h1>
+        <p className="text-dashboard-text-muted">You do not have permission to access this page.</p>
       </div>
     );
   }

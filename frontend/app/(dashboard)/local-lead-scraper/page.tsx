@@ -1,52 +1,429 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { apiClient } from "@/lib/api";
-import { LocalScraperOrder, LocalScraperConfig, LocalScraperHealthStatus } from "@/types";
+import { GoogleMapsScraperOrder, GoogleMapsScraperHealthStatus, GoogleMapsScraperPreviewResponse } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
-// Default configuration for Google Maps scraper
-const DEFAULT_CONFIG: LocalScraperConfig = {
-  business_types: [],
-  search_method: "city",
-  cities: [],
-  search_links: [],
-  extraction_method: "detailed",
-  max_results: null,
-  enable_reviews_extraction: false,
-  max_reviews: 20,
-  enable_photos_extraction: false,
-  max_photos: 100,
-  lang: null,
-  randomize_cities: true,
-  include_places_outside_city: true,
-  geo_shape: "polygons",
-  point_coordinates: "",
-  polygons: null,
-  geo_zoom_level: "16",
-  exclude_outside_shape: true,
-  reviews_sort: "newest",
-  reviews_query: "",
-  api_key: "",
-};
+type ScrapeMode = "single_city" | "full_state";
 
-export default function LocalLeadScraperPage() {
+// Searchable Select Component with Portal for proper z-index
+function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  loading,
+}: {
+  options: string[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0, openUpward: false });
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredOptions = useMemo(() => {
+    if (!search) return options;
+    return options.filter(opt => 
+      opt.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [options, search]);
+
+  // Calculate dropdown position
+  const updateDropdownPosition = useCallback(() => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const dropdownHeight = 250; // Approximate height of dropdown
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const openUpward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+      
+      setDropdownPosition({
+        top: openUpward ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        openUpward,
+      });
+    }
+  }, []);
+
+  // Update dropdown position when opened and on scroll/resize
+  useEffect(() => {
+    if (isOpen) {
+      updateDropdownPosition();
+      
+      // Focus search input when dropdown opens
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 10);
+      
+      const handleScrollOrResize = () => updateDropdownPosition();
+      window.addEventListener("scroll", handleScrollOrResize, true);
+      window.addEventListener("resize", handleScrollOrResize);
+      
+      return () => {
+        window.removeEventListener("scroll", handleScrollOrResize, true);
+        window.removeEventListener("resize", handleScrollOrResize);
+      };
+    }
+  }, [isOpen, updateDropdownPosition]);
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        triggerRef.current && !triggerRef.current.contains(target) &&
+        dropdownRef.current && !dropdownRef.current.contains(target)
+      ) {
+        setIsOpen(false);
+        setSearch("");
+      }
+    };
+    
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      setSearch("");
+    } else if (e.key === "Enter" && filteredOptions.length === 1) {
+      onChange(filteredOptions[0]);
+      setIsOpen(false);
+      setSearch("");
+    }
+  };
+
+  const dropdownContent = isOpen && !disabled && typeof document !== 'undefined' ? createPortal(
+    <div 
+      ref={dropdownRef}
+      className="fixed bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden animate-in"
+      style={{ 
+        zIndex: 99999,
+        top: dropdownPosition.top,
+        left: dropdownPosition.left,
+        width: dropdownPosition.width,
+        maxHeight: 250,
+      }}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="sticky top-0 p-2 border-b border-dashboard-border bg-dashboard-surface">
+        <input
+          ref={searchInputRef}
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Type to search..."
+          className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={handleKeyDown}
+        />
+      </div>
+      <div className="overflow-y-auto" style={{ maxHeight: 200 }}>
+        {filteredOptions.length === 0 ? (
+          <div className="px-4 py-3 text-sm text-dashboard-text-muted text-center">
+            {search ? `No results for "${search}"` : "No options available"}
+          </div>
+        ) : (
+          filteredOptions.map((option) => (
+            <div
+              key={option}
+              className={`px-4 py-2.5 cursor-pointer text-sm transition-colors ${
+                option === value 
+                  ? 'bg-dashboard-accent/20 text-dashboard-accent font-medium' 
+                  : 'text-dashboard-text hover:bg-dashboard-card'
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(option);
+                setIsOpen(false);
+                setSearch("");
+              }}
+            >
+              {option}
+            </div>
+          ))
+        )}
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
+  return (
+    <div className="relative">
+      <div
+        ref={triggerRef}
+        className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${isOpen ? 'ring-2 ring-dashboard-accent border-dashboard-accent' : ''}`}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+      >
+        <span className={value ? "text-dashboard-text" : "text-dashboard-text-muted"}>
+          {value || placeholder}
+        </span>
+        {loading ? (
+          <LoadingSpinner size="sm" />
+        ) : (
+          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
+      </div>
+      {dropdownContent}
+    </div>
+  );
+}
+
+// Multi-Select Searchable Component with Portal (for admin multi-state selection)
+function MultiSelectSearchable({
+  options,
+  values,
+  onChange,
+  placeholder,
+  disabled,
+  loading,
+}: {
+  options: string[];
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder: string;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0, openUpward: false });
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredOptions = useMemo(() => {
+    if (!search) return options;
+    return options.filter(opt => 
+      opt.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [options, search]);
+
+  // Calculate dropdown position
+  const updateDropdownPosition = useCallback(() => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const dropdownHeight = 300; // Approximate height of dropdown
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const openUpward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+      
+      setDropdownPosition({
+        top: openUpward ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        openUpward,
+      });
+    }
+  }, []);
+
+  // Update dropdown position when opened and on scroll/resize
+  useEffect(() => {
+    if (isOpen) {
+      updateDropdownPosition();
+      
+      // Focus search input when dropdown opens
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 10);
+      
+      const handleScrollOrResize = () => updateDropdownPosition();
+      window.addEventListener("scroll", handleScrollOrResize, true);
+      window.addEventListener("resize", handleScrollOrResize);
+      
+      return () => {
+        window.removeEventListener("scroll", handleScrollOrResize, true);
+        window.removeEventListener("resize", handleScrollOrResize);
+      };
+    }
+  }, [isOpen, updateDropdownPosition]);
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        triggerRef.current && !triggerRef.current.contains(target) &&
+        dropdownRef.current && !dropdownRef.current.contains(target)
+      ) {
+        setIsOpen(false);
+        setSearch("");
+      }
+    };
+    
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      setSearch("");
+    }
+  };
+
+  const toggleOption = (option: string) => {
+    if (values.includes(option)) {
+      onChange(values.filter(v => v !== option));
+    } else {
+      onChange([...values, option]);
+    }
+  };
+
+  const dropdownContent = isOpen && !disabled && typeof document !== 'undefined' ? createPortal(
+    <div 
+      ref={dropdownRef}
+      className="fixed bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden animate-in"
+      style={{ 
+        zIndex: 99999,
+        top: dropdownPosition.top,
+        left: dropdownPosition.left,
+        width: dropdownPosition.width,
+        maxHeight: 300,
+      }}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="sticky top-0 p-2 border-b border-dashboard-border bg-dashboard-surface">
+        <input
+          ref={searchInputRef}
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Type to search states..."
+          className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={handleKeyDown}
+        />
+      </div>
+      <div className="overflow-y-auto" style={{ maxHeight: 250 }}>
+        {filteredOptions.length === 0 ? (
+          <div className="px-4 py-3 text-sm text-dashboard-text-muted text-center">
+            {search ? `No results for "${search}"` : "No options available"}
+          </div>
+        ) : (
+          filteredOptions.map((option) => (
+            <div
+              key={option}
+              className={`px-4 py-2.5 cursor-pointer text-sm transition-colors flex items-center gap-3 ${
+                values.includes(option)
+                  ? 'bg-dashboard-accent/20 text-dashboard-accent' 
+                  : 'text-dashboard-text hover:bg-dashboard-card'
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleOption(option);
+              }}
+            >
+              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                values.includes(option) 
+                  ? 'bg-dashboard-accent border-dashboard-accent' 
+                  : 'border-dashboard-border'
+              }`}>
+                {values.includes(option) && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              {option}
+            </div>
+          ))
+        )}
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
+  return (
+    <div className="relative">
+      <div
+        ref={triggerRef}
+        className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between min-h-[48px] ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${isOpen ? 'ring-2 ring-dashboard-accent border-dashboard-accent' : ''}`}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+      >
+        <div className="flex-1 flex flex-wrap gap-1">
+          {values.length === 0 ? (
+            <span className="text-dashboard-text-muted">{placeholder}</span>
+          ) : (
+            values.map(v => (
+              <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 bg-dashboard-accent/20 text-dashboard-accent rounded text-xs font-medium">
+                {v}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChange(values.filter(val => val !== v));
+                  }}
+                  className="hover:text-red-400 transition-colors"
+                >
+                  ×
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+        {loading ? (
+          <LoadingSpinner size="sm" />
+        ) : (
+          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform duration-200 flex-shrink-0 ml-2 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
+      </div>
+      {dropdownContent}
+    </div>
+  );
+}
+
+export default function GoogleMapsScraperPage() {
   // Health check state
-  const [healthStatus, setHealthStatus] = useState<LocalScraperHealthStatus | null>(null);
+  const [healthStatus, setHealthStatus] = useState<GoogleMapsScraperHealthStatus | null>(null);
+  
+  // Mode state
+  const [scrapeMode, setScrapeMode] = useState<ScrapeMode>("single_city");
   
   // Form state
   const [jobName, setJobName] = useState("");
-  const [config, setConfig] = useState<LocalScraperConfig>(DEFAULT_CONFIG);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedState, setSelectedState] = useState("");  // For single city mode
+  const [selectedStates, setSelectedStates] = useState<string[]>([]);  // For full state mode (admin)
+  const [selectedCity, setSelectedCity] = useState("");
+  const [useCache, setUseCache] = useState(false);  // Enable caching toggle
+  const [showCacheTooltip, setShowCacheTooltip] = useState(false);  // Tooltip visibility
   
-  // Input fields for adding items
-  const [businessTypeInput, setBusinessTypeInput] = useState("");
-  const [cityInput, setCityInput] = useState("");
-  const [searchLinkInput, setSearchLinkInput] = useState("");
+  // Dropdown data
+  const [states, setStates] = useState<string[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
+  
+  // Cost estimate
+  const [costEstimate, setCostEstimate] = useState<{ num_cities: number; estimated_cost: number } | null>(null);
+  const [loadingEstimate, setLoadingEstimate] = useState(false);
   
   // Order state
   const [creatingOrder, setCreatingOrder] = useState(false);
-  const [orders, setOrders] = useState<LocalScraperOrder[]>([]);
+  const [orders, setOrders] = useState<GoogleMapsScraperOrder[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   
   // UI state
@@ -56,15 +433,62 @@ export default function LocalLeadScraperPage() {
   const [downloadingOrderId, setDownloadingOrderId] = useState<string | null>(null);
   const [deleteConfirmOrderId, setDeleteConfirmOrderId] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  
+  // Preview modal state
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState<GoogleMapsScraperPreviewResponse | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
 
-  // Check Botasaurus API health
+  // Advanced Apify settings state
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [maxResultsPerCity, setMaxResultsPerCity] = useState<string>("");
+  const [skipClosedPlaces, setSkipClosedPlaces] = useState(true);
+  const [websiteFilter, setWebsiteFilter] = useState<"allPlaces" | "withWebsite" | "withoutWebsite">("withWebsite");
+  const [scrapeReviews, setScrapeReviews] = useState(false);
+  const [maxReviews, setMaxReviews] = useState(0);
+  const [scrapeImages, setScrapeImages] = useState(false);
+  const [maxImages, setMaxImages] = useState(0);
+  const [language, setLanguage] = useState("en");
+
+  // Check Apify API health
   const checkHealth = useCallback(async () => {
     try {
-      const status = await apiClient.getLocalScraperHealth();
+      const status = await apiClient.getGoogleMapsScraperHealth();
       setHealthStatus(status);
     } catch (err) {
-      setHealthStatus({ botasaurus_api: "disconnected", message: "Could not check API status" });
+      setHealthStatus({ apify_api: "disconnected", message: "Could not check API status" });
+    }
+  }, []);
+
+  // Load states
+  const loadStates = useCallback(async () => {
+    setLoadingStates(true);
+    try {
+      const response = await apiClient.getGoogleMapsScraperStates();
+      setStates(response.states);
+    } catch (err) {
+      console.error("Failed to load states:", err);
+    } finally {
+      setLoadingStates(false);
+    }
+  }, []);
+
+  // Load cities for selected state
+  const loadCities = useCallback(async (state: string) => {
+    if (!state) {
+      setCities([]);
+      return;
+    }
+    setLoadingCities(true);
+    try {
+      const response = await apiClient.getGoogleMapsScraperCities(state);
+      setCities(response.cities);
+    } catch (err) {
+      console.error("Failed to load cities:", err);
+      setCities([]);
+    } finally {
+      setLoadingCities(false);
     }
   }, []);
 
@@ -72,10 +496,9 @@ export default function LocalLeadScraperPage() {
   const loadOrders = useCallback(async () => {
     setLoadingOrders(true);
     try {
-      const response = await apiClient.getLocalScraperOrders(100, 0);
-      // Filter out deleted orders and sort by date
+      const response = await apiClient.getGoogleMapsScraperOrders(100, 0);
       const visibleOrders = response.orders
-        .filter((order) => order.status !== "deleted")
+        .filter((order) => order.status !== "cancelled")
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setOrders(visibleOrders);
     } catch (err) {
@@ -85,12 +508,37 @@ export default function LocalLeadScraperPage() {
     }
   }, []);
 
+  // Estimate cost
+  const estimateCost = useCallback(async () => {
+    const statesToEstimate = scrapeMode === "single_city" ? [selectedState] : selectedStates;
+    
+    if (statesToEstimate.length === 0 || (scrapeMode === "single_city" && !selectedState)) {
+      setCostEstimate(null);
+      return;
+    }
+    
+    setLoadingEstimate(true);
+    try {
+      const estimate = await apiClient.estimateGoogleMapsScraperCost(
+        scrapeMode,
+        statesToEstimate,
+        scrapeMode === "single_city" ? selectedCity : undefined
+      );
+      setCostEstimate(estimate);
+    } catch (err) {
+      console.error("Failed to estimate cost:", err);
+      setCostEstimate(null);
+    } finally {
+      setLoadingEstimate(false);
+    }
+  }, [scrapeMode, selectedState, selectedStates, selectedCity]);
+
   // Initial data load
   useEffect(() => {
     const loadInitialData = async () => {
       try {
         setInitialLoading(true);
-        await Promise.all([checkHealth(), loadOrders()]);
+        await Promise.all([checkHealth(), loadStates(), loadOrders()]);
       } catch (err) {
         console.error("Error loading initial data:", err);
       } finally {
@@ -98,11 +546,46 @@ export default function LocalLeadScraperPage() {
       }
     };
     loadInitialData();
-  }, [checkHealth, loadOrders]);
+  }, [checkHealth, loadStates, loadOrders]);
+
+  // Load cities when state changes (single city mode)
+  useEffect(() => {
+    if (scrapeMode === "single_city" && selectedState) {
+      loadCities(selectedState);
+    } else {
+      setCities([]);
+      setSelectedCity("");
+    }
+  }, [selectedState, scrapeMode, loadCities]);
+
+  // Estimate cost when relevant values change
+  useEffect(() => {
+    if (scrapeMode === "single_city") {
+      if (selectedState && selectedCity) {
+        estimateCost();
+      } else {
+        setCostEstimate(null);
+      }
+    } else {
+      if (selectedStates.length > 0) {
+        estimateCost();
+      } else {
+        setCostEstimate(null);
+      }
+    }
+  }, [scrapeMode, selectedState, selectedStates, selectedCity, estimateCost]);
+
+  // Reset form when mode changes
+  useEffect(() => {
+    setSelectedState("");
+    setSelectedStates([]);
+    setSelectedCity("");
+    setCostEstimate(null);
+  }, [scrapeMode]);
 
   // Poll for order status updates
   useEffect(() => {
-    const POLL_INTERVAL = 30000; // 30 seconds
+    const POLL_INTERVAL = 30000;
 
     const pollOrderStatuses = async () => {
       const activeOrders = orders.filter(
@@ -113,7 +596,7 @@ export default function LocalLeadScraperPage() {
 
       const updates = await Promise.allSettled(
         activeOrders.map(async (order) => {
-          const result = await apiClient.pollLocalScraperOrderStatus(order.id);
+          const result = await apiClient.pollGoogleMapsScraperOrderStatus(order.id);
           return { orderId: order.id, result };
         })
       );
@@ -127,7 +610,8 @@ export default function LocalLeadScraperPage() {
             const { result } = update.value;
             return {
               ...order,
-              status: result.status as LocalScraperOrder["status"],
+              status: result.status as GoogleMapsScraperOrder["status"],
+              completed_cities: result.completed_cities,
               progress_percentage: result.progress_percentage,
               results_count: result.results_count,
               error_message: result.error_message || null,
@@ -139,7 +623,6 @@ export default function LocalLeadScraperPage() {
     };
 
     const intervalId = setInterval(pollOrderStatuses, POLL_INTERVAL);
-    // Initial poll after 5 seconds
     const timeoutId = setTimeout(pollOrderStatuses, 5000);
 
     return () => {
@@ -148,87 +631,76 @@ export default function LocalLeadScraperPage() {
     };
   }, [orders]);
 
-  // Add business type
-  const handleAddBusinessType = () => {
-    if (businessTypeInput.trim() && !config.business_types.includes(businessTypeInput.trim())) {
-      setConfig((prev) => ({
-        ...prev,
-        business_types: [...prev.business_types, businessTypeInput.trim()],
-      }));
-      setBusinessTypeInput("");
-    }
-  };
-
-  // Add city
-  const handleAddCity = () => {
-    if (cityInput.trim() && !config.cities.includes(cityInput.trim())) {
-      setConfig((prev) => ({
-        ...prev,
-        cities: [...prev.cities, cityInput.trim()],
-      }));
-      setCityInput("");
-    }
-  };
-
-  // Add search link
-  const handleAddSearchLink = () => {
-    if (searchLinkInput.trim() && !config.search_links.includes(searchLinkInput.trim())) {
-      setConfig((prev) => ({
-        ...prev,
-        search_links: [...prev.search_links, searchLinkInput.trim()],
-      }));
-      setSearchLinkInput("");
-    }
-  };
-
-  // Remove item from array
-  const handleRemoveItem = (field: "business_types" | "cities" | "search_links", index: number) => {
-    setConfig((prev) => ({
-      ...prev,
-      [field]: prev[field].filter((_, i) => i !== index),
-    }));
-  };
-
   // Start scraping
   const handleStartScraping = async () => {
-    // Validation
     if (!jobName.trim()) {
       setError("Please enter a job name");
       setShowErrorModal(true);
       return;
     }
 
-    if (config.business_types.length === 0) {
-      setError("Please add at least one business type");
+    if (!searchTerm.trim()) {
+      setError("Please enter a search term (e.g., 'Restaurants', 'Dentists')");
       setShowErrorModal(true);
       return;
     }
 
-    if (config.search_method === "city" && config.cities.length === 0) {
-      setError("Please add at least one city");
-      setShowErrorModal(true);
-      return;
-    }
-
-    if (config.search_method === "search_link" && config.search_links.length === 0) {
-      setError("Please add at least one search link");
-      setShowErrorModal(true);
-      return;
+    if (scrapeMode === "single_city") {
+      if (!selectedState) {
+        setError("Please select a state");
+        setShowErrorModal(true);
+        return;
+      }
+      if (!selectedCity) {
+        setError("Please select a city");
+        setShowErrorModal(true);
+        return;
+      }
+    } else {
+      if (selectedStates.length === 0) {
+        setError("Please select at least one state");
+        setShowErrorModal(true);
+        return;
+      }
     }
 
     setCreatingOrder(true);
     try {
-      const newOrder = await apiClient.createLocalScraperOrder({
+      const newOrder = await apiClient.createGoogleMapsScraperOrder({
         job_name: jobName.trim(),
-        config,
+        scrape_mode: scrapeMode,
+        states: scrapeMode === "single_city" ? [selectedState] : selectedStates,
+        city: scrapeMode === "single_city" ? selectedCity : null,
+        search_term: searchTerm.trim(),
+        use_cache: useCache,
+        // Apify settings
+        max_results_per_city: maxResultsPerCity ? parseInt(maxResultsPerCity, 10) : null,
+        skip_closed_places: skipClosedPlaces,
+        website_filter: websiteFilter,
+        scrape_reviews: scrapeReviews,
+        max_reviews: maxReviews,
+        scrape_images: scrapeImages,
+        max_images: maxImages,
+        language: language,
       });
 
-      // Add to orders list
       setOrders((prev) => [newOrder, ...prev]);
-
-      // Clear form
       setJobName("");
-      setConfig(DEFAULT_CONFIG);
+      setSearchTerm("");
+      setSelectedState("");
+      setSelectedStates([]);
+      setSelectedCity("");
+      setCostEstimate(null);
+      setUseCache(false);
+      // Reset advanced settings to defaults
+      setMaxResultsPerCity("");
+      setSkipClosedPlaces(true);
+      setWebsiteFilter("withWebsite");
+      setScrapeReviews(false);
+      setMaxReviews(0);
+      setScrapeImages(false);
+      setMaxImages(0);
+      setLanguage("en");
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -239,20 +711,11 @@ export default function LocalLeadScraperPage() {
     }
   };
 
-  // Clear form
-  const handleClearForm = () => {
-    setJobName("");
-    setConfig(DEFAULT_CONFIG);
-    setBusinessTypeInput("");
-    setCityInput("");
-    setSearchLinkInput("");
-  };
-
   // Delete order
   const handleDeleteOrder = async (orderId: string) => {
     if (deleteConfirmOrderId === orderId) {
       try {
-        await apiClient.deleteLocalScraperOrder(orderId);
+        await apiClient.deleteGoogleMapsScraperOrder(orderId);
         setOrders((prev) => prev.filter((o) => o.id !== orderId));
         setDeleteConfirmOrderId(null);
       } catch (err) {
@@ -269,7 +732,7 @@ export default function LocalLeadScraperPage() {
   const handleDownloadResults = async (orderId: string) => {
     setDownloadingOrderId(orderId);
     try {
-      await apiClient.downloadLocalScraperOrderResults(orderId, "csv");
+      await apiClient.downloadGoogleMapsScraperResults(orderId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to download results");
       setShowErrorModal(true);
@@ -278,7 +741,31 @@ export default function LocalLeadScraperPage() {
     }
   };
 
-  // Format date
+  // Preview results
+  const handlePreviewResults = async (orderId: string) => {
+    setPreviewOrderId(orderId);
+    setPreviewLoading(true);
+    setShowPreviewModal(true);
+    try {
+      const data = await apiClient.getGoogleMapsScraperPreview(orderId);
+      setPreviewData(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load preview");
+      setShowErrorModal(true);
+      setShowPreviewModal(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleRowClick = (order: GoogleMapsScraperOrder, e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) return;
+    if (order.status === "completed") {
+      handlePreviewResults(order.id);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
@@ -290,7 +777,8 @@ export default function LocalLeadScraperPage() {
     });
   };
 
-  // Loading state
+  const formatCost = (cost: number) => `$${cost.toFixed(2)}`;
+
   if (initialLoading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -304,521 +792,459 @@ export default function LocalLeadScraperPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-dashboard-text">Local Lead Scraper</h1>
+        <h1 className="text-3xl font-bold text-dashboard-text">Google Maps Scraper</h1>
         <p className="mt-2 text-dashboard-text-muted">
-          Extract business data from Google Maps using Botasaurus
+          Extract business data from Google Maps using Apify
         </p>
       </div>
 
       {/* API Health Status */}
       <div className={`mb-6 glass-card p-4 ${
-        healthStatus?.botasaurus_api === "connected" 
+        healthStatus?.apify_api === "connected" 
           ? "bg-green-500/10 border-green-500/30" 
           : "bg-red-500/10 border-red-500/30"
       }`}>
         <div className="flex items-center gap-3">
           <div className={`w-3 h-3 rounded-full ${
-            healthStatus?.botasaurus_api === "connected" ? "bg-green-500" : "bg-red-500"
+            healthStatus?.apify_api === "connected" ? "bg-green-500" : "bg-red-500"
           }`}></div>
           <div>
             <p className={`text-sm font-medium ${
-              healthStatus?.botasaurus_api === "connected" ? "text-green-400" : "text-red-400"
+              healthStatus?.apify_api === "connected" ? "text-green-400" : "text-red-400"
             }`}>
-              {healthStatus?.botasaurus_api === "connected" 
-                ? "Botasaurus API Connected" 
-                : "Botasaurus API Disconnected"}
+              {healthStatus?.apify_api === "connected" ? "Apify API Connected" : "Apify API Disconnected"}
             </p>
             <p className="text-xs text-dashboard-text-muted">{healthStatus?.message}</p>
           </div>
-          <button
-            onClick={checkHealth}
-            className="ml-auto px-3 py-1 text-xs bg-dashboard-card hover:bg-dashboard-border rounded-lg transition-colors"
-          >
+          <button onClick={checkHealth} className="ml-auto px-3 py-1 text-xs bg-dashboard-card hover:bg-dashboard-border rounded-lg transition-colors">
             Refresh
           </button>
         </div>
       </div>
 
-      <ErrorModal
-        isOpen={showErrorModal}
-        message={error}
-        onClose={() => setShowErrorModal(false)}
-      />
+      <ErrorModal isOpen={showErrorModal} message={error} onClose={() => setShowErrorModal(false)} />
 
-      {/* Job Name Input */}
-      <div className="glass-card p-6 mb-6">
-        <label className="block text-sm font-medium text-dashboard-text mb-2">
-          Job Name <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="text"
-          value={jobName}
-          onChange={(e) => setJobName(e.target.value)}
-          placeholder="Enter a name for this scraping job (e.g., 'NYC Restaurants Q1')"
-          className="apple-input w-full py-3"
-        />
-        <p className="mt-2 text-xs text-dashboard-text-muted">
-          Give your scraping job a descriptive name to easily identify it later
-        </p>
-      </div>
+      {/* Results Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setShowPreviewModal(false); setPreviewData(null); setPreviewOrderId(null); }} />
+          <div className="relative bg-dashboard-surface border border-dashboard-border rounded-2xl p-6 max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-dashboard-text">Results Preview</h2>
+                {previewData && <p className="text-sm text-dashboard-text-muted mt-1">Showing {previewData.preview_count} of {previewData.total_rows.toLocaleString()} results</p>}
+              </div>
+              <button onClick={() => { setShowPreviewModal(false); setPreviewData(null); setPreviewOrderId(null); }} className="p-2 hover:bg-dashboard-card rounded-lg transition-colors">
+                <svg className="w-5 h-5 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {previewLoading ? (
+              <div className="flex items-center justify-center py-12"><LoadingSpinner size="lg" /></div>
+            ) : previewData && previewData.rows.length > 0 ? (
+              <div className="flex-1 overflow-auto">
+                <table className="min-w-full divide-y divide-dashboard-border">
+                  <thead style={{ background: "rgba(13, 15, 18, 0.5)" }} className="sticky top-0">
+                    <tr>
+                      {previewData.columns.map((col) => (
+                        <th key={col} className="px-4 py-2 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider whitespace-nowrap">{col.replace(/([A-Z])/g, ' $1').trim()}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody style={{ background: "rgba(13, 15, 18, 0.3)" }} className="divide-y divide-dashboard-border">
+                    {previewData.rows.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-dashboard-card/30">
+                        {previewData.columns.map((col) => (
+                          <td key={col} className={`px-4 py-2 text-sm whitespace-nowrap max-w-[200px] truncate ${col === 'website' ? row[col] ? 'text-blue-400' : 'text-dashboard-text-muted' : col === 'phone' ? row[col] ? 'text-green-400' : 'text-dashboard-text-muted' : 'text-dashboard-text'}`} title={row[col] || '-'}>{row[col] || '-'}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-12"><p className="text-dashboard-text-muted">No results available</p></div>
+            )}
+            <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-dashboard-border">
+              <button onClick={() => { setShowPreviewModal(false); setPreviewData(null); setPreviewOrderId(null); }} className="px-4 py-2 bg-dashboard-card text-dashboard-text rounded-lg hover:bg-dashboard-border transition-colors">Close</button>
+              {previewOrderId && <button onClick={() => handleDownloadResults(previewOrderId)} disabled={downloadingOrderId === previewOrderId} className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50">{downloadingOrderId === previewOrderId ? "Downloading..." : "Download Full CSV"}</button>}
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Business Types */}
+      {/* Mode Toggle */}
       <div className="glass-card p-6 mb-6">
-        <label className="block text-sm font-medium text-dashboard-text mb-2">
-          Business Types <span className="text-red-500">*</span>
-        </label>
-        <div className="flex gap-2 mb-3">
-          <input
-            type="text"
-            value={businessTypeInput}
-            onChange={(e) => setBusinessTypeInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddBusinessType())}
-            placeholder="e.g., Restaurant, Coffee Shop, Dentist, Gym"
-            className="apple-input flex-1 py-3"
-          />
+        <label className="block text-sm font-medium text-dashboard-text mb-4">Scrape Mode</label>
+        <div className="flex rounded-lg overflow-hidden border border-dashboard-border">
           <button
-            onClick={handleAddBusinessType}
-            className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors"
+            onClick={() => setScrapeMode("single_city")}
+            className={`flex-1 px-6 py-3 text-sm font-medium transition-all ${scrapeMode === "single_city" ? "bg-dashboard-accent text-white" : "bg-dashboard-card text-dashboard-text-muted hover:bg-dashboard-border"}`}
           >
-            Add
+            <div className="flex items-center justify-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Single City
+            </div>
+            <p className="text-xs mt-1 opacity-75">~$0.80 per city</p>
+          </button>
+          <button
+            onClick={() => setScrapeMode("full_state")}
+            className={`flex-1 px-6 py-3 text-sm font-medium transition-all ${scrapeMode === "full_state" ? "bg-dashboard-accent text-white" : "bg-dashboard-card text-dashboard-text-muted hover:bg-dashboard-border"}`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Full State(s)
+            </div>
+            <p className="text-xs mt-1 opacity-75">All cities in selected states</p>
           </button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {config.business_types.map((type, idx) => (
-            <span
-              key={idx}
-              className="inline-flex items-center gap-1 px-3 py-1 bg-dashboard-accent/20 text-dashboard-accent rounded-full text-sm"
-            >
-              {type}
-              <button
-                onClick={() => handleRemoveItem("business_types", idx)}
-                className="hover:text-red-400 ml-1"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-        <p className="mt-2 text-xs text-dashboard-text-muted">
-          Enter business types to search for (press Enter or click Add)
-        </p>
       </div>
 
-      {/* Search Method */}
+      {/* Job Name */}
       <div className="glass-card p-6 mb-6">
-        <label className="block text-sm font-medium text-dashboard-text mb-4">
-          Search Method
-        </label>
-        <div className="flex flex-wrap gap-4">
-          {[
-            { value: "city", label: "By City", description: "Search for businesses in specific cities" },
-            { value: "search_link", label: "By Search Link", description: "Use Google Maps search URLs" },
-          ].map((method) => (
-            <label
-              key={method.value}
-              className={`flex-1 min-w-[200px] p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                config.search_method === method.value
-                  ? "border-dashboard-accent bg-dashboard-accent/10"
-                  : "border-dashboard-border hover:border-dashboard-accent/50"
-              }`}
-            >
-              <input
-                type="radio"
-                name="search_method"
-                value={method.value}
-                checked={config.search_method === method.value}
-                onChange={(e) => setConfig((prev) => ({ ...prev, search_method: e.target.value as "city" | "search_link" | "geo_shape" }))}
-                className="sr-only"
-              />
-              <span className="font-medium text-dashboard-text">{method.label}</span>
-              <p className="text-xs text-dashboard-text-muted mt-1">{method.description}</p>
-            </label>
-          ))}
-        </div>
+        <label className="block text-sm font-medium text-dashboard-text mb-2">Job Name <span className="text-red-500">*</span></label>
+        <input type="text" value={jobName} onChange={(e) => setJobName(e.target.value)} placeholder="e.g., 'California Restaurants Q1 2024'" className="apple-input w-full py-3" />
       </div>
 
-      {/* Cities (if city method selected) */}
-      {config.search_method === "city" && (
-        <div className="glass-card p-6 mb-6">
-          <label className="block text-sm font-medium text-dashboard-text mb-2">
-            Cities <span className="text-red-500">*</span>
-          </label>
-          <div className="flex gap-2 mb-3">
-            <input
-              type="text"
-              value={cityInput}
-              onChange={(e) => setCityInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCity())}
-              placeholder="e.g., New York, Los Angeles, Chicago"
-              className="apple-input flex-1 py-3"
-            />
-            <button
-              onClick={handleAddCity}
-              className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors"
-            >
-              Add
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {config.cities.map((city, idx) => (
-              <span
-                key={idx}
-                className="inline-flex items-center gap-1 px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm"
-              >
-                {city}
-                <button
-                  onClick={() => handleRemoveItem("cities", idx)}
-                  className="hover:text-red-400 ml-1"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-dashboard-text-muted">
-            Enter city names to search in (press Enter or click Add)
-          </p>
-        </div>
-      )}
-
-      {/* Search Links (if search_link method selected) */}
-      {config.search_method === "search_link" && (
-        <div className="glass-card p-6 mb-6">
-          <label className="block text-sm font-medium text-dashboard-text mb-2">
-            Google Maps Search Links <span className="text-red-500">*</span>
-          </label>
-          <div className="flex gap-2 mb-3">
-            <input
-              type="text"
-              value={searchLinkInput}
-              onChange={(e) => setSearchLinkInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSearchLink())}
-              placeholder="https://www.google.com/maps/search/restaurants+in+new+york"
-              className="apple-input flex-1 py-3"
-            />
-            <button
-              onClick={handleAddSearchLink}
-              className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors"
-            >
-              Add
-            </button>
-          </div>
-          <div className="space-y-2">
-            {config.search_links.map((link, idx) => (
-              <div
-                key={idx}
-                className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg"
-              >
-                <span className="flex-1 text-sm text-blue-400 truncate">{link}</span>
-                <button
-                  onClick={() => handleRemoveItem("search_links", idx)}
-                  className="text-dashboard-text-muted hover:text-red-400"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-dashboard-text-muted">
-            Paste Google Maps search URLs (press Enter or click Add)
-          </p>
-        </div>
-      )}
-
-      {/* Extraction Options */}
+      {/* Search Term */}
       <div className="glass-card p-6 mb-6">
-        <label className="block text-sm font-medium text-dashboard-text mb-4">
-          Extraction Options
-        </label>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-dashboard-text-muted mb-1">Extraction Method</label>
-            <select
-              value={config.extraction_method}
-              onChange={(e) => setConfig((prev) => ({ ...prev, extraction_method: e.target.value as "detailed" | "fast" }))}
-              className="apple-input w-full py-2"
-            >
-              <option value="detailed">Detailed (slower, more data)</option>
-              <option value="fast">Fast (quicker, basic data)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-dashboard-text-muted mb-1">Max Results (optional)</label>
-            <input
-              type="number"
-              value={config.max_results || ""}
-              onChange={(e) => setConfig((prev) => ({ 
-                ...prev, 
-                max_results: e.target.value ? parseInt(e.target.value) : null 
-              }))}
-              placeholder="No limit"
-              className="apple-input w-full py-2"
-            />
-          </div>
-        </div>
+        <label className="block text-sm font-medium text-dashboard-text mb-2">Business Type / Search Term <span className="text-red-500">*</span></label>
+        <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="e.g., 'Restaurants', 'Dentists', 'Gyms', 'Coffee Shops'" className="apple-input w-full py-3" />
+        <p className="mt-2 text-xs text-dashboard-text-muted">Enter the type of business you want to find (uses Google Maps search)</p>
         
-        {/* Reviews & Photos Options */}
-        <div className="mt-4 space-y-3">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={config.enable_reviews_extraction}
-              onChange={(e) => setConfig((prev) => ({ ...prev, enable_reviews_extraction: e.target.checked }))}
-              className="w-4 h-4 rounded text-dashboard-accent bg-dashboard-card border-dashboard-border"
-            />
-            <span className="text-sm text-dashboard-text">Extract Reviews</span>
-            {config.enable_reviews_extraction && (
-              <input
-                type="number"
-                value={config.max_reviews}
-                onChange={(e) => setConfig((prev) => ({ ...prev, max_reviews: parseInt(e.target.value) || 20 }))}
-                className="apple-input w-20 py-1 text-sm"
-                placeholder="Max"
-              />
+        {/* Cache Toggle */}
+        <div className="mt-4 flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="useCache"
+            checked={useCache}
+            onChange={(e) => setUseCache(e.target.checked)}
+            className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent cursor-pointer"
+          />
+          <label htmlFor="useCache" className="text-sm text-dashboard-text cursor-pointer">Enable Caching</label>
+          <div className="relative">
+            <button
+              type="button"
+              onMouseEnter={() => setShowCacheTooltip(true)}
+              onMouseLeave={() => setShowCacheTooltip(false)}
+              className="w-5 h-5 rounded-full bg-dashboard-card border border-dashboard-border flex items-center justify-center text-xs text-dashboard-text-muted hover:bg-dashboard-border transition-colors"
+            >
+              ?
+            </button>
+            {showCacheTooltip && (
+              <div className="absolute left-6 top-1/2 -translate-y-1/2 z-50 w-64 p-3 bg-dashboard-surface border border-dashboard-border rounded-lg shadow-xl text-xs text-dashboard-text-muted">
+                <p className="font-medium text-dashboard-text mb-1">What is caching?</p>
+                <p>When enabled, returns existing results instantly for cities we&apos;ve already scraped with the same search term. Only scrapes cities not in our database, saving time and money.</p>
+              </div>
             )}
-          </label>
-          
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={config.enable_photos_extraction}
-              onChange={(e) => setConfig((prev) => ({ ...prev, enable_photos_extraction: e.target.checked }))}
-              className="w-4 h-4 rounded text-dashboard-accent bg-dashboard-card border-dashboard-border"
-            />
-            <span className="text-sm text-dashboard-text">Extract Photos</span>
-            {config.enable_photos_extraction && (
-              <input
-                type="number"
-                value={config.max_photos}
-                onChange={(e) => setConfig((prev) => ({ ...prev, max_photos: parseInt(e.target.value) || 100 }))}
-                className="apple-input w-20 py-1 text-sm"
-                placeholder="Max"
-              />
-            )}
-          </label>
+          </div>
         </div>
       </div>
 
-      {/* Advanced Options (Collapsible) */}
-      <div className="glass-card p-6 mb-6">
+      {/* Single City Mode: State + City Selection */}
+      {scrapeMode === "single_city" && (
+        <>
+          <div className="glass-card p-6 mb-6">
+            <label className="block text-sm font-medium text-dashboard-text mb-2">State <span className="text-red-500">*</span></label>
+            <SearchableSelect
+              options={states}
+              value={selectedState}
+              onChange={(v) => { setSelectedState(v); setSelectedCity(""); }}
+              placeholder="Search and select a state..."
+              loading={loadingStates}
+            />
+          </div>
+
+          {selectedState && (
+            <div className="glass-card p-6 mb-6">
+              <label className="block text-sm font-medium text-dashboard-text mb-2">City <span className="text-red-500">*</span></label>
+              <SearchableSelect
+                options={cities}
+                value={selectedCity}
+                onChange={setSelectedCity}
+                placeholder="Search and select a city..."
+                disabled={!selectedState || cities.length === 0}
+                loading={loadingCities}
+              />
+              {!loadingCities && cities.length === 0 && selectedState && (
+                <p className="mt-2 text-xs text-yellow-400">No cities found for this state. Please seed the database.</p>
+              )}
+              {cities.length > 0 && <p className="mt-2 text-xs text-dashboard-text-muted">{cities.length} cities available</p>}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Full State Mode: Multi-State Selection */}
+      {scrapeMode === "full_state" && (
+        <div className="glass-card p-6 mb-6">
+          <label className="block text-sm font-medium text-dashboard-text mb-2">Select States <span className="text-red-500">*</span></label>
+          <MultiSelectSearchable
+            options={states}
+            values={selectedStates}
+            onChange={setSelectedStates}
+            placeholder="Search and select states..."
+            loading={loadingStates}
+          />
+          {selectedStates.length > 0 && (
+            <p className="mt-2 text-xs text-dashboard-text-muted">{selectedStates.length} state{selectedStates.length > 1 ? 's' : ''} selected</p>
+          )}
+        </div>
+      )}
+
+      {/* Advanced Apify Settings (Collapsible) */}
+      <div className="glass-card mb-6 overflow-hidden">
         <button
-          onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-          className="flex items-center justify-between w-full text-left"
+          onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+          className="w-full p-6 flex items-center justify-between text-left hover:bg-dashboard-card/30 transition-colors"
         >
-          <span className="text-sm font-medium text-dashboard-text">Advanced Options</span>
-          <svg
-            className={`w-5 h-5 text-dashboard-text-muted transition-transform ${showAdvancedOptions ? "rotate-180" : ""}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="text-sm font-medium text-dashboard-text">Advanced Scraper Settings</span>
+          </div>
+          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform duration-200 ${showAdvancedSettings ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
         
-        {showAdvancedOptions && (
-          <div className="mt-4 pt-4 border-t border-dashboard-border space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.randomize_cities}
-                  onChange={(e) => setConfig((prev) => ({ ...prev, randomize_cities: e.target.checked }))}
-                  className="w-4 h-4 rounded text-dashboard-accent"
-                />
-                <span className="text-sm text-dashboard-text">Randomize Cities</span>
-              </label>
-              
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.include_places_outside_city}
-                  onChange={(e) => setConfig((prev) => ({ ...prev, include_places_outside_city: e.target.checked }))}
-                  className="w-4 h-4 rounded text-dashboard-accent"
-                />
-                <span className="text-sm text-dashboard-text">Include Places Outside City</span>
-              </label>
+        {showAdvancedSettings && (
+          <div className="p-6 pt-0 space-y-5 border-t border-dashboard-border">
+            {/* Max Results per City */}
+            <div>
+              <label className="block text-sm font-medium text-dashboard-text mb-2">Max Results per City</label>
+              <input
+                type="number"
+                value={maxResultsPerCity}
+                onChange={(e) => setMaxResultsPerCity(e.target.value)}
+                placeholder="Leave empty for unlimited"
+                min="1"
+                className="apple-input w-full py-2"
+              />
+              <p className="mt-1 text-xs text-dashboard-text-muted">Limit results to control costs. Empty = scrape all available.</p>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-dashboard-text-muted mb-1">Reviews Sort</label>
-                <select
-                  value={config.reviews_sort}
-                  onChange={(e) => setConfig((prev) => ({ ...prev, reviews_sort: e.target.value }))}
-                  className="apple-input w-full py-2"
-                >
-                  <option value="newest">Newest First</option>
-                  <option value="most_relevant">Most Relevant</option>
-                  <option value="highest_rating">Highest Rating</option>
-                  <option value="lowest_rating">Lowest Rating</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-xs text-dashboard-text-muted mb-1">Language (optional)</label>
+
+            {/* Website Filter */}
+            <div>
+              <label className="block text-sm font-medium text-dashboard-text mb-2">Website Filter</label>
+              <select
+                value={websiteFilter}
+                onChange={(e) => setWebsiteFilter(e.target.value as typeof websiteFilter)}
+                className="apple-input w-full py-2"
+              >
+                <option value="withWebsite">With Website Only</option>
+                <option value="allPlaces">All Places</option>
+                <option value="withoutWebsite">Without Website Only</option>
+              </select>
+              <p className="mt-1 text-xs text-dashboard-text-muted">Filter businesses by website presence.</p>
+            </div>
+
+            {/* Skip Closed Places */}
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="skipClosed"
+                checked={skipClosedPlaces}
+                onChange={(e) => setSkipClosedPlaces(e.target.checked)}
+                className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
+              />
+              <label htmlFor="skipClosed" className="text-sm text-dashboard-text">Skip Permanently Closed Places</label>
+            </div>
+
+            {/* Reviews */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
                 <input
-                  type="text"
-                  value={config.lang || ""}
-                  onChange={(e) => setConfig((prev) => ({ ...prev, lang: e.target.value || null }))}
-                  placeholder="e.g., en, es, fr"
-                  className="apple-input w-full py-2"
+                  type="checkbox"
+                  id="scrapeReviews"
+                  checked={scrapeReviews}
+                  onChange={(e) => setScrapeReviews(e.target.checked)}
+                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
                 />
+                <label htmlFor="scrapeReviews" className="text-sm text-dashboard-text">Include Reviews (increases cost)</label>
               </div>
+              {scrapeReviews && (
+                <div className="ml-7">
+                  <label className="block text-xs text-dashboard-text-muted mb-1">Max Reviews per Place</label>
+                  <input
+                    type="number"
+                    value={maxReviews}
+                    onChange={(e) => setMaxReviews(parseInt(e.target.value) || 0)}
+                    min="0"
+                    max="100"
+                    className="apple-input w-32 py-1 text-sm"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Images */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="scrapeImages"
+                  checked={scrapeImages}
+                  onChange={(e) => setScrapeImages(e.target.checked)}
+                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
+                />
+                <label htmlFor="scrapeImages" className="text-sm text-dashboard-text">Include Images (increases cost)</label>
+              </div>
+              {scrapeImages && (
+                <div className="ml-7">
+                  <label className="block text-xs text-dashboard-text-muted mb-1">Max Images per Place</label>
+                  <input
+                    type="number"
+                    value={maxImages}
+                    onChange={(e) => setMaxImages(parseInt(e.target.value) || 0)}
+                    min="0"
+                    max="20"
+                    className="apple-input w-32 py-1 text-sm"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Language */}
+            <div>
+              <label className="block text-sm font-medium text-dashboard-text mb-2">Language</label>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className="apple-input w-full py-2"
+              >
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="it">Italian</option>
+                <option value="pt">Portuguese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="zh">Chinese</option>
+              </select>
+              <p className="mt-1 text-xs text-dashboard-text-muted">Language for search results.</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Action Buttons */}
+      {/* Cost Estimate */}
+      {costEstimate && (
+        <div className="glass-card p-6 mb-6 bg-yellow-500/10 border-yellow-500/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-yellow-400">Estimated Cost: {formatCost(costEstimate.estimated_cost)}</p>
+                <p className="text-xs text-dashboard-text-muted mt-1">{costEstimate.num_cities} {costEstimate.num_cities === 1 ? 'city' : 'cities'} @ $0.80/city</p>
+              </div>
+            </div>
+            {loadingEstimate && <LoadingSpinner size="sm" />}
+          </div>
+        </div>
+      )}
+
+      {/* Start Button */}
       <div className="flex gap-3 mb-6">
         <button
           onClick={handleStartScraping}
           disabled={
             creatingOrder ||
-            config.business_types.length === 0 ||
-            !jobName.trim()
+            !jobName.trim() ||
+            !searchTerm.trim() ||
+            (scrapeMode === "single_city" && (!selectedState || !selectedCity)) ||
+            (scrapeMode === "full_state" && selectedStates.length === 0) ||
+            healthStatus?.apify_api !== "connected"
           }
           className="flex-1 px-6 py-3 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
         >
           {creatingOrder ? (
-            <span className="flex items-center justify-center gap-2">
-              <LoadingSpinner size="sm" />
-              Starting...
-            </span>
+            <span className="flex items-center justify-center gap-2"><LoadingSpinner size="sm" />Starting...</span>
           ) : (
-            "Start Scraping"
+            `Start Scraping${costEstimate ? ` (${formatCost(costEstimate.estimated_cost)})` : ''}`
           )}
-        </button>
-        <button
-          onClick={handleClearForm}
-          className="px-6 py-3 glass-card hover:bg-dashboard-card transition-colors"
-        >
-          Clear Form
         </button>
       </div>
 
       {/* Orders History */}
       <div className="glass-card p-6 mb-6">
-        <h3 className="text-lg font-semibold text-dashboard-text mb-4">Scraping Orders</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-dashboard-text">Scraping Orders</h3>
+          <button onClick={loadOrders} disabled={loadingOrders} className="px-3 py-1 text-xs bg-dashboard-card hover:bg-dashboard-border rounded-lg transition-colors">{loadingOrders ? "Loading..." : "Refresh"}</button>
+        </div>
+        
         {loadingOrders && orders.length === 0 ? (
-          <div className="flex justify-center items-center py-8">
-            <LoadingSpinner size="sm" />
-          </div>
+          <div className="flex justify-center items-center py-8"><LoadingSpinner size="sm" /></div>
         ) : orders.length === 0 ? (
-          <p className="text-dashboard-text-muted text-center py-8">
-            No scraping orders yet. Start a new scrape above.
-          </p>
+          <p className="text-dashboard-text-muted text-center py-8">No scraping orders yet. Start a new scrape above.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-dashboard-border">
               <thead style={{ background: "rgba(13, 15, 18, 0.5)" }}>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
-                    Job Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
-                    Business Types
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
-                    Created At
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
-                    Progress
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
-                    Actions
-                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Job Name</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Mode / Location</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Search Term</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Progress</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody style={{ background: "rgba(13, 15, 18, 0.3)" }} className="divide-y divide-dashboard-border">
                 {orders.map((order) => (
-                  <tr key={order.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text">
-                      {order.job_name || order.id.slice(0, 8)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-dashboard-text-muted max-w-[200px] truncate">
-                      {order.business_types || "-"}
-                    </td>
+                  <tr key={order.id} onClick={(e) => handleRowClick(order, e)} className={`transition-colors ${order.status === "completed" ? "hover:bg-dashboard-card/50 cursor-pointer" : ""}`} title={order.status === "completed" ? "Click to preview results" : undefined}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text">{order.job_name || order.id.slice(0, 8)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
-                      {formatDate(order.created_at)}
+                      <div>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${order.scrape_mode === "full_state" ? "bg-blue-500/20 text-blue-400" : "bg-green-500/20 text-green-400"}`}>
+                          {order.scrape_mode === "full_state" ? "Full State" : "Single City"}
+                        </span>
+                        <p className="mt-1 text-xs">{order.states?.join(", ") || "-"}{order.city ? `, ${order.city}` : ''}</p>
+                      </div>
                     </td>
+                    <td className="px-6 py-4 text-sm text-dashboard-text max-w-[150px] truncate">{order.search_term}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          order.status === "completed"
-                            ? "bg-green-500/20 text-green-400"
-                            : order.status === "processing"
-                            ? "bg-yellow-500/20 text-yellow-400"
-                            : order.status === "pending"
-                            ? "bg-blue-500/20 text-blue-400"
-                            : order.status === "failed"
-                            ? "bg-red-500/20 text-red-400"
-                            : "bg-gray-500/20 text-gray-400"
-                        }`}
-                      >
+                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${order.status === "completed" ? "bg-green-500/20 text-green-400" : order.status === "processing" ? "bg-yellow-500/20 text-yellow-400" : order.status === "pending" ? "bg-blue-500/20 text-blue-400" : order.status === "failed" ? "bg-red-500/20 text-red-400" : "bg-gray-500/20 text-gray-400"}`}>
                         {order.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
                       {order.status === "completed" ? (
                         <div className="flex items-center gap-2">
-                          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          <span className="text-green-400">{order.results_count} results</span>
+                          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                          <span className="text-green-400">{order.results_count.toLocaleString()} results</span>
                         </div>
                       ) : order.status === "failed" ? (
                         <div className="flex flex-col gap-1">
                           <span className="text-red-400">Failed</span>
-                          {order.error_message && (
-                            <span className="text-xs text-red-400/70 max-w-[300px] truncate" title={order.error_message}>
-                              {order.error_message}
-                            </span>
-                          )}
+                          {order.error_message && <span className="text-xs text-red-400/70 max-w-[200px] truncate" title={order.error_message}>{order.error_message}</span>}
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2 min-w-[120px]">
-                          <div className="flex-1 bg-dashboard-card rounded-full h-2 overflow-hidden">
-                            <div
-                              className="bg-dashboard-accent h-2 rounded-full transition-all duration-500 ease-out"
-                              style={{ width: `${order.progress_percentage || 5}%` }}
-                            />
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 min-w-[120px]">
+                            <div className="flex-1 bg-dashboard-card rounded-full h-2 overflow-hidden"><div className="bg-dashboard-accent h-2 rounded-full transition-all duration-500 ease-out" style={{ width: `${order.progress_percentage || 5}%` }} /></div>
+                            <span className="text-xs text-dashboard-text-muted w-8">{order.progress_percentage || 0}%</span>
                           </div>
-                          <span className="text-xs text-dashboard-text-muted w-8">
-                            {order.progress_percentage || 0}%
-                          </span>
+                          <span className="text-xs text-dashboard-text-muted">{order.completed_cities}/{order.total_cities} cities</span>
                         </div>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-3">
-                        {order.status === "completed" && (
-                          <button
-                            onClick={() => handleDownloadResults(order.id)}
-                            disabled={downloadingOrderId === order.id}
-                            className="px-3 py-1.5 bg-dashboard-accent text-white text-xs rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50"
-                          >
-                            {downloadingOrderId === order.id ? "Downloading..." : "Download CSV"}
-                          </button>
-                        )}
+                        {order.status === "completed" && <button onClick={() => handleDownloadResults(order.id)} disabled={downloadingOrderId === order.id} className="px-3 py-1.5 bg-dashboard-accent text-white text-xs rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50">{downloadingOrderId === order.id ? "Downloading..." : "Download CSV"}</button>}
                         {deleteConfirmOrderId === order.id ? (
-                          <button
-                            onClick={() => handleDeleteOrder(order.id)}
-                            className="text-red-400 hover:text-red-300 transition-colors text-xs"
-                          >
-                            Confirm Delete
-                          </button>
+                          <button onClick={() => handleDeleteOrder(order.id)} className="text-red-400 hover:text-red-300 transition-colors text-xs">Confirm Delete</button>
                         ) : (
-                          <button
-                            onClick={() => handleDeleteOrder(order.id)}
-                            className="text-dashboard-text-muted hover:text-red-400 transition-colors text-xs"
-                          >
-                            Delete
-                          </button>
+                          <button onClick={() => handleDeleteOrder(order.id)} className="text-dashboard-text-muted hover:text-red-400 transition-colors text-xs">Delete</button>
                         )}
                       </div>
                     </td>
@@ -835,43 +1261,16 @@ export default function LocalLeadScraperPage() {
         <h3 className="text-lg font-semibold text-dashboard-text mb-4">Frequently Asked Questions</h3>
         <div className="space-y-2">
           {[
-            {
-              q: "What is the Local Lead Scraper?",
-              a: "The Local Lead Scraper uses Botasaurus to extract business data from Google Maps. You can search for businesses by type and location to build targeted lead lists.",
-            },
-            {
-              q: "How do I connect to Botasaurus?",
-              a: "You need to have Botasaurus Desktop running on your local machine or a server. The API status indicator above will show if it's connected.",
-            },
-            {
-              q: "What data is extracted?",
-              a: "Depending on your settings, you can extract: business name, address, phone, website, ratings, reviews, photos, opening hours, and more.",
-            },
-            {
-              q: "How long does scraping take?",
-              a: "Scraping time depends on the number of results and extraction method. Detailed extraction takes longer but provides more data. Fast extraction is quicker but has less detail.",
-            },
-            {
-              q: "Can I search multiple cities at once?",
-              a: "Yes! You can add multiple cities to search. The scraper will search for your business types in all specified cities.",
-            },
+            { q: "What is the Google Maps Scraper?", a: "The Google Maps Scraper uses Apify to extract business data from Google Maps. You can search for businesses by type and location to build targeted lead lists with websites, phone numbers, and more." },
+            { q: "What's the difference between Single City and Full State?", a: "Single City mode scrapes one city (~$0.80). Full State mode (admin only) scrapes ALL cities in selected states concurrently, which is faster but more expensive." },
+            { q: "What data is extracted?", a: "Each result includes: business name, website URL, phone number, full address, city, state, postal code, rating, review count, and category." },
+            { q: "Why only businesses with websites?", a: "We filter for businesses WITH websites because that's the most valuable data for outreach. This also reduces costs since we're not paying for businesses we can't contact." },
+            { q: "How long does scraping take?", a: "Single city: typically 2-5 minutes. Full state: depends on the number of cities, but we run up to 100 cities concurrently for maximum speed." },
           ].map((faq, idx) => (
             <div key={idx} className="border-b border-dashboard-border last:border-0">
-              <button
-                onClick={() => setOpenFaq(openFaq === idx ? null : idx)}
-                className="w-full flex items-center justify-between py-3 text-left"
-              >
+              <button onClick={() => setOpenFaq(openFaq === idx ? null : idx)} className="w-full flex items-center justify-between py-3 text-left">
                 <span className="text-sm font-medium text-dashboard-text">{faq.q}</span>
-                <svg
-                  className={`w-5 h-5 text-dashboard-text-muted transition-transform ${
-                    openFaq === idx ? "rotate-180" : ""
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+                <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform ${openFaq === idx ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
               </button>
               {openFaq === idx && <p className="pb-3 text-sm text-dashboard-text-muted">{faq.a}</p>}
             </div>
@@ -881,4 +1280,3 @@ export default function LocalLeadScraperPage() {
     </div>
   );
 }
-

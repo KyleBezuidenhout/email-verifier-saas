@@ -292,6 +292,9 @@ s3_client = boto3.client(
     region_name='auto'
 )
 
+# Max file size for CSV uploads: 200MB
+MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024
+
 
 @router.post("/upload", response_model=JobUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_file(

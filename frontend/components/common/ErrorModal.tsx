@@ -35,7 +35,7 @@ export function ErrorModal({ isOpen, onClose, message, title }: ErrorModalProps)
       />
       
       {/* Modal */}
-      <div className="relative bg-apple-surface border border-apple-border rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+      <div className="relative glass-surface p-8 max-w-md w-full mx-4">
         {/* Error Icon */}
         <div className="flex justify-center mb-6">
           <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
@@ -54,12 +54,12 @@ export function ErrorModal({ isOpen, onClose, message, title }: ErrorModalProps)
         </div>
 
         {/* Title */}
-        <h2 className="text-xl font-bold text-apple-text text-center mb-3">
+        <h2 className="text-xl font-bold text-white text-center mb-3">
           {title || (isInsufficientCredits ? "Insufficient Credits" : "Error")}
         </h2>
 
         {/* Message */}
-        <p className="text-apple-text-muted text-center mb-8 leading-relaxed">
+        <p className="text-gray-400 text-center mb-8 leading-relaxed">
           {message}
         </p>
 
@@ -67,7 +67,7 @@ export function ErrorModal({ isOpen, onClose, message, title }: ErrorModalProps)
         <div className="flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 px-6 py-3 bg-apple-bg border border-apple-border text-apple-text rounded-xl font-medium hover:bg-apple-surface transition-all"
+            className="flex-1 px-6 py-3 bg-white/5 border border-white/10 text-white rounded-xl font-medium hover:bg-white/10 transition-all"
           >
             Close
           </button>
@@ -76,8 +76,9 @@ export function ErrorModal({ isOpen, onClose, message, title }: ErrorModalProps)
             className={`flex-1 px-6 py-3 rounded-xl font-medium transition-all ${
               isInsufficientCredits
                 ? "bg-yellow-500 hover:bg-yellow-600 text-black"
-                : "bg-apple-accent hover:bg-apple-accent/90 text-white"
+                : "bg-[#0099FF] hover:bg-[#0099FF]/90 text-white"
             }`}
+            style={!isInsufficientCredits ? { boxShadow: '0 0 20px rgba(0, 153, 255, 0.2)' } : {}}
           >
             {isInsufficientCredits ? "Get More Credits" : "Contact Support"}
           </button>
@@ -86,5 +87,3 @@ export function ErrorModal({ isOpen, onClose, message, title }: ErrorModalProps)
     </div>
   );
 }
-
-

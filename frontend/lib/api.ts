@@ -11,9 +11,11 @@ import {
   VayneUrlCheck,
   VayneOrder,
   VayneOrderCreate,
-  LocalScraperOrder,
-  LocalScraperOrderCreate,
-  LocalScraperHealthStatus,
+  GoogleMapsScraperOrder,
+  GoogleMapsScraperOrderCreate,
+  GoogleMapsScraperHealthStatus,
+  GoogleMapsScraperCostEstimate,
+  GoogleMapsScraperPreviewResponse,
   WebsiteScraperJob,
   WebsiteScraperHealthStatus,
   WebsiteScraperUploadResponse,
@@ -699,22 +701,37 @@ class ApiClient {
   }
 
   // ============================================
-  // LOCAL LEAD SCRAPER ENDPOINTS (Google Maps via Botasaurus)
+  // GOOGLE MAPS SCRAPER ENDPOINTS (via Apify compass/crawler-google-places)
   // ============================================
 
-  async getLocalScraperHealth(): Promise<LocalScraperHealthStatus> {
+  async getGoogleMapsScraperHealth(): Promise<GoogleMapsScraperHealthStatus> {
     return this.request("/api/v1/local-scraper/health");
   }
 
-  async createLocalScraperOrder(order: LocalScraperOrderCreate): Promise<LocalScraperOrder> {
+  async getGoogleMapsScraperStates(): Promise<{ states: string[] }> {
+    return this.request("/api/v1/local-scraper/states");
+  }
+
+  async getGoogleMapsScraperCities(state: string): Promise<{ state: string; cities: string[]; count: number }> {
+    return this.request(`/api/v1/local-scraper/cities/${encodeURIComponent(state)}`);
+  }
+
+  async estimateGoogleMapsScraperCost(scrape_mode: string, states: string[], city?: string): Promise<GoogleMapsScraperCostEstimate> {
+    return this.request("/api/v1/local-scraper/estimate", {
+      method: "POST",
+      body: JSON.stringify({ scrape_mode, states, city }),
+    });
+  }
+
+  async createGoogleMapsScraperOrder(order: GoogleMapsScraperOrderCreate): Promise<GoogleMapsScraperOrder> {
     return this.request("/api/v1/local-scraper/orders", {
       method: "POST",
       body: JSON.stringify(order),
     });
   }
 
-  async getLocalScraperOrders(limit = 100, offset = 0, status?: string): Promise<{
-    orders: LocalScraperOrder[];
+  async getGoogleMapsScraperOrders(limit = 100, offset = 0, status?: string): Promise<{
+    orders: GoogleMapsScraperOrder[];
     total: number;
   }> {
     let url = `/api/v1/local-scraper/orders?limit=${limit}&offset=${offset}`;
@@ -722,37 +739,30 @@ class ApiClient {
     return this.request(url);
   }
 
-  async getLocalScraperOrder(orderId: string): Promise<LocalScraperOrder> {
+  async getGoogleMapsScraperOrder(orderId: string): Promise<GoogleMapsScraperOrder> {
     return this.request(`/api/v1/local-scraper/orders/${orderId}`);
   }
 
-  async pollLocalScraperOrderStatus(orderId: string): Promise<{
+  async pollGoogleMapsScraperOrderStatus(orderId: string): Promise<{
     order_id: string;
-    botasaurus_task_id: number | null;
     status: string;
+    total_cities: number;
+    completed_cities: number;
     progress_percentage: number;
     results_count: number;
-    from_database: boolean;
     error_message?: string | null;
-    error?: string;
   }> {
-    return this.request(`/api/v1/local-scraper/orders/${orderId}/poll-status`);
+    return this.request(`/api/v1/local-scraper/orders/${orderId}/status`);
   }
 
-  async deleteLocalScraperOrder(orderId: string): Promise<{ message: string; order_id: string }> {
+  async deleteGoogleMapsScraperOrder(orderId: string): Promise<{ message: string; order_id: string }> {
     return this.request(`/api/v1/local-scraper/orders/${orderId}`, {
       method: "DELETE",
     });
   }
 
-  async cancelLocalScraperOrder(orderId: string): Promise<{ message: string; order_id: string; previous_status: string }> {
-    return this.request(`/api/v1/local-scraper/orders/${orderId}/cancel`, {
-      method: "POST",
-    });
-  }
-
-  async downloadLocalScraperOrderResults(orderId: string, format: 'csv' | 'json' | 'excel' = 'csv'): Promise<void> {
-    const url = `${this.baseUrl}/api/v1/local-scraper/orders/${orderId}/download?format=${format}`;
+  async downloadGoogleMapsScraperResults(orderId: string): Promise<void> {
+    const url = `${this.baseUrl}/api/v1/local-scraper/orders/${orderId}/download`;
     const token = this.getToken();
     
     const response = await fetch(url, {
@@ -771,7 +781,7 @@ class ApiClient {
 
     // Get filename from Content-Disposition header or use default
     const contentDisposition = response.headers.get("Content-Disposition");
-    let filename = `results.${format}`;
+    let filename = "google_maps_results.csv";
     if (contentDisposition) {
       const match = contentDisposition.match(/filename="?([^"]+)"?/);
       if (match) {
@@ -789,6 +799,10 @@ class ApiClient {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(downloadUrl);
+  }
+
+  async getGoogleMapsScraperPreview(orderId: string, limit = 25): Promise<GoogleMapsScraperPreviewResponse> {
+    return this.request(`/api/v1/local-scraper/orders/${orderId}/preview?limit=${limit}`);
   }
 
   // ============================================

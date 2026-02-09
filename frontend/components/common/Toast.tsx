@@ -20,16 +20,16 @@ export function Toast({ message, type, onClose, duration = 5000 }: ToastProps) {
   }, [duration, onClose]);
 
   const styles = {
-    success: "bg-apple-success/20 border-apple-success/30 text-apple-success",
-    error: "bg-apple-error/20 border-apple-error/30 text-apple-error",
-    warning: "bg-apple-warning/20 border-apple-warning/30 text-apple-warning",
-    info: "bg-apple-accent/20 border-apple-accent/30 text-apple-accent",
+    success: "bg-green-500/10 border-green-500/20 text-green-400",
+    error: "bg-red-500/10 border-red-500/20 text-red-400",
+    warning: "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
+    info: "bg-[#0099FF]/10 border-[#0099FF]/20 text-[#0099FF]",
   };
 
   return (
     <div
       className={cn(
-        "fixed top-4 right-4 z-50 p-4 rounded-lg border shadow-lg animate-in slide-in-from-top-5",
+        "fixed top-4 right-4 z-50 p-4 rounded-lg border shadow-lg animate-in slide-in-from-top-5 backdrop-blur-md",
         styles[type]
       )}
     >
@@ -45,5 +45,3 @@ export function Toast({ message, type, onClose, duration = 5000 }: ToastProps) {
     </div>
   );
 }
-
-

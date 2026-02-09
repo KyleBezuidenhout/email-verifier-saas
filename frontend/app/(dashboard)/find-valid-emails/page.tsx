@@ -109,8 +109,8 @@ export default function FindValidEmailsPage() {
       return;
     }
 
-    if (selectedFile.size > 50 * 1024 * 1024) {
-      setUploadError("File size must be less than 50MB");
+    if (selectedFile.size > 200 * 1024 * 1024) {
+      setUploadError("File size must be less than 200MB");
       return;
     }
 
