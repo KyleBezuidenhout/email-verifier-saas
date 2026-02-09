@@ -663,6 +663,206 @@ def process_enrichment_job(job_id: str) -> bool:
         db.close()
 
 
+def process_verification_job(job_id: str) -> bool:
+    """
+    Process a deferred verification job (large uploads with >=10k rows).
+    
+    This is strictly verification-only - NO permutation logic:
+    1. Download CSV from R2
+    2. Parse emails from CSV (1 email = 1 lead)
+    3. Batch insert leads into database
+    4. Queue job for verification processing
+    
+    This mirrors what /verify-upload does synchronously for small files,
+    but runs asynchronously in the worker for large files to avoid
+    HTTP timeouts and massive SQL INSERT statements.
+    """
+    db = SessionLocal()
+    try:
+        # Parse job ID
+        try:
+            job_uuid = UUID(job_id)
+        except ValueError:
+            logger.error(f"Invalid job ID format: {job_id}")
+            return False
+        
+        # Fetch job
+        job = db.query(Job).filter(Job.id == job_uuid).first()
+        if not job:
+            logger.error(f"Verification job {job_id} not found")
+            return False
+        
+        if job.job_type != "verification":
+            logger.error(f"Job {job_id} is not a verification job (type: {job.job_type})")
+            return False
+        
+        if job.status != "pending":
+            logger.warning(f"Verification job {job_id} has status '{job.status}', skipping")
+            return False
+        
+        if not job.input_file_path:
+            logger.error(f"Verification job {job_id} has no input_file_path")
+            job.status = "failed"
+            db.commit()
+            return False
+        
+        logger.info(f"🔄 Processing deferred verification job {job_id}")
+        
+        # Download CSV from R2
+        try:
+            response = s3_client.get_object(
+                Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+                Key=job.input_file_path
+            )
+            csv_data = response['Body'].read()
+            logger.info(f"✅ Downloaded CSV from R2: {len(csv_data)} bytes")
+        except Exception as e:
+            logger.error(f"❌ Failed to download CSV from R2 for verification job {job_id}: {e}")
+            job.status = "failed"
+            db.commit()
+            return False
+        
+        # Parse CSV - strictly emails only, NO permutations
+        csv_content = csv_data.decode('utf-8-sig')
+        csv_reader = csv.DictReader(io.StringIO(csv_content))
+        rows = list(csv_reader)
+        
+        if not rows:
+            logger.error(f"CSV is empty for verification job {job_id}")
+            job.status = "failed"
+            db.commit()
+            return False
+        
+        actual_columns = list(rows[0].keys())
+        
+        # Retrieve column mappings stored on the job
+        # column_website stores column_email for verification jobs
+        email_col = getattr(job, 'column_website', None) or 'email'
+        first_name_col = getattr(job, 'column_first_name', None) or 'first_name'
+        last_name_col = getattr(job, 'column_last_name', None) or 'last_name'
+        
+        logger.info(f"📋 Column mapping: email='{email_col}', first_name='{first_name_col}', last_name='{last_name_col}'")
+        
+        if email_col not in actual_columns:
+            logger.error(f"Email column '{email_col}' not found in CSV columns: {actual_columns}")
+            job.status = "failed"
+            db.commit()
+            return False
+        
+        # Build leads from CSV rows - strictly 1 email = 1 lead, NO permutations
+        mapped_cols = {email_col, first_name_col, last_name_col}
+        leads_to_create = []
+        
+        for row in rows:
+            email = row.get(email_col, '').strip()
+            if not email:
+                continue
+            
+            first_name = ''
+            if first_name_col in actual_columns:
+                first_name = clean_first_name(row.get(first_name_col, '').strip())
+            
+            last_name = ''
+            if last_name_col in actual_columns:
+                last_name = row.get(last_name_col, '').strip()
+            
+            domain = ''
+            if '@' in email:
+                domain = email.split('@')[1]
+            
+            # Capture extra columns
+            extra_data = {}
+            for col, val in row.items():
+                if col not in mapped_cols and val and str(val).strip():
+                    extra_data[col] = str(val).strip()
+            
+            lead = Lead(
+                job_id=job.id,
+                user_id=job.user_id,
+                first_name=first_name,
+                last_name=last_name,
+                domain=domain,
+                email=email,
+                verification_status='pending',
+                is_final_result=False,
+                extra_data=extra_data,
+            )
+            leads_to_create.append(lead)
+        
+        if not leads_to_create:
+            logger.error(f"No valid email rows found in CSV for verification job {job_id}")
+            job.status = "failed"
+            db.commit()
+            return False
+        
+        logger.info(f"📊 Parsed {len(leads_to_create)} emails from {len(rows)} CSV rows (verification, no permutations)")
+        
+        # Batch insert leads to avoid massive SQL statements
+        BATCH_SIZE = 500
+        total_inserted = 0
+        for i in range(0, len(leads_to_create), BATCH_SIZE):
+            batch = leads_to_create[i:i + BATCH_SIZE]
+            db.bulk_save_objects(batch)
+            db.flush()
+            total_inserted += len(batch)
+            if total_inserted % 5000 == 0 or total_inserted == len(leads_to_create):
+                logger.info(f"💾 Inserted {total_inserted}/{len(leads_to_create)} leads")
+        
+        # Get user for credit deduction
+        user = db.query(User).filter(User.id == job.user_id).first()
+        if not user:
+            logger.error(f"User not found for verification job {job_id}")
+            job.status = "failed"
+            db.commit()
+            return False
+        
+        # Deduct credits (skip for admin)
+        is_admin = user.email == ADMIN_EMAIL or getattr(user, 'is_admin', False)
+        leads_count = len(leads_to_create)
+        
+        if not is_admin:
+            if user.credits < leads_count:
+                logger.warning(f"Insufficient credits for user {user.id} (needs {leads_count}, has {user.credits})")
+                job.status = "failed"
+                db.rollback()
+                return False
+            logger.info(f"💰 Deducting {leads_count} credits from user {user.id}")
+            user.credits -= leads_count
+        
+        # Update job - total_leads was already set in the endpoint
+        job.status = "pending"
+        db.commit()
+        
+        logger.info(f"✅ Created {leads_count} leads for verification job {job_id}")
+        
+        # Queue job for verification processing
+        try:
+            verification_queue = get_verification_queue_for_user(db, user.id)
+            redis_client.lpush(verification_queue, str(job.id))
+            queue_length = redis_client.llen(verification_queue)
+            logger.info(f"📤 QUEUED verification job {job_id} to '{verification_queue}' (queue length: {queue_length})")
+        except Exception as e:
+            logger.error(f"❌ Failed to queue verification job {job_id}: {e}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Error processing verification job {job_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            db.rollback()
+            job = db.query(Job).filter(Job.id == UUID(job_id)).first()
+            if job:
+                job.status = "failed"
+                db.commit()
+        except:
+            pass
+        return False
+    finally:
+        db.close()
+
+
 def main():
     """Main worker loop - polls enrichment queue and processes jobs."""
     logger.info(f"🚀 Enrichment worker starting...")
@@ -678,8 +878,23 @@ def main():
                 job_id = job_id[1]
                 logger.info(f"📥 Received job {job_id} from queue")
                 
-                # Process job
-                success = process_enrichment_job(job_id)
+                # Check job type to route to correct processor
+                try:
+                    job_uuid = UUID(job_id)
+                    db = SessionLocal()
+                    job = db.query(Job).filter(Job.id == job_uuid).first()
+                    job_type = job.job_type if job else None
+                    db.close()
+                except Exception:
+                    job_type = None
+                
+                if job_type == "verification":
+                    # Deferred verification job (large upload) - NO permutations
+                    logger.info(f"📋 Job {job_id} is verification type - processing without permutations")
+                    success = process_verification_job(job_id)
+                else:
+                    # Standard enrichment job - with permutations
+                    success = process_enrichment_job(job_id)
                 
                 if success:
                     logger.info(f"✅ Successfully processed job {job_id}")
