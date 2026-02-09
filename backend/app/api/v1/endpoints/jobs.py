@@ -610,7 +610,12 @@ async def upload_verify_file(
             detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {leads_count} credits. Please top up your account."
         )
     
+    # Threshold for deferring lead creation to worker (avoids DB parameter limits + HTTP timeouts)
+    DEFER_THRESHOLD = 10000
+
     # Create job with job_type="verification"
+    # For large uploads, store column mappings so the worker can re-parse the CSV
+    # column_website is reused to store column_email (verification jobs don't use website)
     job = Job(
         user_id=current_user.id,
         status="pending",
@@ -622,6 +627,10 @@ async def upload_verify_file(
         valid_emails_found=0,
         catchall_emails_found=0,
         cost_in_credits=0,
+        # Store column mappings for worker (used when deferring large uploads)
+        column_first_name=column_first_name,
+        column_last_name=column_last_name,
+        column_website=column_email,  # Reuse column_website to store email column mapping
     )
     db.add(job)
     db.commit()
@@ -636,6 +645,7 @@ async def upload_verify_file(
             Body=contents
         )
         job.input_file_path = input_file_path
+        db.commit()
     except Exception as e:
         db.delete(job)
         db.commit()
@@ -644,38 +654,53 @@ async def upload_verify_file(
             detail=f"Failed to upload file: {str(e)}"
         )
     
-    # Create leads directly from CSV (no permutations)
-    leads_to_create = []
-    for row in remapped_rows:
-        lead = Lead(
-            job_id=job.id,
-            user_id=current_user.id,
-            first_name=row.get('first_name', ''),
-            last_name=row.get('last_name', ''),
-            domain=row.get('domain', ''),
-            email=row['email'],
-            verification_status='pending',
-            is_final_result=False,
-            extra_data=row.get('extra_data', {}),
-        )
-        leads_to_create.append(lead)
-    
-    # Bulk insert leads
-    db.bulk_save_objects(leads_to_create)
-    db.commit()
-    
-    # Queue job for processing - route to client-specific queue if configured
-    try:
-        job_id_str = str(job.id)
-        queue_name = get_verification_queue_for_user(db, current_user.id)
-        redis_client.lpush(queue_name, job_id_str)
-        queue_length = redis_client.llen(queue_name)
-        print(f"📤 QUEUED verification job {job.id} to Redis queue '{queue_name}' (queue length: {queue_length})")
-    except Exception as e:
-        print(f"❌ Failed to queue verification job {job.id}: {e}")
-        import traceback
-        traceback.print_exc()
-        pass
+    if leads_count >= DEFER_THRESHOLD:
+        # ---- LARGE UPLOAD: Defer lead creation to enrichment worker ----
+        # Worker will download CSV from R2, parse emails, create leads, then queue for verification.
+        # This avoids massive SQL INSERT statements and HTTP timeouts.
+        print(f"📦 Large verification upload ({leads_count} rows >= {DEFER_THRESHOLD}), deferring lead creation to worker")
+        try:
+            job_id_str = str(job.id)
+            enrichment_queue = get_enrichment_queue_for_user(db, current_user.id)
+            redis_client.lpush(enrichment_queue, job_id_str)
+            queue_length = redis_client.llen(enrichment_queue)
+            print(f"📤 QUEUED large verification job {job.id} to enrichment queue '{enrichment_queue}' (queue length: {queue_length})")
+        except Exception as e:
+            print(f"❌ Failed to queue verification job {job.id}: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        # ---- SMALL UPLOAD: Create leads synchronously (fast, immediate) ----
+        leads_to_create = []
+        for row in remapped_rows:
+            lead = Lead(
+                job_id=job.id,
+                user_id=current_user.id,
+                first_name=row.get('first_name', ''),
+                last_name=row.get('last_name', ''),
+                domain=row.get('domain', ''),
+                email=row['email'],
+                verification_status='pending',
+                is_final_result=False,
+                extra_data=row.get('extra_data', {}),
+            )
+            leads_to_create.append(lead)
+        
+        # Bulk insert leads
+        db.bulk_save_objects(leads_to_create)
+        db.commit()
+        
+        # Queue job for verification processing
+        try:
+            job_id_str = str(job.id)
+            queue_name = get_verification_queue_for_user(db, current_user.id)
+            redis_client.lpush(queue_name, job_id_str)
+            queue_length = redis_client.llen(queue_name)
+            print(f"📤 QUEUED verification job {job.id} to Redis queue '{queue_name}' (queue length: {queue_length})")
+        except Exception as e:
+            print(f"❌ Failed to queue verification job {job.id}: {e}")
+            import traceback
+            traceback.print_exc()
     
     return JobUploadResponse(
         job_id=job.id,
