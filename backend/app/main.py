@@ -207,6 +207,7 @@ async def startup_tasks():
         from migrate_fix_swapped_cities import run_migration as migrate_fix_swapped_cities
         from migrate_add_website_scraper_cache import run_migration as migrate_website_scraper_cache
         from migrate_add_scraper_options import run_migration as migrate_scraper_options
+        from migrate_leads_columns_to_text import run_migration as migrate_leads_to_text
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -223,6 +224,7 @@ async def startup_tasks():
         migrate_fix_swapped_cities()  # Fix swapped state/city columns in google_maps_cities
         migrate_website_scraper_cache()  # Add cache table for URL results
         migrate_scraper_options()  # Add enable_cache and enable_sublink_scraping columns
+        migrate_leads_to_text()  # Convert leads VARCHAR columns to TEXT (remove 255 char limits)
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
