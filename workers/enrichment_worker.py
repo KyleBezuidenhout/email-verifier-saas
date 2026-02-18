@@ -503,6 +503,11 @@ def process_enrichment_job(job_id: str) -> bool:
             logger.error(f"Job {job_id} not found")
             return False
         
+        # Safety net: never run enrichment/permutation logic on a verification job
+        if job.job_type == "verification":
+            logger.error(f"❌ Job {job_id} is a verification job but was routed to enrichment processor. Skipping to prevent permutation generation on email addresses.")
+            return False
+        
         # Check if job is already processed or in wrong state
         if job.status not in ['pending', 'waiting_for_csv']:
             logger.warning(f"Job {job_id} has status '{job.status}', skipping (expected 'pending' or 'waiting_for_csv')")
@@ -736,8 +741,8 @@ def process_verification_job(job_id: str) -> bool:
         actual_columns = list(rows[0].keys())
         
         # Retrieve column mappings stored on the job
-        # column_website stores column_email for verification jobs
-        email_col = getattr(job, 'column_website', None) or 'email'
+        # Prefer column_email; fall back to column_website for pre-migration jobs
+        email_col = getattr(job, 'column_email', None) or getattr(job, 'column_website', None) or 'email'
         first_name_col = getattr(job, 'column_first_name', None) or 'first_name'
         last_name_col = getattr(job, 'column_last_name', None) or 'last_name'
         
@@ -885,10 +890,16 @@ def main():
                     job = db.query(Job).filter(Job.id == job_uuid).first()
                     job_type = job.job_type if job else None
                     db.close()
-                except Exception:
+                except Exception as e:
+                    logger.error(f"❌ Failed to determine job type for {job_id}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     job_type = None
                 
-                if job_type == "verification":
+                if job_type is None:
+                    logger.error(f"❌ Could not determine job type for {job_id}, skipping to avoid misroute")
+                    continue
+                elif job_type == "verification":
                     # Deferred verification job (large upload) - NO permutations
                     logger.info(f"📋 Job {job_id} is verification type - processing without permutations")
                     success = process_verification_job(job_id)

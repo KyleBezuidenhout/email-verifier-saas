@@ -19,6 +19,7 @@ class Job(Base):
     column_first_name = Column(String(255), nullable=True)
     column_last_name = Column(String(255), nullable=True)
     column_website = Column(String(255), nullable=True)
+    column_email = Column(String(255), nullable=True)
     column_company_size = Column(String(255), nullable=True)
     original_filename = Column(Text)
     job_name = Column(String(255), nullable=True)  # Optional user-provided job name

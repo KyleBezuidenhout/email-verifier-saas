@@ -615,22 +615,20 @@ async def upload_verify_file(
 
     # Create job with job_type="verification"
     # For large uploads, store column mappings so the worker can re-parse the CSV
-    # column_website is reused to store column_email (verification jobs don't use website)
     job = Job(
         user_id=current_user.id,
         status="pending",
         job_type="verification",
         original_filename=file.filename,
-        job_name=job_name.strip() if job_name else None,  # Optional user-provided job name
+        job_name=job_name.strip() if job_name else None,
         total_leads=len(remapped_rows),
         processed_leads=0,
         valid_emails_found=0,
         catchall_emails_found=0,
         cost_in_credits=0,
-        # Store column mappings for worker (used when deferring large uploads)
         column_first_name=column_first_name,
         column_last_name=column_last_name,
-        column_website=column_email,  # Reuse column_website to store email column mapping
+        column_email=column_email,
     )
     db.add(job)
     db.commit()
