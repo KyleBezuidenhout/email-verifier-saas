@@ -131,9 +131,28 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
       last_name: "Last Name",
       website: "Website/Domain",
       email: "Email",
-      company_size: "Company Size (optional)",
+      company_size: "Company Size",
     };
     return labels[col];
+  };
+
+  const getColumnsForMode = (m?: 'enrichment' | 'verification' | 'website-scraper'): { key: keyof ColumnMapping; required: boolean }[] => {
+    if (m === 'verification') {
+      return [
+        { key: 'email', required: true },
+        { key: 'first_name', required: false },
+        { key: 'last_name', required: false },
+      ];
+    }
+    if (m === 'website-scraper') {
+      return [{ key: 'website', required: true }];
+    }
+    return [
+      { key: 'first_name', required: true },
+      { key: 'last_name', required: true },
+      { key: 'website', required: true },
+      { key: 'company_size', required: false },
+    ];
   };
 
   if (loading) {
@@ -154,92 +173,52 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
 
   return (
     <div className="mt-4 space-y-4">
-      {/* Column Mapping Section - only show if there are unmapped columns */}
-      {unmappedColumns.length > 0 && (
-        <div className="glass-card bg-yellow-900/20 border-yellow-800 p-4">
-          <h4 className="text-sm font-medium text-yellow-300 mb-3">
-            📋 Please map the following columns:
-          </h4>
-          <div className="space-y-3">
-            {unmappedColumns.map((col) => (
-              <div key={col} className="flex items-center gap-3">
-                <label className="text-sm text-dashboard-text w-40">
-                  {getColumnLabel(col)}:
-                </label>
-                <select
-                  value={mapping[col] || ""}
-                  onChange={(e) => handleColumnSelect(col, e.target.value)}
-                  className="apple-input flex-1 text-sm"
-                >
-                  <option value="">-- Select column --</option>
-                  {headers.map((header) => (
-                    <option key={header} value={header}>
-                      {header}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Success message when all columns are mapped */}
-      {unmappedColumns.length === 0 && (
-        <div className="badge-success px-4 py-3 rounded-lg text-sm flex items-center gap-2">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          All required columns detected!
-        </div>
-      )}
-
-      {/* Column Mapping Summary */}
+      {/* Column Mapping */}
       <div className="glass-card p-4">
-        <h4 className="text-sm font-medium text-dashboard-text mb-2">Column Mapping:</h4>
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          {mode === 'verification' ? (
-            <>
-              <div className="text-dashboard-text-muted">Email →</div>
-              <div className={mapping.email ? "text-green-400 font-medium" : "text-red-400"}>
-                {mapping.email || "Not mapped (required)"}
-              </div>
-              <div className="text-dashboard-text-muted">First Name →</div>
-              <div className={mapping.first_name ? "text-green-400 font-medium" : "text-dashboard-text-muted"}>
-                {mapping.first_name || "Not mapped (optional)"}
-              </div>
-              <div className="text-dashboard-text-muted">Last Name →</div>
-              <div className={mapping.last_name ? "text-green-400 font-medium" : "text-dashboard-text-muted"}>
-                {mapping.last_name || "Not mapped (optional)"}
-              </div>
-            </>
-          ) : mode === 'website-scraper' ? (
-            <>
-              <div className="text-dashboard-text-muted">Website →</div>
-              <div className={mapping.website ? "text-green-400 font-medium" : "text-red-400"}>
-                {mapping.website || "Not mapped (required)"}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-dashboard-text-muted">First Name →</div>
-              <div className={mapping.first_name ? "text-green-400 font-medium" : "text-red-400"}>
-                {mapping.first_name || "Not mapped"}
-              </div>
-              <div className="text-dashboard-text-muted">Last Name →</div>
-              <div className={mapping.last_name ? "text-green-400 font-medium" : "text-red-400"}>
-                {mapping.last_name || "Not mapped"}
-              </div>
-              <div className="text-dashboard-text-muted">Website →</div>
-              <div className={mapping.website ? "text-green-400 font-medium" : "text-red-400"}>
-                {mapping.website || "Not mapped"}
-              </div>
-              <div className="text-dashboard-text-muted">Company Size →</div>
-              <div className={mapping.company_size ? "text-green-400 font-medium" : "text-dashboard-text-muted"}>
-                {mapping.company_size || "Not mapped (optional)"}
-              </div>
-            </>
-          )}
+        <h4 className="text-sm font-medium text-dashboard-text mb-3">Column Mapping:</h4>
+        {unmappedColumns.length === 0 ? (
+          <div className="badge-success px-3 py-2 rounded-lg text-xs flex items-center gap-2 mb-3">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            All required columns detected! Adjust below if needed.
+          </div>
+        ) : (
+          <div className="bg-yellow-900/20 border border-yellow-800 px-3 py-2 rounded-lg text-xs text-yellow-300 mb-3">
+            Please select the missing required columns below.
+          </div>
+        )}
+        <div className="space-y-3">
+          {getColumnsForMode(mode).map(({ key, required }) => (
+            <div key={key} className="flex items-center gap-3">
+              <label className="text-sm text-dashboard-text w-44 shrink-0">
+                {getColumnLabel(key)}
+                {required ? (
+                  <span className="text-red-400 ml-1">*</span>
+                ) : (
+                  <span className="text-dashboard-text-muted ml-1 text-xs">(optional)</span>
+                )}
+              </label>
+              <select
+                value={mapping[key] || ""}
+                onChange={(e) => handleColumnSelect(key, e.target.value)}
+                className={`apple-input flex-1 text-sm ${
+                  mapping[key]
+                    ? "border-green-700/50"
+                    : required
+                    ? "border-red-700/50"
+                    : ""
+                }`}
+              >
+                <option value="">-- Select column --</option>
+                {headers.map((header) => (
+                  <option key={header} value={header}>
+                    {header}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
         </div>
       </div>
 
