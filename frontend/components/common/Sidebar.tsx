@@ -8,6 +8,7 @@ interface NavItem {
   name: string;
   href: string | null; // null means disabled/coming soon
   icon: React.ReactNode;
+  adminOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -33,6 +34,7 @@ const navItems: NavItem[] = [
   {
     name: "Google Maps Scraper",
     href: "/local-lead-scraper",
+    adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -43,6 +45,7 @@ const navItems: NavItem[] = [
   {
     name: "Website Scraper",
     href: "/website-scraper",
+    adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
@@ -80,6 +83,7 @@ const navItems: NavItem[] = [
   {
     name: "Get More Credits",
     href: "/get-credits",
+    adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
@@ -145,7 +149,9 @@ export function Sidebar() {
 
         {/* Navigation Items */}
         <nav className="flex-1 p-4 space-y-1">
-          {navItems.map((item) => {
+          {navItems
+            .filter((item) => !item.adminOnly || user?.is_admin)
+            .map((item) => {
             if (item.href === null) {
               return (
                 <div
@@ -159,8 +165,7 @@ export function Sidebar() {
               );
             }
             
-            // TypeScript now knows item.href is string (not null) after the check above
-            const href = item.href; // Type narrowing helper
+            const href = item.href;
             const isActive = pathname === href || pathname?.startsWith(href + "/");
             return (
               <Link
@@ -174,6 +179,17 @@ export function Sidebar() {
               >
                 {item.icon}
                 <span className="text-sm">{item.name}</span>
+                {item.adminOnly && (
+                  <svg
+                    className="w-4 h-4 ml-auto text-dashboard-text-muted/50 shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    title="Hidden from clients"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L6.59 6.59m7.532 7.532l3.29 3.29M3 3l18 18" />
+                  </svg>
+                )}
               </Link>
             );
           })}
