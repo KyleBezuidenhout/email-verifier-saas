@@ -118,6 +118,28 @@ EMOJI_PATTERN = re.compile(
 )
 
 
+def detect_duplicate_headers(csv_content: str) -> list:
+    """
+    Detect duplicate column headers in CSV content.
+    Python's csv.DictReader silently uses last-value-wins for duplicates,
+    which causes data to be read from the wrong column.
+    Returns a list of header names that appear more than once.
+    """
+    reader = csv.reader(io.StringIO(csv_content))
+    try:
+        headers = next(reader)
+    except StopIteration:
+        return []
+    seen = set()
+    duplicates = set()
+    for h in headers:
+        normalized = h.strip()
+        if normalized in seen:
+            duplicates.add(normalized)
+        seen.add(normalized)
+    return sorted(duplicates)
+
+
 def remove_invisible_chars(value: str) -> str:
     """Remove all invisible/zero-width characters from string."""
     if not value:
@@ -319,6 +341,12 @@ async def upload_file(
     # Read and parse CSV (handle UTF-8 BOM)
     contents = await file.read()
     csv_content = contents.decode('utf-8-sig')  # utf-8-sig handles BOM automatically
+    
+    # Detect duplicate headers before DictReader silently merges them
+    duplicate_headers = detect_duplicate_headers(csv_content)
+    if duplicate_headers:
+        print(f"⚠️  Duplicate headers detected: {duplicate_headers}")
+    
     csv_reader = csv.DictReader(io.StringIO(csv_content))
     
     # Get actual column names from CSV
@@ -441,6 +469,9 @@ async def upload_file(
         else:
             detail_msg += "All rows were filtered out due to missing or invalid data in required columns (first_name, last_name, website)."
         
+        if duplicate_headers:
+            detail_msg += f" WARNING: Your CSV has duplicate column headers ({', '.join(duplicate_headers)}). This causes data to be read incorrectly. Please remove duplicate columns and re-upload."
+        
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=detail_msg
@@ -542,6 +573,12 @@ async def upload_verify_file(
     # Read and parse CSV (handle UTF-8 BOM)
     contents = await file.read()
     csv_content = contents.decode('utf-8-sig')  # utf-8-sig handles BOM automatically
+    
+    # Detect duplicate headers before DictReader silently merges them
+    duplicate_headers = detect_duplicate_headers(csv_content)
+    if duplicate_headers:
+        print(f"⚠️  Duplicate headers detected in verify-upload: {duplicate_headers}")
+    
     csv_reader = csv.DictReader(io.StringIO(csv_content))
     
     # Get actual column names from CSV
@@ -595,9 +632,12 @@ async def upload_verify_file(
         remapped_rows.append(remapped_row)
     
     if not remapped_rows:
+        detail_msg = "No valid rows with email addresses found in CSV."
+        if duplicate_headers:
+            detail_msg += f" WARNING: Your CSV has duplicate column headers ({', '.join(duplicate_headers)}). This causes data to be read incorrectly. Please remove duplicate columns and re-upload."
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No valid rows with email addresses found in CSV"
+            detail=detail_msg
         )
     
     # Check credits (1 credit per email to verify) - skip for admin

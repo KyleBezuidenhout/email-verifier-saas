@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     VAYNE_POLLING_MAX_INTERVAL_MS: int = 30000
     VAYNE_QUEUE_WORKER_POLL_INTERVAL: int = 30  # seconds
     VAYNE_QUEUE_WORKER_ACTIVE_CHECK_INTERVAL: int = 60  # seconds
+    VAYNE_FALLBACK_COOKIE: str = ""  # Fallback LinkedIn li_at cookie used when user cookie fails/missing
     
     # Webhook authentication
     WEBHOOK_SECRET_TOKEN: str = ""  # Secret token for webhook authentication

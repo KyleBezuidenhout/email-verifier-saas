@@ -46,9 +46,8 @@ class UrlValidationResponse(BaseModel):
 
 class CreateOrderRequest(BaseModel):
     sales_nav_url: str
-    linkedin_cookie: str
-    targeting: Optional[str] = None  # Job name/targeting description
-    estimated_leads: Optional[int] = None  # Estimated lead count from URL validation
+    linkedin_cookie: Optional[str] = ""  # Optional -- fallback session used when empty
+    targeting: Optional[str] = None
 
 
 class CreateOrderResponse(BaseModel):

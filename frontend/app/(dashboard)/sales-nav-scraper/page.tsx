@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
-import { VayneCredits, VayneUrlCheck, VayneOrder, VayneOrderCreate } from "@/types";
+import { VayneCredits, VayneOrder, VayneOrderCreate } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
@@ -14,10 +14,8 @@ export default function SalesNavScraperPage() {
   // Credits state
   const [credits, setCredits] = useState<VayneCredits | null>(null);
   
-  // URL validation state
+  // URL state (regex-only validation, no API call)
   const [salesNavUrl, setSalesNavUrl] = useState("");
-  const [urlValidation, setUrlValidation] = useState<VayneUrlCheck | null>(null);
-  const [validatingUrl, setValidatingUrl] = useState(false);
   
   // Form state
   const [jobName, setJobName] = useState("");
@@ -86,32 +84,9 @@ export default function SalesNavScraperPage() {
     }
   }, []);
 
-  const validateUrl = useCallback(async (url: string) => {
-    if (!url.trim()) {
-      setUrlValidation(null);
-      return;
-    }
-    
-    setValidatingUrl(true);
-    try {
-      const check = await apiClient.checkVayneUrl(url);
-      if (!check.is_valid) {
-        setUrlValidation({
-          ...check,
-          error: "Invalid URL - Please make sure the URL you submitted is valid",
-        });
-      } else {
-        setUrlValidation(check);
-      }
-    } catch (err) {
-      setUrlValidation({
-        valid: false,
-        error: "Invalid URL - Please make sure the URL you submitted is valid",
-      });
-    } finally {
-      setValidatingUrl(false);
-    }
-  }, []);
+  // Regex-only URL validation (no API call needed)
+  const SALES_NAV_URL_REGEX = /^https?:\/\/(www\.)?linkedin\.com\/sales\/(search|lists|lead)/i;
+  const isUrlFormatValid = salesNavUrl.trim() ? SALES_NAV_URL_REGEX.test(salesNavUrl.trim()) : false;
 
   // Load credits and history on mount
   useEffect(() => {
@@ -206,44 +181,19 @@ export default function SalesNavScraperPage() {
     };
   }, []); // Empty dependency array - only run once on mount
 
-  // Debounced URL validation
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    
-    if (salesNavUrl.trim()) {
-      timer = setTimeout(() => {
-        validateUrl(salesNavUrl);
-      }, 500);
-    } else {
-      setUrlValidation(null);
-    }
-    
-    return () => {
-      if (timer) {
-        clearTimeout(timer);
-      }
-    };
-  }, [salesNavUrl, validateUrl]);
+  // URL format validation is handled by the SALES_NAV_URL_REGEX memo above (no API calls)
 
 
 
 
 
   const handleStartScraping = async () => {
-    if (!salesNavUrl.trim() || !urlValidation?.is_valid) {
-      setError("Please enter a valid Sales Navigator URL");
+    if (!isUrlFormatValid) {
+      setError("Please enter a valid Sales Navigator URL (e.g. linkedin.com/sales/search/...)");
       setShowErrorModal(true);
       return;
     }
     
-    // Require cookie for each scrape
-    if (!linkedinCookie.trim()) {
-      setError("Please enter your LinkedIn session cookie to start scraping");
-      setShowErrorModal(true);
-      return;
-    }
-    
-    // Require job name
     if (!jobName.trim()) {
       setError("Please enter a name for your scraping job");
       setShowErrorModal(true);
@@ -254,9 +204,8 @@ export default function SalesNavScraperPage() {
     try {
       const orderData: VayneOrderCreate = {
         sales_nav_url: salesNavUrl,
-        linkedin_cookie: linkedinCookie,
+        linkedin_cookie: linkedinCookie.trim() || "",
         targeting: jobName.trim(),
-        estimated_leads: urlValidation.estimated_results || undefined,  // Pass estimated leads for credit deduction
       };
       
       const response = await apiClient.createVayneOrder(orderData);
@@ -283,7 +232,6 @@ export default function SalesNavScraperPage() {
       setLinkedinCookie("");
       setJobName("");
       setSalesNavUrl("");
-      setUrlValidation(null);
       
       // Refresh credits after order creation
       await loadCredits();
@@ -358,7 +306,6 @@ export default function SalesNavScraperPage() {
   const handleClearForm = () => {
     setJobName("");
     setSalesNavUrl("");
-    setUrlValidation(null);
     setLinkedinCookie("");
   };
 
@@ -516,15 +463,15 @@ export default function SalesNavScraperPage() {
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 <div>
                   <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie Ready</p>
-                  <p className="text-xs text-dashboard-text-muted">Cookie entered - ready to scrape</p>
+                  <p className="text-xs text-dashboard-text-muted">Custom cookie entered</p>
                 </div>
               </>
             ) : (
               <>
-                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
                 <div>
-                  <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie Required</p>
-                  <p className="text-xs text-dashboard-text-muted">Enter your session cookie to start scraping</p>
+                  <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie (Optional)</p>
+                  <p className="text-xs text-dashboard-text-muted">Default session will be used if not provided</p>
                 </div>
               </>
             )}
@@ -533,7 +480,7 @@ export default function SalesNavScraperPage() {
             onClick={() => setShowAuthModal(true)}
             className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors text-sm font-medium"
           >
-            {linkedinCookie.trim() ? "Update Cookie" : "Connect LinkedIn Account"}
+            {linkedinCookie.trim() ? "Update Cookie" : "Add Custom Cookie"}
           </button>
         </div>
       </div>
@@ -545,8 +492,8 @@ export default function SalesNavScraperPage() {
           <div className="relative glass-card p-6 shadow-2xl max-w-md w-full mx-4" style={{ background: 'rgba(13, 15, 18, 0.9)' }}>
             <h3 className="text-xl font-semibold text-dashboard-text mb-4">LinkedIn Authentication</h3>
             <p className="text-sm text-dashboard-text-muted mb-4">
-              Enter your LinkedIn session cookie (<code className="bg-dashboard-card px-1 py-0.5 rounded">li_at</code>) to authenticate.
-              <strong className="block mt-2">A fresh cookie is required for each scraping order.</strong>
+              Optionally enter your LinkedIn session cookie (<code className="bg-dashboard-card px-1 py-0.5 rounded">li_at</code>) for authentication.
+              <strong className="block mt-2">If left empty, the default session will be used.</strong>
             </p>
             <p className="text-xs text-dashboard-text-muted mb-4">
               <strong>How to get your cookie:</strong> Open browser developer tools (F12), go to Application/Storage → Cookies → linkedin.com, copy the "li_at" value.
@@ -561,13 +508,6 @@ export default function SalesNavScraperPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => {
-                  if (!linkedinCookie.trim()) {
-                    setError("Please enter your LinkedIn session cookie");
-                    setShowErrorModal(true);
-                    return;
-                  }
-                  
-                  // Just save the cookie locally - the queue worker will update Vayne's session when processing the order
                   setShowAuthModal(false);
                 }}
                 className="flex-1 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors"
@@ -603,21 +543,15 @@ export default function SalesNavScraperPage() {
         <p className="mt-2 text-xs text-dashboard-text-muted">
           Paste the URL from your Sales Navigator search results page
         </p>
-        {validatingUrl && (
-          <div className="mt-2 flex items-center gap-2 text-sm text-apple-text-muted">
-            <LoadingSpinner size="sm" />
-            <span>Validating URL...</span>
-          </div>
-        )}
-        {urlValidation && (
+        {salesNavUrl.trim() && (
           <div className="mt-2 flex items-center gap-2">
-            {urlValidation.is_valid ? (
+            {isUrlFormatValid ? (
               <>
                 <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <span className="text-sm text-green-500">
-                  Valid URL • Estimated {urlValidation.estimated_results?.toLocaleString() || "N/A"} leads
+                  Valid Sales Navigator URL
                 </span>
               </>
             ) : (
@@ -625,7 +559,7 @@ export default function SalesNavScraperPage() {
                 <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
-                <span className="text-sm text-red-500">{urlValidation.error || "Invalid URL"}</span>
+                <span className="text-sm text-red-500">Please enter a valid Sales Navigator URL (linkedin.com/sales/search/...)</span>
               </>
             )}
           </div>
@@ -636,7 +570,7 @@ export default function SalesNavScraperPage() {
       <div className="flex gap-3 mb-6">
         <button
           onClick={handleStartScraping}
-          disabled={!urlValidation?.is_valid || !linkedinCookie.trim() || creatingOrder}
+          disabled={!isUrlFormatValid || !jobName.trim() || creatingOrder}
           className="flex-1 px-6 py-3 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
         >
           {creatingOrder ? (
@@ -729,11 +663,24 @@ export default function SalesNavScraperPage() {
                           <span className="text-blue-400">In Queue</span>
                         </div>
                       ) : order.status === "failed" ? (
-                        <div className="flex items-center gap-2">
+                        <div className="relative group flex items-center gap-2">
                           <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                           </svg>
                           <span className="text-red-400">Failed</span>
+                          {order.failure_reason && (
+                            <>
+                              <svg className="w-3.5 h-3.5 text-red-400/60 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <div className="absolute left-0 top-full mt-2 z-50 hidden group-hover:block">
+                                <div className="bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-lg py-2 px-3 max-w-xs shadow-xl">
+                                  <div className="absolute -top-1 left-4 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 rotate-45"></div>
+                                  {order.failure_reason}
+                                </div>
+                              </div>
+                            </>
+                          )}
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 min-w-[120px]">

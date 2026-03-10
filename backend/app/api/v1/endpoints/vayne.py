@@ -189,23 +189,6 @@ async def url_check(payload: UrlCheckRequest):
         }
 
 
-def charge_credits(db: Session, user: User, amount: int):
-    if amount <= 0:
-        return
-    if is_admin_user(user):
-        return
-    if user.credits < amount:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=f"Insufficient credits. Needed {amount}, you have {user.credits}",
-        )
-    from sqlalchemy import text
-    db.execute(
-        text("UPDATE users SET credits = GREATEST(0, credits - :amt) WHERE id = :uid"),
-        {"amt": amount, "uid": str(user.id)},
-    )
-    db.commit()
-
 @router.post("/orders", response_model=CreateOrderResponse)
 async def create_order(
     payload: CreateOrderRequest,
@@ -226,27 +209,21 @@ async def create_order(
     4. Update the database with vayne_order_id and status
     """
     try:
-        # Validate required fields
         if not payload.sales_nav_url:
             raise HTTPException(status_code=400, detail="Sales Navigator URL is required")
-        if not payload.linkedin_cookie:
-            raise HTTPException(status_code=400, detail="LinkedIn cookie is required")
         
-        logger.info(f"📝 Creating queued order for user {current_user.id}")
+        logger.info(f"Creating queued order for user {current_user.id}")
         logger.info(f"   URL: {payload.sales_nav_url[:50]}...")
         logger.info(f"   Targeting: {payload.targeting or 'Untitled Order'}")
         
-        # Create order in database with status='queued'
-        # The queue worker will process this and send to Vayne when ready
         order = VayneOrder(
             user_id=current_user.id,
-            vayne_order_id=None,  # Will be set by queue worker when processed
-            status="queued",  # Order is queued for processing
-            sales_nav_url=payload.sales_nav_url,  # Store the Sales Nav URL
-            url=payload.sales_nav_url,  # Also store in url for backwards compatibility
-            linkedin_cookie=payload.linkedin_cookie,  # Store cookie for queue worker
+            vayne_order_id=None,
+            status="queued",
+            sales_nav_url=payload.sales_nav_url,
+            url=payload.sales_nav_url,
+            linkedin_cookie=payload.linkedin_cookie or "",
             targeting=payload.targeting or "Untitled Order",
-            estimated_leads=payload.estimated_leads,  # Store estimated lead count for credit deduction
         )
         
         db.add(order)
@@ -303,6 +280,8 @@ async def list_orders(
                     "leads_qualified": getattr(order, 'leads_qualified', 0) or 0,
                     "progress_percentage": getattr(order, 'progress_percentage', 0) or 0,
                     "file_url": getattr(order, 'file_url', None),
+                    "failure_reason": getattr(order, 'failure_reason', None),
+                    "credits_charged": getattr(order, 'credits_charged', 0) or 0,
                     "created_at": order.created_at.isoformat() if order.created_at else None,
                     "completed_at": order.completed_at.isoformat() if order.completed_at else None,
                 }

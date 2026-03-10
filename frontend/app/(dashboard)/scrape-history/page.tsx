@@ -227,11 +227,30 @@ export default function ScrapeHistoryPage() {
                       {order.targeting || "Untitled Scrape"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(order.status)}`}
-                      >
-                        {order.status}
-                      </span>
+                      {order.status === "failed" && order.failure_reason ? (
+                        <div className="relative group inline-flex items-center gap-1.5">
+                          <span
+                            className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(order.status)}`}
+                          >
+                            {order.status}
+                          </span>
+                          <svg className="w-3.5 h-3.5 text-red-400/60 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div className="absolute left-0 top-full mt-2 z-50 hidden group-hover:block">
+                            <div className="bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-lg py-2 px-3 max-w-xs shadow-xl">
+                              <div className="absolute -top-1 left-4 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 rotate-45"></div>
+                              {order.failure_reason}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(order.status)}`}
+                        >
+                          {order.status}
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
                       {order.leads_found?.toLocaleString() || "—"}

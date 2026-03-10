@@ -8,7 +8,6 @@ interface ColumnMapping {
   last_name?: string;
   website?: string;
   email?: string;
-  company_size?: string;
 }
 
 interface FilePreviewProps {
@@ -67,12 +66,24 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
     company_size: "",
   });
   const [unmappedColumns, setUnmappedColumns] = useState<(keyof ColumnMapping)[]>([]);
+  const [duplicateHeaders, setDuplicateHeaders] = useState<string[]>([]);
 
   useEffect(() => {
     const requiredColumns = getRequiredColumns(mode);
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
+      // Detect duplicate headers from the raw first line before PapaParse renames them
+      const firstLine = text.split(/\r?\n/)[0];
+      const rawHeaders = firstLine.split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
+      const headerCounts: Record<string, number> = {};
+      const dupes: string[] = [];
+      for (const h of rawHeaders) {
+        headerCounts[h] = (headerCounts[h] || 0) + 1;
+        if (headerCounts[h] === 2) dupes.push(h);
+      }
+      setDuplicateHeaders(dupes);
+
       Papa.parse<Record<string, string>>(text, {
         header: true,
         skipEmptyLines: true,
@@ -176,6 +187,18 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
       {/* Column Mapping */}
       <div className="glass-card p-4">
         <h4 className="text-sm font-medium text-dashboard-text mb-3">Column Mapping:</h4>
+        {duplicateHeaders.length > 0 && (
+          <div className="bg-red-900/30 border border-red-700 px-3 py-2 rounded-lg text-xs text-red-300 mb-3 flex items-start gap-2">
+            <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <span>
+              <strong>Duplicate columns detected:</strong> {duplicateHeaders.join(', ')}.
+              {' '}Your CSV has multiple columns with the same name, which will cause data to be read incorrectly on upload.
+              {' '}Please remove the duplicate columns from your CSV and re-upload.
+            </span>
+          </div>
+        )}
         {unmappedColumns.length === 0 ? (
           <div className="badge-success px-3 py-2 rounded-lg text-xs flex items-center gap-2 mb-3">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

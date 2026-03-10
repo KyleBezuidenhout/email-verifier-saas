@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { Job } from "@/types";
+import { Job, VayneOrder } from "@/types";
 import { apiClient } from "@/lib/api";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { useAuth } from "@/context/AuthContext";
@@ -13,85 +13,127 @@ const POLLING_INTERVAL = 60000; // 60 seconds
 export default function DashboardPage() {
   const { user } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [vayneOrders, setVayneOrders] = useState<VayneOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>("30d");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
 
-  const loadJobs = useCallback(async () => {
+  const loadData = useCallback(async () => {
     try {
-      const jobList = await apiClient.getJobs();
+      const [jobList, vayneResponse] = await Promise.all([
+        apiClient.getJobs(),
+        apiClient.getVayneOrderHistory(100, 0).catch(() => ({ orders: [] as VayneOrder[], total: 0 })),
+      ]);
       setJobs(jobList.sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ));
+      setVayneOrders(vayneResponse.orders.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load jobs");
+      setError(err instanceof Error ? err.message : "Failed to load dashboard data");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Initial load on mount
   useEffect(() => {
-    loadJobs();
-  }, [loadJobs]);
+    loadData();
+  }, [loadData]);
 
-  // Poll for new jobs every 60 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      loadJobs();
+      loadData();
     }, POLLING_INTERVAL);
-
-    // Cleanup interval on unmount
     return () => clearInterval(interval);
-  }, [loadJobs]);
+  }, [loadData]);
 
-  // Filter jobs by date range
-  const filteredJobs = useMemo(() => {
-    if (dateRange === "all") return jobs;
-    
+  // Date range filter helper
+  const filterByDateRange = useCallback(<T extends { created_at: string }>(items: T[]): T[] => {
+    if (dateRange === "all") return items;
     const now = new Date();
-    let startDate: Date;
-    
     if (dateRange === "custom") {
-      if (!customStartDate || !customEndDate) return jobs;
-      startDate = new Date(customStartDate);
-      const endDate = new Date(customEndDate);
-      return jobs.filter(job => {
-        const jobDate = new Date(job.created_at);
-        return jobDate >= startDate && jobDate <= endDate;
+      if (!customStartDate || !customEndDate) return items;
+      const start = new Date(customStartDate);
+      const end = new Date(customEndDate);
+      return items.filter(item => {
+        const d = new Date(item.created_at);
+        return d >= start && d <= end;
       });
-    } else {
-      const days = dateRange === "7d" ? 7 : dateRange === "30d" ? 30 : 90;
-      startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     }
-    
-    return jobs.filter(job => new Date(job.created_at) >= startDate);
-  }, [jobs, dateRange, customStartDate, customEndDate]);
+    const days = dateRange === "7d" ? 7 : dateRange === "30d" ? 30 : 90;
+    const start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    return items.filter(item => new Date(item.created_at) >= start);
+  }, [dateRange, customStartDate, customEndDate]);
 
-  // Calculate stats
+  const filteredJobs = useMemo(() => filterByDateRange(jobs), [jobs, filterByDateRange]);
+  const filteredVayneOrders = useMemo(() => filterByDateRange(vayneOrders), [vayneOrders, filterByDateRange]);
+
+  // Unified activity timeline
+  type ActivityItem = {
+    id: string;
+    type: "job" | "scrape";
+    name: string;
+    status: string;
+    detail: string;
+    created_at: string;
+  };
+
+  const recentActivity = useMemo<ActivityItem[]>(() => {
+    const jobItems: ActivityItem[] = filteredJobs.map(job => ({
+      id: job.id,
+      type: "job",
+      name: `Job ${job.id.slice(0, 8)}...`,
+      status: job.status,
+      detail: `${(job.valid_emails_found || 0) + (job.catchall_emails_found || 0)} emails verified`,
+      created_at: job.created_at,
+    }));
+    const vayneItems: ActivityItem[] = filteredVayneOrders.map(order => ({
+      id: order.id,
+      type: "scrape",
+      name: order.targeting || `Scrape ${order.id.slice(0, 8)}...`,
+      status: order.status,
+      detail: order.leads_found ? `${order.leads_found.toLocaleString()} leads scraped` : "In progress",
+      created_at: order.created_at,
+    }));
+    return [...jobItems, ...vayneItems]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 15);
+  }, [filteredJobs, filteredVayneOrders]);
+
+  // Calculate stats including Vayne orders
   const stats = useMemo(() => {
     const totalVerified = filteredJobs.reduce(
       (sum, job) => sum + (job.valid_emails_found || 0) + (job.catchall_emails_found || 0),
       0
     );
-    
-    const totalCost = filteredJobs.reduce((sum, job) => sum + (job.cost_in_credits || 0) * 0.1, 0);
-    const competitorCost = totalVerified * 0.50; // Competitors charge $0.50 per email
+
+    const totalLeadsScraped = filteredVayneOrders.reduce(
+      (sum, order) => sum + (order.leads_found || 0),
+      0
+    );
+
+    const jobCreditsUsed = filteredJobs.reduce((sum, job) => sum + (job.cost_in_credits || 0), 0);
+    const scrapeCreditsUsed = filteredVayneOrders.reduce((sum, order) => sum + (order.credits_charged || 0), 0);
+    const creditsUsed = jobCreditsUsed + scrapeCreditsUsed;
+
+    const totalCost = creditsUsed * 0.1;
+    const competitorCost = (totalVerified * 0.50) + (totalLeadsScraped * 0.15);
     const moneySaved = competitorCost - totalCost;
-    
-    const creditsUsed = filteredJobs.reduce((sum, job) => sum + (job.cost_in_credits || 0), 0);
-    const creditsLeft = (user?.credits || 0) - creditsUsed;
-    
+
     return {
       totalVerified,
+      totalLeadsScraped,
       totalCost,
       moneySaved,
       creditsUsed,
-      creditsLeft: Math.max(0, creditsLeft),
+      creditsLeft: user?.credits || 0,
+      jobCount: filteredJobs.length,
+      scrapeCount: filteredVayneOrders.length,
     };
-  }, [filteredJobs, user?.credits]);
+  }, [filteredJobs, filteredVayneOrders, user?.credits]);
 
   if (loading) {
     return (
@@ -168,17 +210,27 @@ export default function DashboardPage() {
             ${stats.moneySaved.toFixed(2)}
           </p>
           <p className="text-xs text-dashboard-text-muted mt-1">
-            Competitors would charge ${(stats.totalVerified * 0.50).toFixed(2)}
+            Based on competitor pricing
           </p>
         </div>
 
         <div className="glass-card hover:bg-dashboard-surface/40 p-6 transition-all">
-          <p className="text-sm text-dashboard-text-muted mb-2">Total Valid Emails Found</p>
+          <p className="text-sm text-dashboard-text-muted mb-2">Emails Verified</p>
           <p className="text-3xl font-bold text-dashboard-accent">
             {stats.totalVerified.toLocaleString()}
           </p>
           <p className="text-xs text-dashboard-text-muted mt-1">
-            {filteredJobs.length} job{filteredJobs.length !== 1 ? "s" : ""} processed
+            {stats.jobCount} verification job{stats.jobCount !== 1 ? "s" : ""}
+          </p>
+        </div>
+
+        <div className="glass-card hover:bg-dashboard-surface/40 p-6 transition-all">
+          <p className="text-sm text-dashboard-text-muted mb-2">Leads Scraped</p>
+          <p className="text-3xl font-bold text-dashboard-accent">
+            {stats.totalLeadsScraped.toLocaleString()}
+          </p>
+          <p className="text-xs text-dashboard-text-muted mt-1">
+            {stats.scrapeCount} scraping job{stats.scrapeCount !== 1 ? "s" : ""}
           </p>
         </div>
 
@@ -188,17 +240,7 @@ export default function DashboardPage() {
             {stats.creditsUsed.toLocaleString()}
           </p>
           <p className="text-xs text-dashboard-text-muted mt-1">
-            ${stats.totalCost.toFixed(2)} spent
-          </p>
-        </div>
-
-        <div className="glass-card hover:bg-dashboard-surface/40 p-6 transition-all">
-          <p className="text-sm text-dashboard-text-muted mb-2">Credits Left</p>
-          <p className="text-3xl font-bold text-dashboard-accent">
-            {stats.creditsLeft.toLocaleString()}
-          </p>
-          <p className="text-xs text-dashboard-text-muted mt-1">
-            Available credits
+            {stats.creditsLeft.toLocaleString()} credits remaining
           </p>
         </div>
       </div>
@@ -226,26 +268,39 @@ export default function DashboardPage() {
       <div className="glass-card p-6">
         <h3 className="text-lg font-medium text-dashboard-text mb-4">Recent Activity</h3>
         <div className="space-y-3">
-          {filteredJobs.slice(0, 10).map((job) => (
-            <div key={job.id} className="flex items-center justify-between py-2 border-b border-dashboard-border last:border-0">
-              <div>
-                <p className="text-sm text-dashboard-text">
-                  Job {job.id.slice(0, 8)}... - {job.valid_emails_found + job.catchall_emails_found} emails verified
-                </p>
-                <p className="text-xs text-dashboard-text-muted mt-1">
-                  {new Date(job.created_at).toLocaleString()}
-                </p>
+          {recentActivity.map((item) => (
+            <div key={`${item.type}-${item.id}`} className="flex items-center justify-between py-2 border-b border-dashboard-border last:border-0">
+              <div className="flex items-center gap-3">
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  item.type === "scrape" ? "bg-purple-400" : "bg-blue-400"
+                }`} />
+                <div>
+                  <p className="text-sm text-dashboard-text">
+                    {item.name} — {item.detail}
+                  </p>
+                  <p className="text-xs text-dashboard-text-muted mt-1">
+                    {new Date(item.created_at).toLocaleString()}
+                  </p>
+                </div>
               </div>
-              <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                job.status === "completed" ? "badge-success" :
-                job.status === "processing" ? "badge-warning" :
-                "badge-info"
-              }`}>
-                {job.status}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
+                  item.type === "scrape" ? "bg-purple-500/20 text-purple-400" : "bg-blue-500/20 text-blue-400"
+                }`}>
+                  {item.type === "scrape" ? "Scrape" : "Verify"}
+                </span>
+                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                  item.status === "completed" ? "badge-success" :
+                  item.status === "processing" || item.status === "initialization" || item.status === "scraping" || item.status === "segmenting" ? "badge-warning" :
+                  item.status === "failed" ? "bg-red-500/20 text-red-400" :
+                  "badge-info"
+                }`}>
+                  {item.status === "initialization" || item.status === "scraping" || item.status === "segmenting" ? "processing" : item.status}
+                </span>
+              </div>
             </div>
           ))}
-          {filteredJobs.length === 0 && (
+          {recentActivity.length === 0 && (
             <p className="text-dashboard-text-muted text-center py-8">No activity in selected date range</p>
           )}
         </div>

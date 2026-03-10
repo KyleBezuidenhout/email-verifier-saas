@@ -80,6 +80,28 @@ def job_to_response(job: WebsiteScraperJob) -> dict:
     }
 
 
+def detect_duplicate_headers(csv_content: str) -> list:
+    """
+    Detect duplicate column headers in CSV content.
+    Python's csv.DictReader silently uses last-value-wins for duplicates,
+    which causes data to be read from the wrong column.
+    Returns a list of header names that appear more than once.
+    """
+    reader = csv.reader(io.StringIO(csv_content))
+    try:
+        headers = next(reader)
+    except StopIteration:
+        return []
+    seen = set()
+    duplicates = set()
+    for h in headers:
+        normalized = h.strip()
+        if normalized in seen:
+            duplicates.add(normalized)
+        seen.add(normalized)
+    return sorted(duplicates)
+
+
 def normalize_header(h: str) -> str:
     """Normalize header for column detection."""
     return h.lower().replace(' ', '').replace('_', '').replace('-', '')
@@ -190,6 +212,12 @@ async def upload_csv(
     # Parse CSV (handle UTF-8 BOM)
     try:
         csv_content = contents.decode('utf-8-sig')
+        
+        # Detect duplicate headers before DictReader silently merges them
+        duplicate_headers = detect_duplicate_headers(csv_content)
+        if duplicate_headers:
+            logger.warning(f"⚠️  Duplicate headers detected: {duplicate_headers}")
+        
         csv_reader = csv.DictReader(io.StringIO(csv_content))
         rows = list(csv_reader)
     except Exception as e:
@@ -259,9 +287,12 @@ async def upload_csv(
             valid_rows += 1
     
     if valid_rows == 0:
+        detail_msg = f"No valid website URLs found in column '{website_col}'."
+        if duplicate_headers:
+            detail_msg += f" WARNING: Your CSV has duplicate column headers ({', '.join(duplicate_headers)}). This causes data to be read incorrectly. Please remove duplicate columns and re-upload."
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No valid website URLs found in column '{website_col}'"
+            detail=detail_msg
         )
     
     logger.info(f"✅ Found {valid_rows} valid website URLs out of {len(rows)} rows")

@@ -224,19 +224,36 @@ def update_order_status(
 
 
 def mark_order_failed(db, order_id: UUID, error_reason: str):
-    """Mark an order as failed."""
+    """
+    Mark an order as failed with a user-facing failure reason.
+    If credits were already charged, refund them to the user.
+    """
     try:
         result = db.execute(
             text("""
                 UPDATE vayne_orders
-                SET status = 'failed'
+                SET status = 'failed', failure_reason = :reason
                 WHERE id = :order_id
+                RETURNING credits_charged, user_id
             """),
-            {"order_id": str(order_id)}
+            {"order_id": str(order_id), "reason": error_reason}
         )
+        row = result.fetchone()
+
+        if row and row.credits_charged and row.credits_charged > 0:
+            db.execute(
+                text("UPDATE users SET credits = credits + :amt WHERE id = :uid"),
+                {"amt": row.credits_charged, "uid": str(row.user_id)}
+            )
+            db.execute(
+                text("UPDATE vayne_orders SET credits_charged = 0 WHERE id = :oid"),
+                {"oid": str(order_id)}
+            )
+            log(f"Refunded {row.credits_charged} credits to user {row.user_id}", "info")
+
         db.commit()
         log(f"Order {order_id} marked as failed: {error_reason}", "error")
-        return result.rowcount > 0
+        return True
     except Exception as e:
         db.rollback()
         log(f"Failed to mark order {order_id} as failed: {e}", "error")
@@ -316,51 +333,142 @@ async def wait_for_active_order_completion(db, active_order):
         await asyncio.sleep(ACTIVE_CHECK_INTERVAL)
 
 
+def _try_update_cookie(vayne_client, cookie: str) -> bool:
+    """Attempt to update the LinkedIn session cookie. Returns True on success."""
+    try:
+        vayne_client.update_linkedin_session(cookie)
+        return True
+    except Exception:
+        return False
+
+
 async def process_queued_order(order_row):
     """
-    Process a queued order:
-    1. Update cookie with Vayne
-    2. Create Vayne order
-    3. Update database with vayne_order_id and status
+    Process a queued order with full validation:
+    1. Authenticate LinkedIn cookie (user-provided, then fallback)
+    2. Validate URL with scraping service to get estimated_leads
+    3. Check user credits against estimated_leads
+    4. Deduct credits and create the scraping order
+    5. On any failure: mark failed with reason and refund if needed
     """
-    # order_row.id is our internal UUID - PostgreSQL may return it as UUID object or string
     if isinstance(order_row.id, UUID):
-        order_id = order_row.id  # Already a UUID, use it directly
+        order_id = order_row.id
     else:
-        order_id = UUID(str(order_row.id))  # Convert string to UUID
-    
+        order_id = UUID(str(order_row.id))
+
     db = SessionLocal()
-    
+
     try:
         log(f"Processing queued order {order_id}", "info")
-        
+
         vayne_client = get_vayne_client()
-        
-        # Step 1: Update LinkedIn session cookie with Vayne
-        try:
-            log(f"Updating LinkedIn cookie for order {order_id}", "info")
-            # VayneClient.update_linkedin_session is synchronous
-            cookie_response = vayne_client.update_linkedin_session(order_row.linkedin_cookie)
-            log(f"LinkedIn authentication updated for order {order_id}", "success")
-        except Exception as auth_error:
-            error_msg = str(auth_error).lower()
-            if "401" in error_msg or "unauthorized" in error_msg or "invalid" in error_msg or "expired" in error_msg:
-                log(f"LinkedIn cookie authentication failed for order {order_id}: {auth_error}", "error")
-                mark_order_failed(db, order_id, f"LinkedIn cookie invalid or expired: {auth_error}")
-                return False
-            log(f"Failed to update cookie for order {order_id}: {auth_error}", "error")
-            mark_order_failed(db, order_id, f"Cookie update failed: {auth_error}")
+        from app.core.config import ADMIN_EMAIL
+
+        # -----------------------------------------------------------------
+        # Step 1: LinkedIn cookie authentication (with fallback)
+        # -----------------------------------------------------------------
+        user_cookie = order_row.linkedin_cookie or ""
+        fallback_cookie = settings.VAYNE_FALLBACK_COOKIE or ""
+        cookie_authenticated = False
+
+        if user_cookie.strip():
+            log(f"Trying user-provided cookie for order {order_id}", "info")
+            cookie_authenticated = _try_update_cookie(vayne_client, user_cookie.strip())
+            if cookie_authenticated:
+                log(f"LinkedIn authentication succeeded (user cookie) for order {order_id}", "success")
+
+        if not cookie_authenticated and fallback_cookie.strip():
+            log(f"User cookie failed or missing, trying fallback cookie for order {order_id}", "info")
+            cookie_authenticated = _try_update_cookie(vayne_client, fallback_cookie.strip())
+            if cookie_authenticated:
+                log(f"LinkedIn authentication succeeded (fallback cookie) for order {order_id}", "success")
+
+        if not cookie_authenticated:
+            mark_order_failed(
+                db, order_id,
+                "LinkedIn authentication failed. Please provide a fresh LinkedIn session cookie and try again."
+            )
             return False
-        
-        # Step 2: Create the scraping order with Vayne API
+
+        # -----------------------------------------------------------------
+        # Step 2: Validate URL and get estimated lead count
+        # -----------------------------------------------------------------
         try:
-            log(f"Creating Vayne order for order {order_id}", "info")
-            
-            # Make order name unique by appending timestamp (Vayne requires unique names)
+            log(f"Validating URL for order {order_id}", "info")
+            url_check = vayne_client.validate_url(order_row.sales_nav_url)
+            estimated_leads = url_check.get("total") or 0
+            url_type = url_check.get("type")
+
+            if not url_check.get("total") or not url_type:
+                mark_order_failed(
+                    db, order_id,
+                    "Invalid Sales Navigator URL. Please check the URL and try again."
+                )
+                return False
+
+            log(f"URL valid: ~{estimated_leads} estimated leads (type: {url_type})", "success")
+
+            # Store estimated_leads on the order for reference
+            db.execute(
+                text("UPDATE vayne_orders SET estimated_leads = :est WHERE id = :oid"),
+                {"est": estimated_leads, "oid": str(order_id)}
+            )
+            db.commit()
+        except Exception as e:
+            mark_order_failed(
+                db, order_id,
+                "Failed to validate the Sales Navigator URL. Please check the URL and try again."
+            )
+            log(f"URL validation exception for order {order_id}: {e}", "error")
+            return False
+
+        # -----------------------------------------------------------------
+        # Step 3: Credit check
+        # -----------------------------------------------------------------
+        user_result = db.execute(
+            text("SELECT email, credits FROM users WHERE id = :user_id"),
+            {"user_id": str(order_row.user_id)}
+        )
+        user = user_result.fetchone()
+
+        if not user:
+            mark_order_failed(db, order_id, "User account not found.")
+            return False
+
+        is_admin = user.email == ADMIN_EMAIL
+        if not is_admin and estimated_leads > 0 and user.credits < estimated_leads:
+            mark_order_failed(
+                db, order_id,
+                f"Insufficient credits. You have {user.credits:,} credits but this job requires ~{estimated_leads:,}. Please top up your account."
+            )
+            return False
+
+        # -----------------------------------------------------------------
+        # Step 4: Deduct credits (before creating the scraping order)
+        # -----------------------------------------------------------------
+        if not is_admin and estimated_leads > 0:
+            db.execute(
+                text("UPDATE users SET credits = GREATEST(0, credits - :amount) WHERE id = :user_id"),
+                {"amount": estimated_leads, "user_id": str(order_row.user_id)}
+            )
+            db.execute(
+                text("UPDATE vayne_orders SET credits_charged = :amount WHERE id = :order_id"),
+                {"amount": estimated_leads, "order_id": str(order_id)}
+            )
+            db.commit()
+            log(f"Charged {estimated_leads} credits to {user.email} (had {user.credits})", "success")
+        else:
+            log(f"Admin user or 0 estimated leads - skipping credit deduction", "info")
+
+        # -----------------------------------------------------------------
+        # Step 5: Create the scraping order
+        # -----------------------------------------------------------------
+        try:
+            log(f"Creating scraping order for order {order_id}", "info")
+
             base_name = order_row.targeting or "Untitled Order"
             unique_name = f"{base_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            
-            # VayneClient.create_order is synchronous
+
             vayne_response = vayne_client.create_order(
                 url=order_row.sales_nav_url,
                 name=unique_name,
@@ -370,33 +478,22 @@ async def process_queued_order(order_row):
                 secondary_webhook="",
                 export_format="simple",
             )
-            
-            # Vayne API returns: { "order": { "id": 123, ... } }
+
             vayne_order = vayne_response.get("order", {})
             vayne_order_id = vayne_order.get("id")
             if not vayne_order_id:
-                log(f"Vayne order creation returned no order_id for order {order_id}", "error")
-                mark_order_failed(db, order_id, "Vayne order creation failed: no order_id returned")
+                mark_order_failed(db, order_id, "Scraping service failed to create the order. Please try again.")
                 return False
-            
+
             vayne_order_id_str = str(vayne_order_id)
             order_name = vayne_order.get("name")
-            
-            # Extract status from Vayne's create_order response
-            # Vayne may return various statuses when order is first created
+
             scraping_status = vayne_order.get("status", "initialization")
-            
-            # Map Vayne's scraping_status to our database status
-            # Vayne can return "initialization", "pending", "scraping", or "segmenting" - all mean order is processing
             if scraping_status in ("initialization", "pending", "scraping", "segmenting"):
-                db_status = scraping_status  # Use the status Vayne returned
+                db_status = scraping_status
             else:
-                db_status = "initialization"  # Default fallback
-            
-            # n8n workflow will update it to "completed" when done
-            # DO NOT poll Vayne API for status updates - let n8n handle it
-            
-            # Update database with vayne_order_id and set status to initialization
+                db_status = "initialization"
+
             update_order_status(
                 db,
                 order_id,
@@ -404,47 +501,21 @@ async def process_queued_order(order_row):
                 vayne_order_id=vayne_order_id_str,
                 name=order_name
             )
-            
-            log(f"Order {order_id} successfully sent to Vayne (Vayne ID: {vayne_order_id_str}, Status: {db_status})", "success")
-            
-            # Deduct credits based on estimated_leads (now that job started successfully)
-            # Using estimated_leads because leads_found is often NULL or inaccurate
-            estimated_leads = order_row.estimated_leads or 0
-            if estimated_leads > 0:
-                # Get user and check if admin
-                user_result = db.execute(
-                    text("SELECT email, credits FROM users WHERE id = :user_id"),
-                    {"user_id": str(order_row.user_id)}
-                )
-                user = user_result.fetchone()
-                
-                ADMIN_EMAIL = "ben@superwave.io"
-                if user and user.email != ADMIN_EMAIL:
-                    # Deduct credits (never go below 0)
-                    db.execute(
-                        text("UPDATE users SET credits = GREATEST(0, credits - :amount) WHERE id = :user_id"),
-                        {"amount": estimated_leads, "user_id": str(order_row.user_id)}
-                    )
-                    # Record credits charged on the order
-                    db.execute(
-                        text("UPDATE vayne_orders SET credits_charged = :amount WHERE id = :order_id"),
-                        {"amount": estimated_leads, "order_id": str(order_id)}
-                    )
-                    db.commit()
-                    log(f"💰 Charged {estimated_leads} credits to user {user.email} (had {user.credits}, now has {user.credits - estimated_leads})", "success")
-                else:
-                    log(f"Admin user - skipping credit deduction for {estimated_leads} credits", "info")
-            
+
+            log(f"Order {order_id} sent to scraping service (ID: {vayne_order_id_str}, status: {db_status})", "success")
             return True
-            
+
         except Exception as e:
-            log(f"Failed to create Vayne order for order {order_id}: {e}", "error")
-            mark_order_failed(db, order_id, f"Vayne order creation failed: {e}")
+            log(f"Failed to create scraping order for {order_id}: {e}", "error")
+            mark_order_failed(db, order_id, "Failed to start the scraping job. Please try again later.")
             return False
-        
+
     except Exception as e:
         log(f"Error processing queued order {order_id}: {e}", "error")
-        mark_order_failed(db, order_id, f"Processing error: {e}")
+        try:
+            mark_order_failed(db, order_id, "An unexpected error occurred while processing your order.")
+        except Exception:
+            pass
         return False
     finally:
         db.close()

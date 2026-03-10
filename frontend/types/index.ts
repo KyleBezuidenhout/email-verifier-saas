@@ -124,6 +124,8 @@ export interface VayneOrder {
   file_url?: string;  // Direct URL to CSV file from Vayne (for download)
   vayne_order_id: string;  // Vayne's order ID (required for webhook matching)
   targeting?: string;  // Job name/targeting description
+  failure_reason?: string;  // Human-readable reason when status is 'failed'
+  credits_charged?: number;  // Credits deducted for this order
   exports?: {
     simple?: {
       status: string;
@@ -138,9 +140,8 @@ export interface VayneOrder {
 
 export interface VayneOrderCreate {
   sales_nav_url: string;
-  linkedin_cookie: string;  // Required for each order
+  linkedin_cookie?: string;  // Optional -- fallback session used if not provided
   targeting?: string;  // Job name/targeting description
-  estimated_leads?: number;  // Estimated lead count from URL validation (for credit deduction)
 }
 
 // Google Maps Scraper Types (via Apify compass/crawler-google-places)
