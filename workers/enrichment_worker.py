@@ -35,7 +35,7 @@ from app.models.job import Job
 from app.models.lead import Lead
 from app.models.user import User
 from app.models.worker_config import WorkerConfig
-from app.services.permutation import generate_email_permutations, normalize_domain, clean_first_name
+from app.services.permutation import normalize_domain, clean_first_name
 
 # Configure logging
 logging.basicConfig(
@@ -582,8 +582,9 @@ def process_enrichment_job(job_id: str) -> bool:
             db.commit()
             return False
         
-        # Create leads and generate permutations
-        logger.info(f"🔄 Creating leads and generating email permutations for {len(remapped_rows)} rows")
+        # Create ONE lead per person (permutations generated on-the-fly during verification)
+        # This reduces database storage by 16-32x compared to storing all permutations
+        logger.info(f"🔄 Creating {len(remapped_rows)} leads (1 per person, permutations generated during verification)")
         leads_to_create = []
         for row in remapped_rows:
             first_name = row['first_name']
@@ -593,30 +594,25 @@ def process_enrichment_job(job_id: str) -> bool:
             # Use row's company_size if present, otherwise fall back to job's manual selection
             company_size = row.get('company_size') or default_company_size
             
-            # Generate email permutations
-            permutations = generate_email_permutations(
-                first_name, last_name, domain, company_size
+            # Create ONE lead per person - email will be populated during verification
+            # Verification worker generates all 32 permutations on-the-fly
+            lead = Lead(
+                job_id=job.id,
+                user_id=user.id,
+                first_name=first_name,
+                last_name=last_name,
+                domain=domain,
+                company_size=company_size,
+                email='',  # Populated by verification worker with winning email
+                pattern_used=None,  # Populated by verification worker
+                prevalence_score=None,  # Populated by verification worker
+                verification_status='pending',
+                is_final_result=False,
+                extra_data=row.get('extra_data', {}),
             )
-            
-            # Create lead for each permutation
-            for perm in permutations:
-                lead = Lead(
-                    job_id=job.id,
-                    user_id=user.id,
-                    first_name=first_name,
-                    last_name=last_name,
-                    domain=domain,
-                    company_size=company_size,
-                    email=perm['email'],
-                    pattern_used=perm['pattern'],
-                    prevalence_score=perm['prevalence_score'],
-                    verification_status='pending',
-                    is_final_result=False,
-                    extra_data=row.get('extra_data', {}),
-                )
-                leads_to_create.append(lead)
+            leads_to_create.append(lead)
         
-        logger.info(f"📊 Generated {len(leads_to_create)} leads (permutations) from {len(remapped_rows)} rows")
+        logger.info(f"📊 Created {len(leads_to_create)} leads from {len(remapped_rows)} CSV rows")
         
         # Bulk insert leads
         logger.info(f"💾 Bulk inserting {len(leads_to_create)} leads into database")
