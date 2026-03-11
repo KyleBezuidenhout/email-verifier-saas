@@ -276,37 +276,52 @@ async def wait_for_active_order_completion(db, active_order):
         status = check_order_status(db, order_id)  # Use order's own id
         
         if status == "completed":
-            log(f"Active order {order_id} completed", "success")
+            log(f"Active order {order_id} completed, waiting for lead count from CSV callback...", "success")
             
-            # Send completion notification email
-            try:
-                user_result = db.execute(
+            # Wait for leads_found > 0 (set by n8n CSV callback) before sending email.
+            # Timeout after 5 minutes so the queue isn't stalled indefinitely.
+            leads_wait_start = asyncio.get_event_loop().time()
+            leads_wait_timeout = 300  # 5 minutes
+            leads_found_count = 0
+            user_email = None
+            targeting = None
+
+            while (asyncio.get_event_loop().time() - leads_wait_start) < leads_wait_timeout:
+                row = db.execute(
                     text("""
-                        SELECT u.email, vo.targeting, vo.leads_found 
-                        FROM users u 
-                        JOIN vayne_orders vo ON u.id = vo.user_id 
+                        SELECT u.email, vo.targeting, vo.leads_found
+                        FROM users u
+                        JOIN vayne_orders vo ON u.id = vo.user_id
                         WHERE vo.id = :order_id
                     """),
                     {"order_id": str(order_id)}
-                )
-                user_row = user_result.fetchone()
-                if user_row:
+                ).fetchone()
+                if row:
+                    user_email = row[0]
+                    targeting = row[1]
+                    leads_found_count = row[2] or 0
+                if leads_found_count > 0:
+                    log(f"Lead count ready for order {order_id}: {leads_found_count}", "success")
+                    break
+                elapsed = int(asyncio.get_event_loop().time() - leads_wait_start)
+                log(f"Leads still 0 for order {order_id}, waiting... ({elapsed}s / {leads_wait_timeout}s)", "wait")
+                await asyncio.sleep(10)
+
+            if leads_found_count == 0:
+                log(f"Timed out waiting for lead count on order {order_id}, sending email with 0", "warn")
+
+            # Send completion notification email
+            try:
+                if user_email:
                     send_scraping_completion_email(
-                        user_email=user_row[0],
+                        user_email=user_email,
                         order_id=str(order_id),
-                        results={
-                            "leads_found": user_row[2] or 0,
-                        },
-                        targeting=user_row[1]
+                        results={"leads_found": leads_found_count},
+                        targeting=targeting,
                     )
             except Exception as email_error:
                 log(f"Failed to send notification email: {email_error}", "error")
-                # Don't fail the job for email errors
             
-            # Note: Enrichment is now a separate workflow - users must manually create enrichment jobs
-            # from the completed scrape CSV file via the upload interface
-            
-            # Allow next scraping order to process (this happens automatically in main loop)
             log(f"Proceeding to next queued order", "success")
             return True
         elif status == "failed":
