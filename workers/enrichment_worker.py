@@ -868,14 +868,17 @@ def process_verification_job(job_id: str) -> bool:
         
         # Queue job for verification processing - route through waiting room if needed
         try:
-            verification_queue = get_verification_queue_for_user(db, user.id)
-            if route_to_queue_or_waiting_room(redis_client, db, user.id, str(job.id), verification_queue):
+            verification_queue = get_verification_queue_for_user(db, job.user_id)
+            if route_to_queue_or_waiting_room(redis_client, db, job.user_id, str(job.id), verification_queue):
                 queue_length = redis_client.llen(verification_queue)
                 logger.info(f"QUEUED verification job {job_id} to '{verification_queue}' (queue length: {queue_length})")
             else:
-                logger.info(f"Verification job {job_id} placed in waiting room for user {user.id}")
+                logger.info(f"Verification job {job_id} placed in waiting room for user {job.user_id}")
         except Exception as e:
-            logger.error(f"Failed to queue verification job {job_id}: {e}")
+            logger.error(f"❌ Failed to queue verification job {job_id}, marking as failed: {e}")
+            job.status = "failed"
+            db.commit()
+            return False
         
         return True
         
