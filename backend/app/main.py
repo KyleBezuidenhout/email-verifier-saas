@@ -209,6 +209,7 @@ async def startup_tasks():
         from migrate_add_scraper_options import run_migration as migrate_scraper_options
         from migrate_leads_columns_to_text import run_migration as migrate_leads_to_text
         from migrate_add_failure_reason import run_migration as migrate_failure_reason
+        from migrate_add_max_concurrent_jobs import migrate as migrate_max_concurrent_jobs
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -227,6 +228,7 @@ async def startup_tasks():
         migrate_scraper_options()  # Add enable_cache and enable_sublink_scraping columns
         migrate_leads_to_text()  # Convert leads VARCHAR columns to TEXT (remove 255 char limits)
         migrate_failure_reason()  # Add failure_reason column to vayne_orders
+        migrate_max_concurrent_jobs()  # Add max_concurrent_jobs column for fair-share client cap
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
