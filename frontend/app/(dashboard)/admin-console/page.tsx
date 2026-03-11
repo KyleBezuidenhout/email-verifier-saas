@@ -39,6 +39,8 @@ interface AdminJob {
   cost_in_credits: number;
   created_at: string;
   completed_at: string | null;
+  file_url: string | null;
+  failure_reason: string | null;
   client: {
     id: string;
     email: string;
@@ -510,24 +512,35 @@ export default function AdminConsolePage() {
               </thead>
               <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
                 {jobs.map((job) => {
-                  // Only calculate hit rate after job is completed
-                  // Enrichment: (valid + catchall) / total unique leads | Verification: valid / total
+                  const isSalesNav = job.job_type === "sales_nav";
                   const isCompleted = job.status === "completed";
                   const isEnrichment = job.job_type === "enrichment";
                   let hitRateDisplay = "--";
                   
-                  if (isCompleted && job.total_leads > 0) {
+                  if (!isSalesNav && isCompleted && job.total_leads > 0) {
                     const rawHitRate = isEnrichment
                       ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100)
                       : ((job.valid_emails_found) / job.total_leads * 100);
                     hitRateDisplay = `${Math.min(rawHitRate, 100).toFixed(1)}%`;
                   }
                   
+                  const typeBadgeClass = isSalesNav
+                    ? "bg-orange-500/20 text-orange-400"
+                    : isEnrichment
+                    ? "bg-blue-500/20 text-blue-400"
+                    : "bg-purple-500/20 text-purple-400";
+
+                  const typeLabel = isSalesNav
+                    ? "Sales Nav"
+                    : job.job_type;
+
                   return (
                   <tr 
                     key={job.id} 
                     className="hover:bg-dashboard-card/50 cursor-pointer"
-                    onClick={() => router.push(`/results/${job.id}`)}
+                    onClick={() => {
+                      if (!isSalesNav) router.push(`/results/${job.id}`);
+                    }}
                   >
                     <td className="px-4 py-3">
                       <div>
@@ -536,18 +549,34 @@ export default function AdminConsolePage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 text-xs rounded ${job.job_type === "enrichment" ? "bg-blue-500/20 text-blue-400" : "bg-purple-500/20 text-purple-400"}`}>
-                        {job.job_type}
+                      <span className={`px-2 py-1 text-xs rounded ${typeBadgeClass}`}>
+                        {typeLabel}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={job.status} />
+                      <div className="relative group inline-block">
+                        <StatusBadge status={job.status} />
+                        {job.status === "failed" && job.failure_reason && (
+                          <>
+                            <span className="ml-1 text-red-400 text-xs cursor-help">&#9432;</span>
+                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50 w-64 p-2 rounded-lg bg-dashboard-card border border-dashboard-border shadow-xl text-xs text-dashboard-text-muted">
+                              {job.failure_reason}
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-right text-dashboard-text">{job.total_leads}</td>
-                    <td className="px-4 py-3 text-right text-green-400">{job.valid_emails_found}</td>
-                    <td className="px-4 py-3 text-right text-yellow-400">{job.catchall_emails_found}</td>
+                    <td className="px-4 py-3 text-right text-dashboard-text">
+                      {isSalesNav ? (job.processed_leads || job.total_leads || "--") : job.total_leads}
+                    </td>
+                    <td className="px-4 py-3 text-right text-green-400">
+                      {isSalesNav ? "--" : job.valid_emails_found}
+                    </td>
+                    <td className="px-4 py-3 text-right text-yellow-400">
+                      {isSalesNav ? "--" : job.catchall_emails_found}
+                    </td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`font-medium ${isCompleted ? 'text-green-400' : 'text-dashboard-text-muted'}`}>
+                      <span className={`font-medium ${!isSalesNav && isCompleted ? 'text-green-400' : 'text-dashboard-text-muted'}`}>
                         {hitRateDisplay}
                       </span>
                     </td>
@@ -556,13 +585,29 @@ export default function AdminConsolePage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <Link
-                          href={`/results/${job.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-dashboard-accent hover:underline text-sm"
-                        >
-                          View
-                        </Link>
+                        {isSalesNav ? (
+                          job.file_url ? (
+                            <a
+                              href={job.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-dashboard-accent hover:underline text-sm"
+                            >
+                              Download
+                            </a>
+                          ) : (
+                            <span className="text-dashboard-text-muted text-sm">--</span>
+                          )
+                        ) : (
+                          <Link
+                            href={`/results/${job.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-dashboard-accent hover:underline text-sm"
+                          >
+                            View
+                          </Link>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

@@ -411,6 +411,8 @@ class ApiClient {
       cost_in_credits: number;
       created_at: string;
       completed_at: string | null;
+      file_url: string | null;
+      failure_reason: string | null;
       client: {
         id: string;
         email: string;

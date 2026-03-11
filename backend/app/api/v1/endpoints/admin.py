@@ -22,6 +22,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
+from app.models.vayne_order import VayneOrder
 from app.api.dependencies import require_admin
 from app.services.usage_tracker import get_usage_tracker
 from app.services.error_logger import get_error_logger
@@ -229,21 +230,18 @@ async def get_all_jobs(
     status_filter: Optional[str] = Query(None),
     job_type: Optional[str] = Query(None)
 ):
-    """Get all jobs across all clients with client info."""
-    query = db.query(Job, User).join(User, Job.user_id == User.id)
-    
-    if status_filter:
-        query = query.filter(Job.status == status_filter)
-    if job_type:
-        query = query.filter(Job.job_type == job_type)
-    
-    query = query.order_by(desc(Job.created_at))
-    total = query.count()
-    results = query.offset(offset).limit(limit).all()
-    
-    return {
-        "jobs": [
-            {
+    """Get all jobs across all clients with client info, including Sales Nav orders."""
+    unified: list = []
+
+    # Enrichment / verification jobs
+    if job_type not in ("sales_nav",):
+        q = db.query(Job, User).join(User, Job.user_id == User.id)
+        if status_filter:
+            q = q.filter(Job.status == status_filter)
+        if job_type:
+            q = q.filter(Job.job_type == job_type)
+        for job, user in q.all():
+            unified.append({
                 "id": str(job.id),
                 "status": job.status,
                 "job_type": job.job_type,
@@ -255,18 +253,54 @@ async def get_all_jobs(
                 "cost_in_credits": job.cost_in_credits,
                 "created_at": job.created_at.isoformat() if job.created_at else None,
                 "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "file_url": None,
+                "failure_reason": None,
                 "client": {
                     "id": str(user.id),
                     "email": user.email,
                     "full_name": user.full_name,
-                    "company_name": user.company_name
-                }
-            }
-            for job, user in results
-        ],
+                    "company_name": user.company_name,
+                },
+            })
+
+    # Sales Nav orders
+    if job_type in (None, "sales_nav"):
+        vq = db.query(VayneOrder, User).join(User, VayneOrder.user_id == User.id)
+        if status_filter:
+            mapped = "queued" if status_filter == "pending" else status_filter
+            vq = vq.filter(VayneOrder.status == mapped)
+        for order, user in vq.all():
+            unified.append({
+                "id": str(order.id),
+                "status": "pending" if order.status == "queued" else order.status,
+                "job_type": "sales_nav",
+                "original_filename": order.targeting,
+                "total_leads": order.estimated_leads or 0,
+                "processed_leads": order.leads_found or 0,
+                "valid_emails_found": order.leads_found or 0,
+                "catchall_emails_found": 0,
+                "cost_in_credits": order.credits_charged or 0,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "completed_at": order.completed_at.isoformat() if order.completed_at else None,
+                "file_url": order.file_url,
+                "failure_reason": order.failure_reason,
+                "client": {
+                    "id": str(user.id),
+                    "email": user.email,
+                    "full_name": user.full_name,
+                    "company_name": user.company_name,
+                },
+            })
+
+    unified.sort(key=lambda x: x["created_at"] or "", reverse=True)
+    total = len(unified)
+    page = unified[offset : offset + limit]
+
+    return {
+        "jobs": page,
         "total": total,
         "limit": limit,
-        "offset": offset
+        "offset": offset,
     }
 
 
