@@ -323,6 +323,7 @@ class ApiClient {
       full_name: string | null;
       company_name: string | null;
       credits: number;
+      max_concurrent_jobs: number;
       is_active: boolean;
       is_admin: boolean;
       created_at: string;
@@ -506,6 +507,53 @@ class ApiClient {
     error?: string;
   }> {
     return this.request("/api/v1/admin/api-keys/vayne-stats");
+  }
+
+  async getAdminFairshareStatus(): Promise<{
+    active_job_count: number;
+    queued_job_count: number;
+    waiting_room_count: number;
+    active_jobs: Array<{
+      job_id: string;
+      user_id: string;
+      user_email: string;
+      job_type: string;
+      total_leads: number;
+      processed_leads: number;
+      throughput: {
+        rate_per_hour: number;
+        items_processed: number;
+        window_seconds: number;
+        timestamp: string;
+      } | null;
+    }>;
+    queued_jobs: Array<{
+      job_id: string;
+      user_id: string;
+      user_email: string;
+      job_type: string;
+      total_leads: number;
+    }>;
+    waiting_room_jobs: Array<{
+      job_id: string;
+      user_id: string;
+      user_email: string;
+      job_type: string;
+      total_leads: number;
+    }>;
+  }> {
+    return this.request("/api/v1/admin/fairshare/status");
+  }
+
+  async updateClientMaxJobs(clientId: string, maxJobs: number): Promise<{
+    client_id: string;
+    max_concurrent_jobs: number;
+    previous_max: number;
+    promoted_from_waiting_room: number;
+  }> {
+    return this.request(`/api/v1/admin/clients/${clientId}/max-jobs?max_jobs=${maxJobs}`, {
+      method: "PUT",
+    });
   }
 
   async getAdminErrors(date?: string, limit = 100, offset = 0): Promise<{

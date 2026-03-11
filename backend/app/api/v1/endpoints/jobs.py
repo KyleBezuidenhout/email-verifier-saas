@@ -80,6 +80,49 @@ def get_enrichment_queue_for_user(db: Session, user_id) -> str:
         return DEFAULT_ENRICHMENT_QUEUE
 
 
+def route_job_to_queue_or_waiting_room(r_client, db: Session, user_id, job_id_str: str, verification_queue: str) -> bool:
+    """
+    Route a verification job to the main queue or the client's waiting room
+    based on their max_concurrent_jobs cap.
+    
+    Returns True if routed to main queue, False if placed in waiting room.
+    """
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        max_jobs = getattr(user, 'max_concurrent_jobs', 3) if user else 3
+
+        active_jobs = r_client.hgetall("fairshare:active_jobs") or {}
+        queue_items = r_client.lrange(verification_queue, 0, -1) or []
+
+        user_active = sum(
+            1 for uid in active_jobs.values()
+            if (uid if isinstance(uid, str) else uid.decode('utf-8')) == str(user_id)
+        )
+
+        user_queued = 0
+        for qjid in queue_items:
+            jid = qjid if isinstance(qjid, str) else qjid.decode('utf-8')
+            j = db.query(Job).filter(Job.id == jid).first()
+            if j and str(j.user_id) == str(user_id):
+                user_queued += 1
+
+        current_load = user_active + user_queued
+
+        if current_load < max_jobs:
+            r_client.rpush(verification_queue, job_id_str)
+            return True
+        else:
+            waiting_key = f"fairshare:waiting:{user_id}"
+            r_client.rpush(waiting_key, job_id_str)
+            db.query(Job).filter(Job.id == job_id_str).update({"status": "waiting"})
+            db.commit()
+            return False
+    except Exception as e:
+        print(f"Error routing job {job_id_str}: {e}")
+        r_client.rpush(verification_queue, job_id_str)
+        return True
+
+
 # ============================================
 # DATA CLEANING FUNCTIONS FOR ENRICHMENT
 # ============================================
@@ -528,17 +571,15 @@ async def upload_file(
             detail=f"Failed to upload file: {str(e)}"
         )
     
-    # Queue job for enrichment - enrichment worker will parse CSV, generate permutations, and create leads
-    # Note: Enrichment queue is typically shared - the enrichment worker routes to client-specific verification queues
+    # Queue job for enrichment (RPUSH for FIFO ordering)
     try:
         job_id_str = str(job.id)
         queue_name = get_enrichment_queue_for_user(db, current_user.id)
-        redis_client.lpush(queue_name, job_id_str)
+        redis_client.rpush(queue_name, job_id_str)
         queue_length = redis_client.llen(queue_name)
-        print(f"📤 QUEUED job {job.id} to enrichment queue '{queue_name}' (queue length: {queue_length})")
+        print(f"QUEUED job {job.id} to enrichment queue '{queue_name}' (queue length: {queue_length})")
     except Exception as e:
-        # If Redis fails, job will remain in pending state
-        print(f"❌ Failed to queue job {job.id}: {e}")
+        print(f"Failed to queue job {job.id}: {e}")
         import traceback
         traceback.print_exc()
         pass
@@ -696,15 +737,15 @@ async def upload_verify_file(
         # ---- LARGE UPLOAD: Defer lead creation to enrichment worker ----
         # Worker will download CSV from R2, parse emails, create leads, then queue for verification.
         # This avoids massive SQL INSERT statements and HTTP timeouts.
-        print(f"📦 Large verification upload ({leads_count} rows >= {DEFER_THRESHOLD}), deferring lead creation to worker")
+        print(f"Large verification upload ({leads_count} rows >= {DEFER_THRESHOLD}), deferring lead creation to worker")
         try:
             job_id_str = str(job.id)
             enrichment_queue = get_enrichment_queue_for_user(db, current_user.id)
-            redis_client.lpush(enrichment_queue, job_id_str)
+            redis_client.rpush(enrichment_queue, job_id_str)
             queue_length = redis_client.llen(enrichment_queue)
-            print(f"📤 QUEUED large verification job {job.id} to enrichment queue '{enrichment_queue}' (queue length: {queue_length})")
+            print(f"QUEUED large verification job {job.id} to enrichment queue '{enrichment_queue}' (queue length: {queue_length})")
         except Exception as e:
-            print(f"❌ Failed to queue verification job {job.id}: {e}")
+            print(f"Failed to queue verification job {job.id}: {e}")
             import traceback
             traceback.print_exc()
     else:
@@ -728,15 +769,20 @@ async def upload_verify_file(
         db.bulk_save_objects(leads_to_create)
         db.commit()
         
-        # Queue job for verification processing
+        # Queue job for verification - route through waiting room if client at capacity
         try:
             job_id_str = str(job.id)
             queue_name = get_verification_queue_for_user(db, current_user.id)
-            redis_client.lpush(queue_name, job_id_str)
-            queue_length = redis_client.llen(queue_name)
-            print(f"📤 QUEUED verification job {job.id} to Redis queue '{queue_name}' (queue length: {queue_length})")
+            routed = route_job_to_queue_or_waiting_room(
+                redis_client, db, current_user.id, job_id_str, queue_name
+            )
+            if routed:
+                queue_length = redis_client.llen(queue_name)
+                print(f"QUEUED verification job {job.id} to '{queue_name}' (queue length: {queue_length})")
+            else:
+                print(f"Verification job {job.id} placed in waiting room for user {current_user.id}")
         except Exception as e:
-            print(f"❌ Failed to queue verification job {job.id}: {e}")
+            print(f"Failed to queue verification job {job.id}: {e}")
             import traceback
             traceback.print_exc()
     
@@ -1189,21 +1235,19 @@ async def delete_job(
     # This allows workers to stop processing this job ASAP
     try:
         cancel_key = f"job:cancelled:{job_id}"
-        redis_client.set(cancel_key, "true", ex=3600)  # 1 hour TTL
+        redis_client.set(cancel_key, "true", ex=3600)
         
-        # Release global lock if this job is holding it
-        # This prevents stale locks when jobs are deleted mid-processing
-        global_lock_key = "global:job-processing-lock"
-        lock_holder = redis_client.get(global_lock_key)
-        if lock_holder and lock_holder.decode('utf-8') == job_id:
-            redis_client.delete(global_lock_key)
-            print(f"🔓 Released global lock held by deleted job {job_id}")
+        # Clean up fair-share registry
+        redis_client.hdel("fairshare:active_jobs", str(job_id))
+        redis_client.delete(f"fairshare:heartbeat:{job_id}")
+        redis_client.delete(f"fairshare:throughput:{job_id}")
+        
+        # Remove from waiting room if applicable
+        waiting_key = f"fairshare:waiting:{job.user_id}"
+        redis_client.lrem(waiting_key, 0, str(job_id))
     except Exception as e:
-        # Don't fail the delete if Redis is unavailable - just log
         print(f"Warning: Could not notify workers via Redis: {e}")
     
-    # Only delete the job record, NOT the leads (keep leads forever)
-    # Leads will remain in database but job reference will be removed
     db.delete(job)
     db.commit()
     
@@ -1234,8 +1278,7 @@ async def cancel_job(
             detail="Job not found"
         )
     
-    # Only allow cancelling pending or processing jobs
-    if job.status not in ['pending', 'processing']:
+    if job.status not in ['pending', 'processing', 'queued', 'waiting']:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot cancel job with status: {job.status}"
@@ -1245,17 +1288,17 @@ async def cancel_job(
     # This allows workers to stop processing this job ASAP
     try:
         cancel_key = f"job:cancelled:{job_id}"
-        redis_client.set(cancel_key, "true", ex=3600)  # 1 hour TTL
+        redis_client.set(cancel_key, "true", ex=3600)
         
-        # Release global lock if this job is holding it
-        # This prevents stale locks when jobs are cancelled mid-processing
-        global_lock_key = "global:job-processing-lock"
-        lock_holder = redis_client.get(global_lock_key)
-        if lock_holder and lock_holder.decode('utf-8') == job_id:
-            redis_client.delete(global_lock_key)
-            print(f"🔓 Released global lock held by cancelled job {job_id}")
+        # Clean up fair-share registry
+        redis_client.hdel("fairshare:active_jobs", str(job_id))
+        redis_client.delete(f"fairshare:heartbeat:{job_id}")
+        redis_client.delete(f"fairshare:throughput:{job_id}")
+        
+        # Remove from waiting room if applicable
+        waiting_key = f"fairshare:waiting:{job.user_id}"
+        redis_client.lrem(waiting_key, 0, str(job_id))
     except Exception as e:
-        # Don't fail the cancel if Redis is unavailable - just log
         print(f"Warning: Could not notify workers via Redis: {e}")
     
     # Update job status to cancelled

@@ -312,6 +312,56 @@ def get_verification_queue_for_user(db, user_id) -> str:
         return DEFAULT_VERIFICATION_QUEUE
 
 
+def route_to_queue_or_waiting_room(redis_client, db, user_id, job_id_str, verification_queue):
+    """
+    Route a job to the main queue or the client waiting room based on the
+    client's max_concurrent_jobs cap.
+    
+    Returns True if routed to main queue, False if placed in waiting room.
+    """
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        max_jobs = getattr(user, 'max_concurrent_jobs', 3) if user else 3
+
+        # Count active + queued jobs for this user
+        active_jobs = redis_client.hgetall('fairshare:active_jobs') or {}
+        queue_items = redis_client.lrange(verification_queue, 0, -1) or []
+
+        user_active = sum(
+            1 for uid in active_jobs.values()
+            if (uid if isinstance(uid, str) else uid.decode('utf-8')) == str(user_id)
+        )
+
+        user_queued = 0
+        for qjid in queue_items:
+            try:
+                qjid_str = qjid if isinstance(qjid, str) else qjid.decode('utf-8')
+                j = db.query(Job).filter(Job.id == qjid_str).first()
+                if j and str(j.user_id) == str(user_id):
+                    user_queued += 1
+            except Exception:
+                pass
+
+        current_load = user_active + user_queued
+
+        if current_load < max_jobs:
+            redis_client.rpush(verification_queue, job_id_str)
+            return True
+        else:
+            # Place in per-client waiting room
+            waiting_key = f"fairshare:waiting:{user_id}"
+            redis_client.rpush(waiting_key, job_id_str)
+            # Mark job as 'waiting' in database
+            db.query(Job).filter(Job.id == job_id_str).update({"status": "waiting"})
+            db.commit()
+            return False
+    except Exception as e:
+        logger.error(f"Error routing job {job_id_str}: {e}")
+        # Fallback: push to main queue
+        redis_client.rpush(verification_queue, job_id_str)
+        return True
+
+
 def normalize_header(h: str) -> str:
     """Normalize header for column detection."""
     return h.lower().replace(' ', '').replace('_', '').replace('-', '')
@@ -629,17 +679,17 @@ def process_enrichment_job(job_id: str) -> bool:
         
         logger.info(f"✅ Updated job {job_id}: status='{job.status}', total_leads={job.total_leads}")
         
-        # Queue job for verification - route to client-specific queue if configured
+        # Queue job for verification - route through waiting room if client at capacity
         try:
             job_id_str = str(job.id)
-            # Look up user's dedicated queue (or use shared queue)
             verification_queue = get_verification_queue_for_user(db, user.id)
-            redis_client.lpush(verification_queue, job_id_str)
-            queue_length = redis_client.llen(verification_queue)
-            logger.info(f"📤 QUEUED job {job_id} to verification queue '{verification_queue}' (queue length: {queue_length})")
+            if route_to_queue_or_waiting_room(redis_client, db, user.id, job_id_str, verification_queue):
+                queue_length = redis_client.llen(verification_queue)
+                logger.info(f"QUEUED job {job_id} to verification queue '{verification_queue}' (queue length: {queue_length})")
+            else:
+                logger.info(f"Job {job_id} placed in waiting room for user {user.id}")
         except Exception as e:
-            logger.error(f"❌ Failed to queue job {job_id} for verification: {e}")
-            # Don't fail the job - it can be manually queued later
+            logger.error(f"Failed to queue job {job_id} for verification: {e}")
             pass
         
         return True
@@ -816,14 +866,16 @@ def process_verification_job(job_id: str) -> bool:
         
         logger.info(f"✅ Created {leads_count} leads for verification job {job_id}")
         
-        # Queue job for verification processing
+        # Queue job for verification processing - route through waiting room if needed
         try:
             verification_queue = get_verification_queue_for_user(db, user.id)
-            redis_client.lpush(verification_queue, str(job.id))
-            queue_length = redis_client.llen(verification_queue)
-            logger.info(f"📤 QUEUED verification job {job_id} to '{verification_queue}' (queue length: {queue_length})")
+            if route_to_queue_or_waiting_room(redis_client, db, user.id, str(job.id), verification_queue):
+                queue_length = redis_client.llen(verification_queue)
+                logger.info(f"QUEUED verification job {job_id} to '{verification_queue}' (queue length: {queue_length})")
+            else:
+                logger.info(f"Verification job {job_id} placed in waiting room for user {user.id}")
         except Exception as e:
-            logger.error(f"❌ Failed to queue verification job {job_id}: {e}")
+            logger.error(f"Failed to queue verification job {job_id}: {e}")
         
         return True
         

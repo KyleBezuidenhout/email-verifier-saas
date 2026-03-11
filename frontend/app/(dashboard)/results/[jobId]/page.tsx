@@ -252,7 +252,7 @@ export default function ResultsPage() {
             </h2>
           ) : (
             <h2 className="text-3xl font-bold text-dashboard-text-muted">
-              Status: {job.status}
+              Status: {job.status === "waiting" ? "queued" : job.status}
             </h2>
           )}
         </div>

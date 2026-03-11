@@ -83,6 +83,7 @@ async def get_all_clients(
             "full_name": client.full_name,
             "company_name": client.company_name,
             "credits": client.credits,
+            "max_concurrent_jobs": getattr(client, 'max_concurrent_jobs', 3),
             "is_active": client.is_active,
             "is_admin": getattr(client, 'is_admin', False),
             "created_at": client.created_at.isoformat() if client.created_at else None,
@@ -376,21 +377,20 @@ async def admin_delete_job(
         "total_leads": job.total_leads
     }
     
-    # IMMEDIATELY notify workers via Redis before deleting from DB
-    # This allows workers to stop processing this job ASAP
+    # Notify workers via Redis + clean up fair-share state
     try:
         cancel_key = f"job:cancelled:{job_id}"
-        redis_client.set(cancel_key, "true", ex=3600)  # 1 hour TTL
+        redis_client.set(cancel_key, "true", ex=3600)
         
-        # Release global lock if this job is holding it
-        # This prevents stale locks when jobs are deleted mid-processing
-        global_lock_key = "global:job-processing-lock"
-        lock_holder = redis_client.get(global_lock_key)
-        if lock_holder and lock_holder.decode('utf-8') == str(job_id):
-            redis_client.delete(global_lock_key)
-            print(f"🔓 Released global lock held by deleted job {job_id}")
+        # Clean up fair-share registry
+        redis_client.hdel("fairshare:active_jobs", str(job_id))
+        redis_client.delete(f"fairshare:heartbeat:{job_id}")
+        redis_client.delete(f"fairshare:throughput:{job_id}")
+        
+        # Remove from waiting room if applicable
+        waiting_key = f"fairshare:waiting:{job.user_id}"
+        redis_client.lrem(waiting_key, 0, str(job_id))
     except Exception as e:
-        # Don't fail the delete if Redis is unavailable - just log
         print(f"Warning: Could not notify workers via Redis: {e}")
     
     # Delete the job (leads remain in database with null job_id reference)
@@ -632,4 +632,168 @@ async def get_error_summary(
     """Get error summary with counts."""
     logger = get_error_logger()
     return logger.get_error_summary(date=date)
+
+
+# ============================================
+# FAIR-SHARE MONITORING ENDPOINTS
+# ============================================
+
+@router.get("/fairshare/status")
+async def get_fairshare_status(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Get fair-share system status for admin dashboard."""
+    import json
+    
+    try:
+        verification_queue = settings.VERIFICATION_QUEUE if hasattr(settings, 'VERIFICATION_QUEUE') else "simple-email-verification-queue"
+        
+        # Active jobs from fair-share registry
+        active_jobs_raw = redis_client.hgetall("fairshare:active_jobs") or {}
+        active_jobs = []
+        for job_id, user_id in active_jobs_raw.items():
+            jid = job_id if isinstance(job_id, str) else job_id.decode('utf-8')
+            uid = user_id if isinstance(user_id, str) else user_id.decode('utf-8')
+            
+            throughput_raw = redis_client.get(f"fairshare:throughput:{jid}")
+            throughput = None
+            if throughput_raw:
+                try:
+                    tp_str = throughput_raw if isinstance(throughput_raw, str) else throughput_raw.decode('utf-8')
+                    throughput = json.loads(tp_str)
+                except Exception:
+                    pass
+            
+            job = db.query(Job).filter(Job.id == jid).first()
+            user = db.query(User).filter(User.id == uid).first() if uid else None
+            
+            active_jobs.append({
+                "job_id": jid,
+                "user_id": uid,
+                "user_email": user.email if user else "unknown",
+                "job_type": job.job_type if job else "unknown",
+                "total_leads": job.total_leads if job else 0,
+                "processed_leads": job.processed_leads if job else 0,
+                "throughput": throughput,
+            })
+        
+        # Queue length
+        queue_length = redis_client.llen(verification_queue) or 0
+        
+        # Queued jobs (from main queue)
+        queued_job_ids = redis_client.lrange(verification_queue, 0, -1) or []
+        queued_jobs = []
+        for qjid in queued_job_ids:
+            jid = qjid if isinstance(qjid, str) else qjid.decode('utf-8')
+            job = db.query(Job).filter(Job.id == jid).first()
+            if job:
+                user = db.query(User).filter(User.id == job.user_id).first()
+                queued_jobs.append({
+                    "job_id": jid,
+                    "user_id": str(job.user_id),
+                    "user_email": user.email if user else "unknown",
+                    "job_type": job.job_type,
+                    "total_leads": job.total_leads,
+                })
+        
+        # Waiting room jobs (across all clients)
+        waiting_room_jobs = []
+        users = db.query(User).all()
+        for u in users:
+            waiting_key = f"fairshare:waiting:{u.id}"
+            waiting_ids = redis_client.lrange(waiting_key, 0, -1) or []
+            for wjid in waiting_ids:
+                jid = wjid if isinstance(wjid, str) else wjid.decode('utf-8')
+                job = db.query(Job).filter(Job.id == jid).first()
+                if job:
+                    waiting_room_jobs.append({
+                        "job_id": jid,
+                        "user_id": str(u.id),
+                        "user_email": u.email,
+                        "job_type": job.job_type,
+                        "total_leads": job.total_leads,
+                    })
+        
+        return {
+            "active_job_count": len(active_jobs),
+            "queued_job_count": queue_length,
+            "waiting_room_count": len(waiting_room_jobs),
+            "active_jobs": active_jobs,
+            "queued_jobs": queued_jobs,
+            "waiting_room_jobs": waiting_room_jobs,
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "active_job_count": 0,
+            "queued_job_count": 0,
+            "waiting_room_count": 0,
+            "active_jobs": [],
+            "queued_jobs": [],
+            "waiting_room_jobs": [],
+        }
+
+
+@router.put("/clients/{client_id}/max-jobs")
+async def update_client_max_jobs(
+    client_id: UUID,
+    max_jobs: int = Query(..., ge=1, le=50),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Update a client's max concurrent jobs cap. Promotes waiting room jobs if cap increased."""
+    user = db.query(User).filter(User.id == client_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    old_max = getattr(user, 'max_concurrent_jobs', 3)
+    user.max_concurrent_jobs = max_jobs
+    db.commit()
+    
+    promoted = 0
+    
+    # If cap was increased, promote jobs from waiting room to main queue
+    if max_jobs > old_max:
+        try:
+            verification_queue = settings.VERIFICATION_QUEUE if hasattr(settings, 'VERIFICATION_QUEUE') else "simple-email-verification-queue"
+            waiting_key = f"fairshare:waiting:{client_id}"
+            
+            # Count current active + queued
+            active_jobs = redis_client.hgetall("fairshare:active_jobs") or {}
+            queue_items = redis_client.lrange(verification_queue, 0, -1) or []
+            
+            user_active = sum(
+                1 for uid in active_jobs.values()
+                if (uid if isinstance(uid, str) else uid.decode('utf-8')) == str(client_id)
+            )
+            user_queued = 0
+            for qjid in queue_items:
+                jid = qjid if isinstance(qjid, str) else qjid.decode('utf-8')
+                j = db.query(Job).filter(Job.id == jid).first()
+                if j and str(j.user_id) == str(client_id):
+                    user_queued += 1
+            
+            slots = max_jobs - (user_active + user_queued)
+            
+            for _ in range(max(0, slots)):
+                next_job = redis_client.lpop(waiting_key)
+                if not next_job:
+                    break
+                jid = next_job if isinstance(next_job, str) else next_job.decode('utf-8')
+                db.query(Job).filter(Job.id == jid).update({"status": "queued"})
+                redis_client.rpush(verification_queue, jid)
+                promoted += 1
+            
+            if promoted > 0:
+                db.commit()
+        except Exception as e:
+            print(f"Error promoting from waiting room: {e}")
+    
+    return {
+        "client_id": str(client_id),
+        "max_concurrent_jobs": max_jobs,
+        "previous_max": old_max,
+        "promoted_from_waiting_room": promoted,
+    }
 

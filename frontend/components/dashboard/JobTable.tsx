@@ -119,7 +119,7 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                       "badge-info"
                     }`}
                   >
-                    {job.status === "waiting_for_csv" ? "Waiting for CSV" : job.status}
+                    {job.status === "waiting_for_csv" ? "Waiting for CSV" : job.status === "waiting" ? "queued" : job.status}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -151,7 +151,7 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                   >
                     View
                   </Link>
-                  {(job.status === 'pending' || job.status === 'processing') && onCancel && (
+                  {(job.status === 'pending' || job.status === 'processing' || job.status === 'waiting' || job.status === 'queued') && onCancel && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

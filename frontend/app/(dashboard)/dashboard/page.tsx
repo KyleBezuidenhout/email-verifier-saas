@@ -295,7 +295,7 @@ export default function DashboardPage() {
                   item.status === "failed" ? "bg-red-500/20 text-red-400" :
                   "badge-info"
                 }`}>
-                  {item.status === "initialization" || item.status === "scraping" || item.status === "segmenting" ? "processing" : item.status}
+                  {item.status === "initialization" || item.status === "scraping" || item.status === "segmenting" ? "processing" : item.status === "waiting" ? "queued" : item.status}
                 </span>
               </div>
             </div>

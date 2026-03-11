@@ -113,16 +113,7 @@ const VERIFICATION_QUEUE = process.env.VERIFICATION_QUEUE || 'simple-email-verif
 // - enrichment: Worker only processes enrichment jobs
 // - verification: Worker only processes simple verification jobs
 // - all: Worker processes all job types (default behavior)
-//
-// USE_GLOBAL_LOCK: Whether to acquire a global lock before processing (default: true)
-// - When true, only one job can process at a time across all workers
-// - Prevents rate limit conflicts when workers share API keys
-// - Set to false when workers have dedicated API keys
 const JOB_TYPE_FILTER = process.env.JOB_TYPE_FILTER || 'all';
-const USE_GLOBAL_LOCK = process.env.USE_GLOBAL_LOCK !== 'false'; // Default true
-const GLOBAL_LOCK_KEY = 'global:job-processing-lock';
-const GLOBAL_LOCK_TTL_MS = 86400000; // 24 hours max (safety, released on job completion or job deletion)
-const LOCK_RETRY_INTERVAL_MS = 2000; // Check for lock every 2 seconds
 
 // Log worker mode at startup
 if (WORKER_MODE === 'dedicated') {
@@ -137,8 +128,7 @@ if (WORKER_MODE === 'dedicated') {
 }
 
 // Log job type filter configuration
-console.log(`📋 JOB TYPE FILTER: ${JOB_TYPE_FILTER}`);
-console.log(`🔐 GLOBAL LOCK: ${USE_GLOBAL_LOCK ? 'ENABLED (prevents rate limit conflicts)' : 'DISABLED (dedicated API keys)'}\n`);
+console.log(`📋 JOB TYPE FILTER: ${JOB_TYPE_FILTER}\n`);
 
 // Parse Redis connection
 const redisUrl = new URL(process.env.REDIS_URL);
@@ -156,7 +146,6 @@ redisClient.on('error', (err) => console.error('Redis Client Error', err));
 redisClient.connect().then(() => {
   // Initialize rate limiter with PER-KEY configurations
   globalRateLimiter = new GlobalRateLimiter(redisClient, 30000, KEY_CONFIGS);
-  rateLimiter = globalRateLimiter; // Backwards compatibility alias
   
   // Calculate total throughput from all keys
   let totalRequestsPer30s = 0;
@@ -191,82 +180,11 @@ const pgPool = new Pool({
   allowExitOnIdle: false,         // Keep pool alive for long-running worker
 });
 
-// ==============================================
-// GLOBAL JOB PROCESSING LOCK
-// ==============================================
-// Prevents multiple workers from processing jobs simultaneously
-// when they share the same API keys (prevents rate limit conflicts)
-
-/**
- * Try to acquire the global job processing lock.
- * Uses Redis SET NX (set if not exists) for atomic lock acquisition.
- * @param {string} jobId - The job ID to store as lock value (for debugging)
- * @returns {Promise<boolean>} - True if lock acquired, false if already held
- */
-async function tryAcquireGlobalLock(jobId) {
-  if (!USE_GLOBAL_LOCK) return true; // Lock disabled, always succeed
-  
-  try {
-    const result = await redisClient.set(GLOBAL_LOCK_KEY, jobId, {
-      NX: true, // Only set if key doesn't exist
-      PX: GLOBAL_LOCK_TTL_MS // Expire after TTL (safety)
-    });
-    return result === 'OK';
-  } catch (error) {
-    console.error(`Error acquiring global lock:`, error.message);
-    return false;
-  }
-}
-
-/**
- * Wait for and acquire the global job processing lock.
- * Polls until the lock becomes available.
- * @param {string} jobId - The job ID to store as lock value
- * @param {number} maxWaitMs - Maximum time to wait (default: 30 minutes)
- * @returns {Promise<boolean>} - True if lock acquired, false if timeout
- */
-async function acquireGlobalLock(jobId, maxWaitMs = 1800000) {
-  if (!USE_GLOBAL_LOCK) return true; // Lock disabled, always succeed
-  
-  const startTime = Date.now();
-  let lastLogTime = 0;
-  
-  while (Date.now() - startTime < maxWaitMs) {
-    const acquired = await tryAcquireGlobalLock(jobId);
-    if (acquired) {
-      console.log(`🔐 Acquired global lock for job ${jobId}`);
-      return true;
-    }
-    
-    // Log waiting status every 10 seconds
-    const now = Date.now();
-    if (now - lastLogTime > 10000) {
-      const currentHolder = await redisClient.get(GLOBAL_LOCK_KEY);
-      console.log(`⏳ Waiting for global lock... (held by job ${currentHolder})`);
-      lastLogTime = now;
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, LOCK_RETRY_INTERVAL_MS));
-  }
-  
-  console.error(`❌ Timeout waiting for global lock after ${maxWaitMs}ms`);
-  return false;
-}
-
-/**
- * Release the global job processing lock.
- * @returns {Promise<void>}
- */
-async function releaseGlobalLock() {
-  if (!USE_GLOBAL_LOCK) return; // Lock disabled, nothing to release
-  
-  try {
-    await redisClient.del(GLOBAL_LOCK_KEY);
-    console.log(`🔓 Released global lock`);
-  } catch (error) {
-    console.error(`Error releasing global lock:`, error.message);
-  }
-}
+// Fair-share constants (functions defined after KEY_CONFIGS initialization)
+const FAIRSHARE_HEARTBEAT_TTL_S = parseInt(process.env.FAIRSHARE_HEARTBEAT_TTL_S || '120');
+const FAIRSHARE_HEARTBEAT_REFRESH_MS = 15000;
+const FAIRSHARE_ALLOCATION_CACHE_TTL_MS = parseInt(process.env.FAIRSHARE_ALLOCATION_CACHE_TTL_MS || '5000');
+const FAIRSHARE_CLEANUP_INTERVAL_MS = 30000;
 
 /**
  * Check the job type from the database.
@@ -384,6 +302,164 @@ const KEY_REMAINING_CACHE_TTL_MS = 30000; // Cache remaining capacity for 30 sec
 // Each key has 250ms spacing between calls (4 req/sec per key = 8 req/sec total with 2 keys)
 const MAX_CONCURRENT_PEOPLE = 20;         // For enrichment jobs (each person = up to 16 API calls)
 const MAX_CONCURRENT_LEADS = 20;          // For verification jobs (each lead = 1 API call)
+
+// ==============================================
+// FAIR-SHARE KEY POOLING
+// ==============================================
+
+// Pre-sort keys by speed (fastest first) for interleaved fair distribution
+const SORTED_KEYS_BY_SPEED = [...MAILTESTER_API_KEYS].sort((a, b) => {
+  const configA = KEY_CONFIGS.get(a);
+  const configB = KEY_CONFIGS.get(b);
+  return (configA?.spacingMs || 250) - (configB?.spacingMs || 250);
+});
+
+// Fair-share allocation cache (per-instance, refreshed every 5s)
+let allocationCache = null; // { keys: [], timestamp: 0 }
+let jobRoundRobinIndex = 0;
+
+/**
+ * Get the API keys allocated to a specific job via fair-share.
+ * Uses interleaved (card-dealing) distribution so each job gets a mix of fast/slow keys.
+ * Cached for FAIRSHARE_ALLOCATION_CACHE_TTL_MS to avoid Redis calls on every API request.
+ */
+async function getAllocatedKeys(jobId) {
+  if (WORKER_MODE === 'dedicated') {
+    return MAILTESTER_API_KEYS;
+  }
+  
+  if (allocationCache && Date.now() - allocationCache.timestamp < FAIRSHARE_ALLOCATION_CACHE_TTL_MS) {
+    return allocationCache.keys;
+  }
+  
+  try {
+    const activeJobs = await redisClient.hGetAll('fairshare:active_jobs');
+    const sortedJobIds = Object.keys(activeJobs).sort();
+    
+    if (!activeJobs[jobId]) {
+      await redisClient.hSet('fairshare:active_jobs', jobId, 'self-healed');
+      await redisClient.set(`fairshare:heartbeat:${jobId}`, 'alive', { EX: FAIRSHARE_HEARTBEAT_TTL_S });
+      sortedJobIds.push(jobId);
+      sortedJobIds.sort();
+    }
+    
+    const myIndex = sortedJobIds.indexOf(jobId);
+    const totalJobs = sortedJobIds.length;
+    
+    const myKeys = [];
+    for (let i = myIndex; i < SORTED_KEYS_BY_SPEED.length; i += totalJobs) {
+      myKeys.push(SORTED_KEYS_BY_SPEED[i]);
+    }
+    
+    allocationCache = { keys: myKeys, timestamp: Date.now() };
+    return myKeys;
+  } catch (err) {
+    console.error('getAllocatedKeys error, using all keys as fallback:', err.message);
+    return MAILTESTER_API_KEYS;
+  }
+}
+
+/**
+ * Get the next API key for a job using local round-robin within allocated keys.
+ * Skips unhealthy keys. Falls back to any allocated key if all unhealthy.
+ */
+async function getNextKeyForJob(jobId) {
+  if (WORKER_MODE === 'dedicated') {
+    return getNextKeyLocal();
+  }
+  
+  const myKeys = await getAllocatedKeys(jobId);
+  if (myKeys.length === 0) return MAILTESTER_API_KEYS[0];
+  if (myKeys.length === 1) return myKeys[0];
+  
+  for (let i = 0; i < myKeys.length; i++) {
+    const idx = (jobRoundRobinIndex + i) % myKeys.length;
+    const key = myKeys[idx];
+    const healthy = await getCachedKeyHealth(key);
+    const remaining = await getCachedKeyRemaining(key);
+    if (healthy && remaining > 0) {
+      jobRoundRobinIndex = (idx + 1) % myKeys.length;
+      return key;
+    }
+  }
+  
+  const fallback = myKeys[jobRoundRobinIndex % myKeys.length];
+  jobRoundRobinIndex = (jobRoundRobinIndex + 1) % myKeys.length;
+  return fallback;
+}
+
+/**
+ * Compute dynamic max concurrent operations based on allocated key count.
+ */
+function computeMaxConcurrent(allocatedKeyCount, jobType) {
+  if (jobType === 'verification') {
+    return Math.min(Math.max(allocatedKeyCount * 5, 5), 40);
+  }
+  return Math.min(Math.max(allocatedKeyCount * 3, 5), 30);
+}
+
+/**
+ * Register a job in the fair-share active jobs registry with heartbeat.
+ * Returns the heartbeat interval handle for cleanup.
+ */
+async function registerFairshareJob(jobId, userId) {
+  if (WORKER_MODE === 'dedicated') return null;
+  
+  await redisClient.hSet('fairshare:active_jobs', jobId, userId);
+  await redisClient.set(`fairshare:heartbeat:${jobId}`, 'alive', { EX: FAIRSHARE_HEARTBEAT_TTL_S });
+  
+  const heartbeatInterval = setInterval(async () => {
+    try {
+      await redisClient.set(`fairshare:heartbeat:${jobId}`, 'alive', { EX: FAIRSHARE_HEARTBEAT_TTL_S });
+    } catch (e) { /* non-fatal */ }
+  }, FAIRSHARE_HEARTBEAT_REFRESH_MS);
+  
+  allocationCache = null;
+  jobRoundRobinIndex = 0;
+  
+  return heartbeatInterval;
+}
+
+/**
+ * Unregister a job from the fair-share registry and clean up.
+ */
+async function unregisterFairshareJob(jobId, heartbeatInterval) {
+  if (WORKER_MODE === 'dedicated') return;
+  
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  
+  try {
+    await redisClient.hDel('fairshare:active_jobs', jobId);
+    await redisClient.del(`fairshare:heartbeat:${jobId}`);
+    await redisClient.del(`fairshare:throughput:${jobId}`);
+  } catch (e) {
+    console.error('Error unregistering fairshare job:', e.message);
+  }
+  
+  allocationCache = null;
+}
+
+/**
+ * Clean up stale jobs whose heartbeats have expired (crash recovery).
+ */
+async function cleanupStaleJobs() {
+  try {
+    const activeJobs = await redisClient.hGetAll('fairshare:active_jobs');
+    for (const [jobId, userId] of Object.entries(activeJobs)) {
+      const alive = await redisClient.exists(`fairshare:heartbeat:${jobId}`);
+      if (!alive) {
+        await redisClient.hDel('fairshare:active_jobs', jobId);
+        await redisClient.del(`fairshare:throughput:${jobId}`);
+        console.log(`Cleaned up stale fairshare job ${jobId} (heartbeat expired, user ${userId})`);
+      }
+    }
+  } catch (e) {
+    console.error('Stale job cleanup error:', e.message);
+  }
+}
+
+// Start stale job cleanup sweep
+setInterval(cleanupStaleJobs, FAIRSHARE_CLEANUP_INTERVAL_MS);
 
 // ============================================
 // API USAGE TRACKING (for Admin Dashboard)
@@ -600,21 +676,21 @@ async function markKeyUnhealthy(apiKey) {
 }
 
 // Get the best available API key (healthy + most remaining capacity)
-async function getBestAvailableKey() {
-  if (MAILTESTER_API_KEYS.length === 0) {
+async function getBestAvailableKey(keyPool = null) {
+  const pool = keyPool || MAILTESTER_API_KEYS;
+  if (pool.length === 0) {
     console.error('No API keys configured!');
     return null;
   }
   
-  if (MAILTESTER_API_KEYS.length === 1) {
-    return MAILTESTER_API_KEYS[0];
+  if (pool.length === 1) {
+    return pool[0];
   }
   
   let bestKey = null;
   let bestRemaining = -1;
   
-  // First pass: find best healthy key
-  for (const key of MAILTESTER_API_KEYS) {
+  for (const key of pool) {
     const healthy = await isKeyHealthy(key);
     const remaining = await getKeyRemaining(key);
     
@@ -624,10 +700,9 @@ async function getBestAvailableKey() {
     }
   }
   
-  // Fallback: if all keys unhealthy, use one with most capacity anyway
   if (!bestKey) {
-    console.log('⚠️ All keys unhealthy, using key with most remaining capacity...');
-    for (const key of MAILTESTER_API_KEYS) {
+    console.log('All keys unhealthy, using key with most remaining capacity...');
+    for (const key of pool) {
       const remaining = await getKeyRemaining(key);
       if (remaining > bestRemaining) {
         bestRemaining = remaining;
@@ -636,12 +711,13 @@ async function getBestAvailableKey() {
     }
   }
   
-  return bestKey || MAILTESTER_API_KEYS[0];
+  return bestKey || pool[0];
 }
 
 // Get next healthy key excluding the specified one
-async function getNextHealthyKey(excludeKey) {
-  for (const key of MAILTESTER_API_KEYS) {
+async function getNextHealthyKey(excludeKey, keyPool = null) {
+  const pool = keyPool || MAILTESTER_API_KEYS;
+  for (const key of pool) {
     if (key !== excludeKey) {
       const healthy = await isKeyHealthy(key);
       const remaining = await getKeyRemaining(key);
@@ -650,7 +726,6 @@ async function getNextHealthyKey(excludeKey) {
       }
     }
   }
-  // No healthy alternative found
   return null;
 }
 
@@ -1375,9 +1450,6 @@ class GlobalRateLimiter {
 // Global rate limiter instance
 let globalRateLimiter;
 
-// Legacy alias for backwards compatibility
-let rateLimiter;
-
 // ============================================
 // KEY SELECTION STRATEGIES
 // ============================================
@@ -1414,104 +1486,38 @@ async function getNextKeyLocal() {
   return MAILTESTER_API_KEYS_BY_SPEED[0];
 }
 
-// GLOBAL ROUND-ROBIN VIA REDIS (for shared mode)
-// All workers share the same round-robin counter via Redis
-// This ensures even distribution across all API keys
-const ROUND_ROBIN_KEY = 'mailtester:round_robin_index';
-
-// Get next key in round-robin fashion using GLOBAL Redis counter
-// This ensures all workers across all Railway instances share the same index
-async function getNextKeyRoundRobin() {
-  if (MAILTESTER_API_KEYS.length === 0) return null;
-  if (MAILTESTER_API_KEYS.length === 1) return MAILTESTER_API_KEYS[0];
-  
-  // Get and increment global round-robin index atomically via Redis
-  let globalIndex = 0;
-  if (redisClient.isReady) {
-    try {
-      // Atomic increment - all workers share this counter
-      const newIndex = await redisClient.incr(ROUND_ROBIN_KEY);
-      globalIndex = (newIndex - 1) % MAILTESTER_API_KEYS.length;
-      
-      // Set expiry to prevent stale data (1 hour)
-      await redisClient.expire(ROUND_ROBIN_KEY, 3600);
-    } catch (err) {
-      console.error('Redis round-robin error, using fallback:', err.message);
-      globalIndex = Math.floor(Math.random() * MAILTESTER_API_KEYS.length);
-    }
-  } else {
-    // Fallback to random if Redis not ready
-    globalIndex = Math.floor(Math.random() * MAILTESTER_API_KEYS.length);
-  }
-  
-  // Try each key starting from global index, skip unhealthy ones
-  for (let i = 0; i < MAILTESTER_API_KEYS.length; i++) {
-    const idx = (globalIndex + i) % MAILTESTER_API_KEYS.length;
-    const key = MAILTESTER_API_KEYS[idx];
-    
-    const healthy = await getCachedKeyHealth(key);
-    const remaining = await getCachedKeyRemaining(key);
-    
-    if (healthy && remaining > 0) {
-      return key;
-    }
-  }
-  
-  // All keys unhealthy or exhausted, return the one from global index anyway
-  return MAILTESTER_API_KEYS[globalIndex];
-}
-
-// Get next key - uses local selection for dedicated mode, global for shared
-async function getNextKey() {
-  if (WORKER_MODE === 'dedicated') {
+// Get next key - uses local selection for dedicated mode, fair-share for shared
+async function getNextKey(jobId = null) {
+  if (WORKER_MODE === 'dedicated' || !jobId) {
     return getNextKeyLocal();
   }
-  return getNextKeyRoundRobin();
+  return getNextKeyForJob(jobId);
 }
 
-// Global rate limit function - acquires a slot from the combined pool
-async function rateLimit() {
-  while (!globalRateLimiter) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  await globalRateLimiter.acquire();
-}
-
-// Rate limit for a specific key (also increments key-specific counter for safety)
-async function rateLimitForKey(apiKey) {
-  while (!globalRateLimiter) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  // First acquire global slot (fast ~91ms spacing with 2 keys)
-  await globalRateLimiter.acquire();
-  // Then track per-key usage for safety (doesn't add delay, just counting)
-  await globalRateLimiter.acquireForKey(apiKey);
-}
-
-// Verify email using MailTester API with multi-key support and failover
-// Uses per-key rate limiting with 250ms spacing between calls per key
-async function verifyEmail(email, totalAttempts = 0, forceKey = null) {
-  const MAX_TOTAL_ATTEMPTS = 3;  // 3 total attempts across all keys
-  
-  // Calculate linear backoff: 1s, 2s, 3s
+/**
+ * Verify email using MailTester API with multi-key support and failover.
+ * Uses fair-share allocated keys when jobId is provided.
+ */
+async function verifyEmail(email, totalAttempts = 0, forceKey = null, jobId = null) {
+  const MAX_TOTAL_ATTEMPTS = 3;
   const getBackoffMs = (attempt) => (attempt + 1) * 1000;
   
-  // Helper function to retry with backoff and key rotation (only on first error)
+  // Get the key pool for this job (scoped to fair-share allocation)
+  const keyPool = jobId ? await getAllocatedKeys(jobId) : MAILTESTER_API_KEYS;
+  
   const retryWithFallback = async (reason, currentKey) => {
     if (totalAttempts < MAX_TOTAL_ATTEMPTS - 1) {
       const backoffMs = getBackoffMs(totalAttempts);
-      console.log(`⚠️ ${reason} for ${email}, attempt ${totalAttempts + 1}/${MAX_TOTAL_ATTEMPTS}, retrying in ${backoffMs/1000}s...`);
+      console.log(`${reason} for ${email}, attempt ${totalAttempts + 1}/${MAX_TOTAL_ATTEMPTS}, retrying in ${backoffMs/1000}s...`);
       
-      // Only switch key on first error, keep same key for subsequent retries
       const nextKey = totalAttempts === 0 
-        ? await getNextHealthyKey(currentKey)  // Switch key once on first error
-        : currentKey;  // Keep same key for subsequent retries
+        ? await getNextHealthyKey(currentKey, keyPool)
+        : currentKey;
       
       await new Promise(resolve => setTimeout(resolve, backoffMs));
-      return verifyEmail(email, totalAttempts + 1, nextKey || currentKey || null);
+      return verifyEmail(email, totalAttempts + 1, nextKey || currentKey || null, jobId);
     }
     
-    // All 3 attempts exhausted - return 'unverified' (will be mapped by job type)
     console.error(`All ${MAX_TOTAL_ATTEMPTS} attempts exhausted for ${email}: ${reason}`);
     if (currentJobContext.jobId) {
       await logVerificationError(
@@ -1526,15 +1532,14 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null) {
     return { status: 'unverified', message: `${reason} - all retries exhausted`, mx: '', provider: '' };
   };
   
-  // Acquire a rate limit slot
-  let apiKey = forceKey || await getNextKey();
+  let apiKey = forceKey || await getNextKey(jobId);
   let acquired = false;
   const MAX_ACQUIRE_ATTEMPTS = 10;
   let acquireAttempts = 0;
   
   while (!acquired && acquireAttempts < MAX_ACQUIRE_ATTEMPTS) {
     if (!apiKey) {
-      apiKey = await getNextKey();
+      apiKey = await getNextKey(jobId);
     }
     
     if (!apiKey) {
@@ -1548,7 +1553,7 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null) {
       acquireAttempts++;
       if (acquireAttempts < MAX_ACQUIRE_ATTEMPTS) {
         await new Promise(resolve => setTimeout(resolve, 100));
-        apiKey = await getNextKey();
+        apiKey = await getNextKey(jobId);
       }
     }
   }
@@ -1653,12 +1658,6 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null) {
   }
 }
 
-// DEPRECATED: Use verifyEmail() instead - this is kept for backwards compatibility
-// Verify email without rate limiting (now uses multi-key with failover)
-async function verifyEmailWithoutRateLimit(email, retryCount = 0, currentKey = null, keyAttempts = 0) {
-  // Just call the main verifyEmail function which handles everything
-  return verifyEmail(email, retryCount, currentKey, keyAttempts);
-}
 
 // Deduplication logic (same as backend)
 function deduplicateLeads(leads) {
@@ -1792,243 +1791,6 @@ async function markFinalResults(leadIds) {
   }
 }
 
-// Process a job (extracted to be reusable)
-async function processJob(jobId) {
-  console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
-  
-  try {
-    // Get job details from database
-    const jobResult = await pgPool.query(
-      'SELECT * FROM jobs WHERE id = $1',
-      [jobId]
-    );
-    
-    if (jobResult.rows.length === 0) {
-      throw new Error(`Job ${jobId} not found`);
-    }
-    
-    const jobData = jobResult.rows[0];
-    const jobType = jobData.job_type || 'enrichment'; // Default to enrichment for backward compatibility
-    
-    // Update job status to processing
-    await updateJobStatus(jobId, 'processing');
-    
-    // Get all leads for this job
-    // For verification jobs, no need to order by prevalence_score
-    const orderBy = jobType === 'verification' ? 'id' : 'prevalence_score DESC';
-    const leadsResult = await pgPool.query(
-      `SELECT * FROM leads WHERE job_id = $1 ORDER BY ${orderBy}`,
-      [jobId]
-    );
-    
-    const leads = leadsResult.rows;
-    const totalLeads = leads.length;
-    
-    console.log(`Found ${totalLeads} leads to verify (job_type: ${jobType})`);
-    
-    if (totalLeads === 0) {
-      await updateJobStatus(jobId, 'completed', {
-        completed_at: new Date(),
-      });
-      return { status: 'completed', message: 'No leads to process' };
-    }
-    
-    let processedCount = 0;
-    let validCount = 0;
-    let catchallCount = 0;
-    let lastProgressUpdate = Date.now();
-    const PROGRESS_INTERVAL_MS = 3000; // Update progress every 3 seconds
-    
-    // Process leads in batches
-    const batchSize = 10;
-    for (let i = 0; i < leads.length; i += batchSize) {
-      const batch = leads.slice(i, i + batchSize);
-      
-      // Process batch in parallel (respecting rate limit)
-      const batchPromises = batch.map(async (lead) => {
-        try {
-          const result = await verifyEmail(lead.email);
-          
-          // Map 'unverified' status based on job type
-          // Verification jobs: unverified -> invalid
-          // Enrichment jobs: unverified -> not_found
-          let finalStatus = result.status;
-          if (result.status === 'unverified') {
-            finalStatus = jobType === 'verification' ? 'invalid' : 'not_found';
-            console.log(`Mapping unverified -> ${finalStatus} for ${lead.email} (job_type: ${jobType})`);
-          }
-          
-          await updateLeadStatus(lead.id, finalStatus, result.message, result.mx, result.provider);
-          
-          if (finalStatus === 'valid') {
-            validCount++;
-          } else if (finalStatus === 'catchall') {
-            catchallCount++;
-          }
-          
-          processedCount++;
-          
-          // Update job progress every 3 seconds
-          if (Date.now() - lastProgressUpdate >= PROGRESS_INTERVAL_MS) {
-            await updateJobStatus(jobId, 'processing', {
-              processed_leads: processedCount,
-              valid_emails_found: validCount,
-              catchall_emails_found: catchallCount,
-            });
-            lastProgressUpdate = Date.now();
-            console.log(`Progress: ${processedCount}/${totalLeads} (${Math.round(processedCount / totalLeads * 100)}%)`);
-          }
-        } catch (error) {
-          console.error(`Error processing lead ${lead.id}:`, error.message);
-          // Map error to appropriate status based on job type
-          const fallbackStatus = jobType === 'verification' ? 'invalid' : 'not_found';
-          await updateLeadStatus(lead.id, fallbackStatus, error.message);
-          processedCount++;
-        }
-      });
-      
-      await Promise.all(batchPromises);
-    }
-    
-    // Final progress update
-    await updateJobStatus(jobId, 'processing', {
-      processed_leads: processedCount,
-      valid_emails_found: validCount,
-      catchall_emails_found: catchallCount,
-    });
-    
-    console.log(`Verification complete. Valid: ${validCount}, Catchall: ${catchallCount}, Processed: ${processedCount}`);
-    
-    let finalValidCount, finalCatchallCount, finalResultIds;
-    
-    if (jobType === 'verification') {
-      // For verification jobs: skip deduplication, mark all valid/catchall as final results
-      console.log('Verification job: skipping deduplication, marking all results as final');
-      
-      const allLeads = await pgPool.query(
-        'SELECT * FROM leads WHERE job_id = $1',
-        [jobId]
-      );
-      
-      finalResultIds = [];
-      for (const lead of allLeads.rows) {
-        if (lead.verification_status === 'valid' || lead.verification_status === 'catchall' || lead.verification_status === 'invalid') {
-          finalResultIds.push(lead.id);
-        }
-      }
-      
-      await markFinalResults(finalResultIds);
-      
-      finalValidCount = validCount;
-      finalCatchallCount = catchallCount;
-    } else {
-      // For enrichment jobs: apply deduplication logic
-      console.log('Applying deduplication...');
-      const allLeads = await pgPool.query(
-        'SELECT * FROM leads WHERE job_id = $1',
-        [jobId]
-      );
-      
-      const finalResults = deduplicateLeads(allLeads.rows);
-      
-      // Mark final results in database
-      finalResultIds = [];
-      
-      for (const result of finalResults) {
-        if (result.id) {
-          finalResultIds.push(result.id);
-        } else if (result.verification_status === 'not_found') {
-          const notFoundLead = await pgPool.query(
-            `SELECT id FROM leads 
-             WHERE job_id = $1 
-             AND first_name = $2 
-             AND last_name = $3 
-             AND domain = $4 
-             LIMIT 1`,
-            [jobId, result.first_name, result.last_name, result.domain]
-          );
-          
-          if (notFoundLead.rows.length > 0) {
-            await pgPool.query(
-              'UPDATE leads SET email = $1, verification_status = $2, is_final_result = true WHERE id = $3',
-              ['', 'not_found', notFoundLead.rows[0].id]
-            );
-            finalResultIds.push(notFoundLead.rows[0].id);
-          }
-        }
-      }
-      
-      await markFinalResults(finalResultIds);
-      
-      // Update final counts
-      finalValidCount = finalResults.filter(r => r.verification_status === 'valid').length;
-      finalCatchallCount = finalResults.filter(r => r.verification_status === 'catchall').length;
-    }
-    
-    // Calculate cost (1 credit per lead actually processed, not total_leads)
-    const costInCredits = processedCount;
-    
-    // Mark job as completed
-    await updateJobStatus(jobId, 'completed', {
-      processed_leads: processedCount,
-      valid_emails_found: finalValidCount,
-      catchall_emails_found: finalCatchallCount,
-      cost_in_credits: costInCredits,
-      completed_at: new Date(),
-    });
-    
-    // Deduct credits (skip for admin, ensure credits never go below 0)
-    let userEmailForNotification = null;
-    if (costInCredits > 0) {
-      // Check if user is admin
-      const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-      userEmailForNotification = userResult.rows[0]?.email;
-      
-      if (userEmailForNotification !== ADMIN_EMAIL) {
-        // Use GREATEST to ensure credits never go below 0
-        await pgPool.query(
-          'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
-          [costInCredits, jobData.user_id]
-        );
-        console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification}`);
-      } else {
-        console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
-      }
-    } else {
-      const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-      userEmailForNotification = userResult.rows[0]?.email;
-    }
-    
-    // Send job completion email notification
-    if (userEmailForNotification) {
-      try {
-        await sendJobCompletionEmail(userEmailForNotification, 'verification', jobId, {
-          validEmails: finalValidCount,
-          catchallEmails: finalCatchallCount,
-          totalLeads: processedCount,
-        });
-      } catch (emailError) {
-        console.error(`Failed to send notification email: ${emailError.message}`);
-      }
-    }
-    
-    console.log(`Job ${jobId} completed successfully!`);
-    console.log(`Final results: ${finalValidCount} valid, ${finalCatchallCount} catchall`);
-    console.log(`Credits charged: ${costInCredits} (1 per lead)`);
-    
-    return {
-      status: 'completed',
-      processedCount: processedCount,
-      validCount: finalValidCount,
-      catchallCount: finalCatchallCount,
-    };
-    
-  } catch (error) {
-    console.error(`Error processing job ${jobId}:`, error);
-    await updateJobStatus(jobId, 'failed');
-    throw error;
-  }
-}
 
 console.log('Worker started, waiting for jobs...');
 console.log(`MailTester API: ${MAILTESTER_BASE_URL}`);
@@ -2076,91 +1838,159 @@ if (WORKER_MODE === 'dedicated') {
 }
 console.log(`Error failover: Auto-switch to healthy key after ${ERROR_THRESHOLD} errors/min`);
 
+// ==============================================
+// WAITING ROOM PROMOTION
+// ==============================================
+// When a job completes/fails/cancels, check if the owning client
+// has jobs in the waiting room and promote the next one to the main queue.
+
+async function promoteFromWaitingRoom(userId) {
+  if (!userId || !redisClient.isReady) return;
+  
+  try {
+    const waitingKey = `fairshare:waiting:${userId}`;
+    
+    // Get client's max_concurrent_jobs
+    const userRes = await pgPool.query('SELECT max_concurrent_jobs FROM users WHERE id = $1', [userId]);
+    const maxJobs = userRes.rows[0]?.max_concurrent_jobs || 3;
+    
+    // Count how many of this client's jobs are currently in the main queue or actively processing
+    const activeJobs = await redisClient.hGetAll('fairshare:active_jobs');
+    const queueName = VERIFICATION_QUEUE;
+    const queueItems = await redisClient.lRange(queueName, 0, -1);
+    
+    // Count active jobs for this user
+    let userActiveCount = 0;
+    for (const [jId, uId] of Object.entries(activeJobs)) {
+      if (String(uId) === String(userId)) userActiveCount++;
+    }
+    
+    // Count queued jobs for this user
+    let userQueuedCount = 0;
+    for (const qJobId of queueItems) {
+      try {
+        const jr = await pgPool.query('SELECT user_id FROM jobs WHERE id = $1', [qJobId]);
+        if (jr.rows.length > 0 && String(jr.rows[0].user_id) === String(userId)) {
+          userQueuedCount++;
+        }
+      } catch (e) { /* skip */ }
+    }
+    
+    const currentLoad = userActiveCount + userQueuedCount;
+    const slotsAvailable = maxJobs - currentLoad;
+    
+    if (slotsAvailable <= 0) return;
+    
+    // Promote up to slotsAvailable jobs from waiting room to main queue (FIFO)
+    for (let i = 0; i < slotsAvailable; i++) {
+      const nextJobId = await redisClient.lPop(waitingKey);
+      if (!nextJobId) break; // Waiting room empty
+      
+      // Update job status from 'waiting' to 'queued'
+      await pgPool.query("UPDATE jobs SET status = 'queued' WHERE id = $1 AND status = 'waiting'", [nextJobId]);
+      
+      // Push to main queue (RPUSH for FIFO)
+      await redisClient.rPush(queueName, nextJobId);
+      console.log(`Promoted job ${nextJobId} from waiting room to main queue for user ${userId}`);
+    }
+  } catch (e) {
+    console.error('Error promoting from waiting room:', e.message);
+  }
+}
+
+// ==============================================
+// THROUGHPUT REPORTING
+// ==============================================
+// Workers periodically write throughput stats to Redis for the admin dashboard.
+
+let throughputCounter = 0;
+let lastThroughputReportTime = Date.now();
+
+function recordThroughputTick() {
+  throughputCounter++;
+}
+
+async function reportThroughput(jobId) {
+  if (!redisClient.isReady || !jobId) return;
+  
+  const now = Date.now();
+  const elapsed = (now - lastThroughputReportTime) / 1000;
+  if (elapsed < 30) return; // Report every 30s
+  
+  const rate = elapsed > 0 ? Math.round((throughputCounter / elapsed) * 3600) : 0;
+  
+  try {
+    await redisClient.set(`fairshare:throughput:${jobId}`, JSON.stringify({
+      rate_per_hour: rate,
+      items_processed: throughputCounter,
+      window_seconds: Math.round(elapsed),
+      timestamp: new Date().toISOString(),
+    }), { EX: 300 });
+  } catch (e) { /* non-fatal */ }
+  
+  throughputCounter = 0;
+  lastThroughputReportTime = now;
+}
+
 // Simple Redis list poller
 async function pollSimpleQueue() {
-  // Use configurable queue name (from env var or default)
   const queueName = VERIFICATION_QUEUE;
-  let lastQueuePollLog = 0; // Track last time we logged "waiting for jobs"
+  let lastQueuePollLog = 0;
   
-  console.log(`\n[${new Date().toISOString()}] 🚀 Starting queue poller for: ${queueName}`);
-  console.log(`[${new Date().toISOString()}] 📋 Job type filter: ${JOB_TYPE_FILTER}`);
-  console.log(`[${new Date().toISOString()}] 🔐 Global lock: ${USE_GLOBAL_LOCK ? 'ENABLED' : 'DISABLED'}`);
+  console.log(`\n[${new Date().toISOString()}] Starting queue poller for: ${queueName}`);
+  console.log(`[${new Date().toISOString()}] Job type filter: ${JOB_TYPE_FILTER}`);
+  console.log(`[${new Date().toISOString()}] Fair-share pooling: ${WORKER_MODE === 'dedicated' ? 'OFF (dedicated)' : 'ON'}`);
   if (WORKER_MODE === 'dedicated') {
-    console.log(`[${new Date().toISOString()}] 🔒 Dedicated mode - processing only jobs from this queue`);
+    console.log(`[${new Date().toISOString()}] Dedicated mode - processing only jobs from this queue`);
   }
   
   while (true) {
     try {
-      // Blocking pop from Redis list (waits up to 5 seconds)
       const result = await redisClient.brPop(queueName, 5);
       
       if (result && result.element) {
         const jobIdStr = result.element;
-        console.log(`\n[${new Date().toISOString()}] 📥 DEQUEUED job ${jobIdStr} from queue '${queueName}'`);
+        console.log(`\n[${new Date().toISOString()}] DEQUEUED job ${jobIdStr} from queue '${queueName}'`);
         
-        // Check job type filter - if this worker shouldn't process this job type,
-        // push it back to the queue and continue
         if (JOB_TYPE_FILTER !== 'all') {
           const jobType = await getJobType(jobIdStr);
           
           if (jobType === null) {
-            console.log(`[${new Date().toISOString()}] ⚠️ Job ${jobIdStr} not found in database, skipping`);
+            console.log(`[${new Date().toISOString()}] Job ${jobIdStr} not found in database, skipping`);
             continue;
           }
           
           if (!shouldProcessJob(jobType)) {
-            console.log(`[${new Date().toISOString()}] ↩️ Job ${jobIdStr} is type '${jobType}', this worker handles '${JOB_TYPE_FILTER}' - returning to queue`);
-            // Push back to the front of the queue (LPUSH) so another worker can pick it up
-            await redisClient.lPush(queueName, jobIdStr);
-            // Small delay to avoid tight loop if we're the only worker
+            console.log(`[${new Date().toISOString()}] Job ${jobIdStr} is type '${jobType}', this worker handles '${JOB_TYPE_FILTER}' - returning to queue`);
+            // RPUSH to maintain FIFO ordering
+            await redisClient.rPush(queueName, jobIdStr);
             await new Promise(resolve => setTimeout(resolve, 500));
             continue;
           }
           
-          console.log(`[${new Date().toISOString()}] ✓ Job ${jobIdStr} is type '${jobType}' - matches filter '${JOB_TYPE_FILTER}'`);
+          console.log(`[${new Date().toISOString()}] Job ${jobIdStr} is type '${jobType}' - matches filter '${JOB_TYPE_FILTER}'`);
         }
         
-        // Acquire global lock before processing (if enabled)
-        let lockAcquired = false;
         try {
-          if (USE_GLOBAL_LOCK) {
-            console.log(`[${new Date().toISOString()}] 🔐 Acquiring global lock for job ${jobIdStr}...`);
-            lockAcquired = await acquireGlobalLock(jobIdStr);
-            
-            if (!lockAcquired) {
-              console.error(`[${new Date().toISOString()}] ❌ Failed to acquire global lock for job ${jobIdStr}, returning to queue`);
-              await redisClient.lPush(queueName, jobIdStr);
-              await new Promise(resolve => setTimeout(resolve, 5000));
-              continue;
-            }
-          }
-          
           await processJobFromQueue(jobIdStr);
-          console.log(`\n[${new Date().toISOString()}] ✅ Job ${jobIdStr} completed successfully`);
+          console.log(`\n[${new Date().toISOString()}] Job ${jobIdStr} completed successfully`);
         } catch (error) {
-          console.error(`\n[${new Date().toISOString()}] ❌ Error processing job ${jobIdStr}:`, error.message);
+          console.error(`\n[${new Date().toISOString()}] Error processing job ${jobIdStr}:`, error.message);
           console.error('Stack:', error.stack);
-          // Job will remain in failed state, continue processing other jobs
-        } finally {
-          // Always release the global lock when done (if we acquired it)
-          if (USE_GLOBAL_LOCK && lockAcquired) {
-            await releaseGlobalLock();
-          }
         }
       } else {
-        // No job available, log periodically (every 30 seconds) to show worker is alive
         const now = Date.now();
         if (!lastQueuePollLog || now - lastQueuePollLog > 30000) {
-          console.log(`[${new Date().toISOString()}] ⏳ Waiting for jobs in queue '${queueName}'... (filter: ${JOB_TYPE_FILTER})`);
+          console.log(`[${new Date().toISOString()}] Waiting for jobs in queue '${queueName}'... (filter: ${JOB_TYPE_FILTER})`);
           lastQueuePollLog = now;
         }
       }
     } catch (error) {
       if (error.code === 'ECONNREFUSED') {
-        console.error(`\n[${new Date().toISOString()}] ❌ Redis connection refused. Retrying in 5 seconds...`);
+        console.error(`\n[${new Date().toISOString()}] Redis connection refused. Retrying in 5 seconds...`);
         await new Promise(resolve => setTimeout(resolve, 5000));
       } else {
-        console.error(`\n[${new Date().toISOString()}] ❌ Error polling queue:`, error.message);
+        console.error(`\n[${new Date().toISOString()}] Error polling queue:`, error.message);
         console.error('Stack:', error.stack);
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
@@ -2224,7 +2054,7 @@ async function updateLeadWithExtendedCatchall(leadId, originalEmail, originalPat
 // 2. CATCHALL: First catchall found = highest prevalence (leads sorted by prevalence), 
 //    all remaining permutations for this domain will also be catchalls with lower prevalence
 // 3. TIMEOUT: Mail server unresponsive = skip all remaining permutations (they'll all timeout too)
-async function processPersonWithEarlyExit(personKey, personLeads) {
+async function processPersonWithEarlyExit(personKey, personLeads, jobId = null) {
   let foundValid = false;
   let bestCatchall = null;
   let hitTimeout = false;  // Track if we hit a timeout (mail server unresponsive)
@@ -2267,7 +2097,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
     // Process primary permutations (1-16)
     for (const perm of primaryEmails) {
       try {
-        const result = await verifyEmail(perm.email);
+        const result = await verifyEmail(perm.email, 0, null, jobId);
         apiCalls++;
         permutationsVerified++;
         
@@ -2334,7 +2164,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
       
       for (const ext of extendedEmails) {
         try {
-          const result = await verifyEmail(ext.email);
+          const result = await verifyEmail(ext.email, 0, null, jobId);
           apiCalls++;
           extIdx++;
           
@@ -2428,11 +2258,10 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
     // Process all 16 permutations one by one (in order of prevalence score)
     for (const lead of personLeads) {
       try {
-        const result = await verifyEmail(lead.email);
+        const result = await verifyEmail(lead.email, 0, null, jobId);
         apiCalls++;
         permutationsVerified++;
         
-        // Check for timeout - mail server is unresponsive, no point trying more permutations
         const isTimeout = result.message && result.message.toLowerCase().includes('timeout');
         if (isTimeout) {
           // *** EARLY EXIT: Mail server timeout ***
@@ -2534,7 +2363,7 @@ async function processPersonWithEarlyExit(personKey, personLeads) {
       // Verify extended permutations one-by-one
       for (const extended of extendedEmails) {
         try {
-          const result = await verifyEmail(extended.email);
+          const result = await verifyEmail(extended.email, 0, null, jobId);
           apiCalls++;
           extendedPermutationIndex++;
           
@@ -2733,6 +2562,8 @@ async function isJobCancelled(jobId) {
 async function processJobFromQueue(jobId) {
   console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
   
+  let heartbeatInterval = null;
+  
   try {
     // Get job details from database
     const jobResult = await pgPool.query(
@@ -2745,7 +2576,7 @@ async function processJobFromQueue(jobId) {
     }
     
     const jobData = jobResult.rows[0];
-    const jobType = jobData.job_type || 'enrichment'; // Default to enrichment for backward compatibility
+    const jobType = jobData.job_type || 'enrichment';
     
     // Get user info for error logging context
     const userResult = await pgPool.query(
@@ -2761,18 +2592,20 @@ async function processJobFromQueue(jobId) {
       jobId: jobId
     };
     
-    // Check if job is already cancelled before starting
     if (jobData.status === 'cancelled') {
       console.log(`Job ${jobId} is already cancelled, skipping...`);
       return { status: 'cancelled', message: 'Job was cancelled' };
     }
     
-    // Check if job is waiting for CSV data
     if (jobData.status === 'waiting_for_csv') {
-      console.log(`⏳ Job ${jobId} is waiting for CSV data (status: waiting_for_csv), skipping processing...`);
-      console.log(`   This job will be processed once the webhook updates it with CSV data`);
+      console.log(`Job ${jobId} is waiting for CSV data (status: waiting_for_csv), skipping processing...`);
       return { status: 'waiting_for_csv', message: 'Job waiting for CSV data' };
     }
+    
+    // Register with fair-share system before processing
+    heartbeatInterval = await registerFairshareJob(jobId, String(jobData.user_id));
+    const allocatedKeys = await getAllocatedKeys(jobId);
+    console.log(`Fair-share: allocated ${allocatedKeys.length}/${MAILTESTER_API_KEYS.length} keys to job ${jobId}`);
     
     // Update job status to processing
     await updateJobStatus(jobId, 'processing');
@@ -2798,6 +2631,8 @@ async function processJobFromQueue(jobId) {
         await updateJobStatus(jobId, 'completed', {
           completed_at: new Date(),
         });
+        await unregisterFairshareJob(jobId, heartbeatInterval);
+        await promoteFromWaitingRoom(jobData.user_id);
         return { status: 'completed', message: 'No leads to process' };
       }
       
@@ -2807,7 +2642,6 @@ async function processJobFromQueue(jobId) {
       const finalResultIds = [];
       let lastProgressUpdate = Date.now();
       
-      // Determine adaptive settings based on job size
       const isSmallJob = totalLeads <= SMALL_JOB_THRESHOLD;
       const progressIntervalMs = isSmallJob ? PROGRESS_INTERVAL_SMALL_MS : PROGRESS_INTERVAL_LARGE_MS;
       const cancelCheckInterval = isSmallJob ? CANCEL_CHECK_INTERVAL_SMALL : CANCEL_CHECK_INTERVAL_LARGE;
@@ -2817,8 +2651,10 @@ async function processJobFromQueue(jobId) {
       // Track job timing for throughput calculation
       const jobStartTime = Date.now();
       
-      console.log(`Starting verification with STREAMING PIPELINE: ${totalLeads} leads (${MAX_CONCURRENT_LEADS} concurrent)`);
-      console.log(`Using ${MAILTESTER_API_KEYS.length} API keys = ${MAILTESTER_API_KEYS.length}x speed!`);
+      // Dynamic concurrency based on allocated keys
+      const effectiveMaxLeads = computeMaxConcurrent(allocatedKeys.length, 'verification');
+      console.log(`Starting verification with STREAMING PIPELINE: ${totalLeads} leads (${effectiveMaxLeads} concurrent)`);
+      console.log(`Using ${allocatedKeys.length}/${MAILTESTER_API_KEYS.length} allocated API keys`);
       
       // ==============================================
       // STREAMING PIPELINE MODEL FOR VERIFICATION
@@ -2860,8 +2696,7 @@ async function processJobFromQueue(jobId) {
             processedCount++;
             finalResultIds.push(lead.id);
           } else {
-            // Verify email (uses rate limiting with round-robin)
-            const result = await verifyEmail(lead.email);
+            const result = await verifyEmail(lead.email, 0, null, jobId);
             
             // Map 'unverified' status based on job type
             // This section handles verification jobs, so: unverified -> invalid
@@ -2919,8 +2754,11 @@ async function processJobFromQueue(jobId) {
               catchall_emails_found: catchallCount,
             });
             lastProgressUpdate = Date.now();
-            console.log(`🚀 Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Active: ${activeCount} | Valid: ${validCount} | Catchall: ${catchallCount}`);
+            await reportThroughput(jobId);
+            console.log(`Progress: ${processedCount}/${totalLeads} (${progressPercent}%) | Active: ${activeCount} | Valid: ${validCount} | Catchall: ${catchallCount}`);
           }
+          
+          recordThroughputTick();
           
         } catch (error) {
           console.error(`Error processing lead ${lead.id}:`, error.message);
@@ -2939,27 +2777,24 @@ async function processJobFromQueue(jobId) {
         }
       }
       
-      // Start the initial batch of concurrent workers with slight stagger
-      // This prevents all workers from hitting the rate limiter simultaneously
-      console.log(`\n🚀 Starting streaming pipeline with ${MAX_CONCURRENT_LEADS} concurrent leads...`);
-      const initialBatchSize = Math.min(MAX_CONCURRENT_LEADS, leads.length);
+      console.log(`\nStarting streaming pipeline with ${effectiveMaxLeads} concurrent leads...`);
+      const initialBatchSize = Math.min(effectiveMaxLeads, leads.length);
       for (let i = 0; i < initialBatchSize; i++) {
         activeCount++;
-        // Stagger start times by 10ms each to prevent burst
         setTimeout(() => {
-          processNextLead(); // Fire without await to start all concurrently
+          processNextLead();
         }, i * 10);
       }
       
-      // Wait for all leads to be processed
       await allDonePromise;
       
-      // Handle cancellation
       if (isCancelled) {
         const flushed = await flushPendingLeadUpdates();
         console.log(`Flushed ${flushed} pending lead updates before cancellation`);
         await flushAllUsageTracking();
         await updateJobStatus(jobId, 'cancelled');
+        await unregisterFairshareJob(jobId, heartbeatInterval);
+        await promoteFromWaitingRoom(jobData.user_id);
         return { status: 'cancelled', message: 'Job was cancelled during processing' };
       }
       
@@ -3027,6 +2862,10 @@ async function processJobFromQueue(jobId) {
         }
       }
       
+      // Unregister from fair-share and promote waiting room
+      await unregisterFairshareJob(jobId, heartbeatInterval);
+      await promoteFromWaitingRoom(jobData.user_id);
+      
       // Calculate throughput statistics
       const jobDurationMs = Date.now() - jobStartTime;
       const jobDurationMin = jobDurationMs / 60000;
@@ -3034,16 +2873,17 @@ async function processJobFromQueue(jobId) {
       const leadsPerSecond = jobDurationMs > 0 ? Math.round((processedCount / jobDurationMs) * 1000 * 10) / 10 : 0;
       
       console.log(`\n========================================`);
-      console.log(`✅ Verification job ${jobId} completed successfully!`);
+      console.log(`Verification job ${jobId} completed successfully!`);
       console.log(`----------------------------------------`);
-      console.log(`📊 RESULTS:`);
+      console.log(`RESULTS:`);
       console.log(`   Valid: ${validCount} | Catchall: ${catchallCount} | Total: ${processedCount}`);
       console.log(`----------------------------------------`);
-      console.log(`⚡ PERFORMANCE (Streaming Pipeline):`);
+      console.log(`PERFORMANCE (Streaming Pipeline):`);
       console.log(`   Duration: ${Math.round(jobDurationMin * 10) / 10} minutes`);
       console.log(`   Throughput: ${leadsPerMinute} leads/minute (${leadsPerSecond}/sec)`);
+      console.log(`   Allocated keys: ${allocatedKeys.length}`);
       console.log(`----------------------------------------`);
-      console.log(`💰 Credits charged: ${costInCredits} (1 per lead)`);
+      console.log(`Credits charged: ${costInCredits} (1 per lead)`);
       console.log(`========================================\n`);
       
       return {
@@ -3093,18 +2933,22 @@ async function processJobFromQueue(jobId) {
     console.log(`✅ Found ${totalPermutations} email permutations to verify for ${uniquePeopleCount} unique people`);
     
     if (totalPermutations === 0) {
-      console.log(`⚠️ No leads found for job ${jobId} - marking as completed`);
+      console.log(`No leads found for job ${jobId} - marking as completed`);
       await updateJobStatus(jobId, 'completed', {
         completed_at: new Date(),
       });
+      await unregisterFairshareJob(jobId, heartbeatInterval);
+      await promoteFromWaitingRoom(jobData.user_id);
       return { status: 'completed', message: 'No leads to process' };
     }
     
     if (!jobData.input_file_path) {
-      console.error(`❌ CRITICAL: Job ${jobId} has no input_file_path - cannot process enrichment job`);
+      console.error(`CRITICAL: Job ${jobId} has no input_file_path - cannot process enrichment job`);
       await updateJobStatus(jobId, 'failed', {
         completed_at: new Date(),
       });
+      await unregisterFairshareJob(jobId, heartbeatInterval);
+      await promoteFromWaitingRoom(jobData.user_id);
       return { status: 'failed', message: 'Job has no input file path' };
     }
     
@@ -3128,7 +2972,9 @@ async function processJobFromQueue(jobId) {
     // Convert to array for streaming processing
     const peopleArray = Array.from(leadsByPerson.entries());
     
-    console.log(`Grouped into ${peopleArray.length} unique people - using STREAMING PIPELINE (${MAX_CONCURRENT_PEOPLE} concurrent)`);
+    // Dynamic concurrency based on allocated keys
+    const effectiveMaxPeople = computeMaxConcurrent(allocatedKeys.length, 'enrichment');
+    console.log(`Grouped into ${peopleArray.length} unique people - using STREAMING PIPELINE (${effectiveMaxPeople} concurrent)`);
     
     // ==============================================
     // STREAMING PIPELINE MODEL
@@ -3175,7 +3021,7 @@ async function processJobFromQueue(jobId) {
       
       try {
         // Process this person (with early exit optimization)
-        const result = await processPersonWithEarlyExit(personKey, personLeads);
+        const result = await processPersonWithEarlyExit(personKey, personLeads, jobId);
         
         // Handle the result
         if (result.finalLeadId) {
@@ -3231,15 +3077,17 @@ async function processJobFromQueue(jobId) {
             catchall_emails_found: catchallCount,
           });
           
-          const rlStatus = await rateLimiter.getStatus();
-          console.log(`🚀 Progress: ${completedPeopleCount}/${uniquePeopleCount} (${progressPercent}%) | Active: ${activeCount} | API: ${totalApiCalls} | Saved: ${savedApiCalls} | Tokens: ${rlStatus.availableTokens}/${rlStatus.maxTokens}`);
+          const rlStatus = await globalRateLimiter.getStatus();
+          await reportThroughput(jobId);
+          console.log(`Progress: ${completedPeopleCount}/${uniquePeopleCount} (${progressPercent}%) | Active: ${activeCount} | API: ${totalApiCalls} | Saved: ${savedApiCalls} | Tokens: ${rlStatus.availableTokens}/${rlStatus.maxTokens}`);
           
           lastProgressUpdate = Date.now();
         }
         
+        recordThroughputTick();
+        
       } catch (error) {
         console.error(`Error processing person ${personKey}:`, error.message);
-        // Continue processing other people even if one fails
         completedPeopleCount++;
       }
       
@@ -3255,27 +3103,24 @@ async function processJobFromQueue(jobId) {
       }
     }
     
-    // Start the initial batch of concurrent workers with slight stagger
-    // This prevents all workers from hitting the rate limiter simultaneously
-    console.log(`\n🚀 Starting streaming pipeline with ${MAX_CONCURRENT_PEOPLE} concurrent people...`);
-    const initialBatchSize = Math.min(MAX_CONCURRENT_PEOPLE, peopleArray.length);
+    console.log(`\nStarting streaming pipeline with ${effectiveMaxPeople} concurrent people...`);
+    const initialBatchSize = Math.min(effectiveMaxPeople, peopleArray.length);
     for (let i = 0; i < initialBatchSize; i++) {
       activeCount++;
-      // Stagger start times by 10ms each to prevent burst
       setTimeout(() => {
-        processNextPerson(); // Fire without await to start all concurrently
+        processNextPerson();
       }, i * 10);
     }
     
-    // Wait for all people to be processed
     await allDonePromise;
     
-    // Handle cancellation
     if (isCancelled) {
       const flushed = await flushPendingLeadUpdates();
       console.log(`Flushed ${flushed} pending lead updates before cancellation`);
       await flushAllUsageTracking();
       await updateJobStatus(jobId, 'cancelled');
+      await unregisterFairshareJob(jobId, heartbeatInterval);
+      await promoteFromWaitingRoom(jobData.user_id);
       return { status: 'cancelled', message: 'Job was cancelled during processing' };
     }
     
@@ -3348,6 +3193,10 @@ async function processJobFromQueue(jobId) {
       }
     }
     
+    // Unregister from fair-share and promote waiting room
+    await unregisterFairshareJob(jobId, heartbeatInterval);
+    await promoteFromWaitingRoom(jobData.user_id);
+    
     // Calculate throughput statistics
     const jobDurationMs = Date.now() - jobStartTime;
     const jobDurationMin = jobDurationMs / 60000;
@@ -3355,46 +3204,56 @@ async function processJobFromQueue(jobId) {
     const apiCallsPerSecond = jobDurationMs > 0 ? Math.round((totalApiCalls / jobDurationMs) * 1000 * 10) / 10 : 0;
     
     console.log(`\n========================================`);
-    console.log(`✅ Job ${jobId} completed successfully!`);
+    console.log(`Job ${jobId} completed successfully!`);
     console.log(`----------------------------------------`);
-    console.log(`📊 RESULTS:`);
+    console.log(`RESULTS:`);
     console.log(`   Valid: ${validCount} | Catchall: ${catchallCount} | Total: ${completedPeopleCount}`);
     console.log(`----------------------------------------`);
-    console.log(`⚡ PERFORMANCE (Streaming Pipeline):`);
+    console.log(`PERFORMANCE (Streaming Pipeline):`);
     console.log(`   Duration: ${Math.round(jobDurationMin * 10) / 10} minutes`);
     console.log(`   Throughput: ${peoplePerMinute} people/minute`);
     console.log(`   API calls: ${totalApiCalls} total (${apiCallsPerSecond}/sec)`);
+    console.log(`   Allocated keys: ${allocatedKeys.length}`);
     console.log(`   Early exit savings: ${savedApiCalls} calls saved (${totalApiCalls + savedApiCalls > 0 ? Math.round((savedApiCalls / (totalApiCalls + savedApiCalls)) * 100) : 0}%)`);
     console.log(`----------------------------------------`);
-    console.log(`💰 Credits charged: ${costInCredits} (1 per lead)`);
+    console.log(`Credits charged: ${costInCredits} (1 per lead)`);
     console.log(`========================================\n`);
     
   } catch (error) {
-    console.error(`\n❌ ERROR processing enrichment job ${jobId}:`, error);
+    console.error(`\nERROR processing job ${jobId}:`, error);
     console.error(`Error message: ${error.message}`);
     if (error.stack) {
       console.error(`Error stack:`, error.stack);
     }
     
-    // Attempt to flush any pending updates before marking as failed
     try {
       const emergencyFlushed = await flushPendingLeadUpdates();
       if (emergencyFlushed > 0) {
-        console.log(`💾 Emergency flush: saved ${emergencyFlushed} lead updates before failure`);
+        console.log(`Emergency flush: saved ${emergencyFlushed} lead updates before failure`);
       }
       await flushAllUsageTracking();
     } catch (flushError) {
       console.error(`Failed to flush pending updates:`, flushError.message);
     }
     
-    // Try to update job status to failed
+    // Always unregister from fair-share on failure
+    await unregisterFairshareJob(jobId, heartbeatInterval);
+    
+    try {
+      // Promote next job from this user's waiting room
+      const jobRes = await pgPool.query('SELECT user_id FROM jobs WHERE id = $1', [jobId]);
+      if (jobRes.rows.length > 0) {
+        await promoteFromWaitingRoom(jobRes.rows[0].user_id);
+      }
+    } catch (e) { /* best effort */ }
+    
     try {
       await updateJobStatus(jobId, 'failed', {
         completed_at: new Date(),
       });
-      console.log(`✅ Marked enrichment job ${jobId} as failed`);
+      console.log(`Marked job ${jobId} as failed`);
     } catch (updateError) {
-      console.error(`❌ Failed to update job ${jobId} status to failed:`, updateError);
+      console.error(`Failed to update job ${jobId} status to failed:`, updateError);
     }
     
     throw error;

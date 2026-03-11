@@ -14,6 +14,7 @@ interface ClientData {
   full_name: string | null;
   company_name: string | null;
   credits: number;
+  max_concurrent_jobs: number;
   is_active: boolean;
   is_admin: boolean;
   created_at: string;
@@ -25,6 +26,40 @@ interface ClientData {
     total_catchall_emails: number;
     total_leads_processed: number;
   };
+}
+
+interface FairshareStatus {
+  active_job_count: number;
+  queued_job_count: number;
+  waiting_room_count: number;
+  active_jobs: Array<{
+    job_id: string;
+    user_id: string;
+    user_email: string;
+    job_type: string;
+    total_leads: number;
+    processed_leads: number;
+    throughput: {
+      rate_per_hour: number;
+      items_processed: number;
+      window_seconds: number;
+      timestamp: string;
+    } | null;
+  }>;
+  queued_jobs: Array<{
+    job_id: string;
+    user_id: string;
+    user_email: string;
+    job_type: string;
+    total_leads: number;
+  }>;
+  waiting_room_jobs: Array<{
+    job_id: string;
+    user_id: string;
+    user_email: string;
+    job_type: string;
+    total_leads: number;
+  }>;
 }
 
 interface AdminJob {
@@ -115,6 +150,14 @@ export default function AdminConsolePage() {
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [chartPeriod, setChartPeriod] = useState<"day" | "week" | "month">("week");
 
+  // Fair-share monitoring
+  const [fairshareStatus, setFairshareStatus] = useState<FairshareStatus | null>(null);
+
+  // Max jobs editing
+  const [editingMaxJobsClientId, setEditingMaxJobsClientId] = useState<string | null>(null);
+  const [maxJobsValue, setMaxJobsValue] = useState<string>("");
+  const [maxJobsLoading, setMaxJobsLoading] = useState(false);
+
   // Credit assignment state
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [creditAmount, setCreditAmount] = useState<string>("");
@@ -140,13 +183,13 @@ export default function AdminConsolePage() {
       setLoading(true);
       setError(null);
 
-      // Fetch all data in parallel
-      const [statsRes, clientsRes, lowCreditRes, jobsRes, enrichmentRes] = await Promise.all([
+      const [statsRes, clientsRes, lowCreditRes, jobsRes, enrichmentRes, fairshareRes] = await Promise.all([
         apiClient.getAdminStats(),
         apiClient.getAdminClients(200),
         apiClient.getAdminLowCreditClients(10),
         apiClient.getAdminJobs(100),
         apiClient.getAdminEnrichmentStats(chartPeriod),
+        apiClient.getAdminFairshareStatus().catch(() => null),
       ]);
 
       setStats(statsRes);
@@ -154,6 +197,7 @@ export default function AdminConsolePage() {
       setLowCreditClients(lowCreditRes.clients as ClientData[]);
       setJobs(jobsRes.jobs);
       setChartData(enrichmentRes.chart_data);
+      if (fairshareRes) setFairshareStatus(fairshareRes);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load admin data");
     } finally {
@@ -250,6 +294,29 @@ export default function AdminConsolePage() {
     }
   };
 
+  // Handle max concurrent jobs update
+  const handleMaxJobsUpdate = async (clientId: string) => {
+    const val = parseInt(maxJobsValue);
+    if (isNaN(val) || val < 1 || val > 50) return;
+
+    try {
+      setMaxJobsLoading(true);
+      const res = await apiClient.updateClientMaxJobs(clientId, val);
+      setClients(prev =>
+        prev.map(c => c.id === clientId ? { ...c, max_concurrent_jobs: res.max_concurrent_jobs } : c)
+      );
+      setEditingMaxJobsClientId(null);
+      setMaxJobsValue("");
+      if (res.promoted_from_waiting_room > 0) {
+        fetchData();
+      }
+    } catch (err) {
+      console.error("Failed to update max jobs:", err);
+    } finally {
+      setMaxJobsLoading(false);
+    }
+  };
+
   // Handle job deletion (admin can delete any job)
   const handleDeleteJob = async (jobId: string) => {
     if (deleteConfirmJobId !== jobId) {
@@ -339,6 +406,99 @@ export default function AdminConsolePage() {
             <StatCard title="Valid Emails Found" value={stats?.leads.total_valid || 0} color="green" />
             <StatCard title="Leads Processed Today" value={stats?.leads.today || 0} color="blue" />
           </div>
+
+          {/* Fair-Share Monitoring Panel */}
+          {fairshareStatus && (
+            <div className="glass-card p-6">
+              <h2 className="text-lg font-semibold text-dashboard-text mb-4">Fair-Share Job Pool</h2>
+              
+              {/* Summary counters */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-green-400">{fairshareStatus.active_job_count}</div>
+                  <div className="text-xs text-dashboard-text-muted mt-1">Active Jobs</div>
+                </div>
+                <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-yellow-400">{fairshareStatus.queued_job_count}</div>
+                  <div className="text-xs text-dashboard-text-muted mt-1">Queued</div>
+                </div>
+                <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-orange-400">{fairshareStatus.waiting_room_count}</div>
+                  <div className="text-xs text-dashboard-text-muted mt-1">Waiting Room</div>
+                </div>
+              </div>
+
+              {/* Active jobs detail */}
+              {fairshareStatus.active_jobs.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-sm font-medium text-dashboard-text-muted mb-2">Active Jobs</h3>
+                  <div className="space-y-2">
+                    {fairshareStatus.active_jobs.map((job) => (
+                      <div key={job.job_id} className="flex items-center justify-between bg-dashboard-card/30 rounded-lg px-4 py-2 text-sm">
+                        <div className="flex items-center gap-3">
+                          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                          <span className="text-dashboard-text">{job.user_email}</span>
+                          <span className="text-dashboard-text-muted text-xs">({job.job_type})</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-dashboard-text-muted text-xs">
+                            {job.processed_leads}/{job.total_leads} leads
+                          </span>
+                          {job.throughput && (
+                            <span className="text-blue-400 text-xs font-medium">
+                              {job.throughput.rate_per_hour.toLocaleString()}/hr
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Queued jobs detail */}
+              {fairshareStatus.queued_jobs.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-sm font-medium text-dashboard-text-muted mb-2">Queued</h3>
+                  <div className="space-y-1">
+                    {fairshareStatus.queued_jobs.map((job) => (
+                      <div key={job.job_id} className="flex items-center justify-between bg-dashboard-card/20 rounded px-4 py-1.5 text-sm">
+                        <div className="flex items-center gap-3">
+                          <span className="w-2 h-2 bg-yellow-400 rounded-full" />
+                          <span className="text-dashboard-text-muted">{job.user_email}</span>
+                          <span className="text-dashboard-text-muted text-xs">({job.job_type})</span>
+                        </div>
+                        <span className="text-dashboard-text-muted text-xs">{job.total_leads} leads</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Waiting room detail */}
+              {fairshareStatus.waiting_room_jobs.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-dashboard-text-muted mb-2">Waiting Room</h3>
+                  <div className="space-y-1">
+                    {fairshareStatus.waiting_room_jobs.map((job) => (
+                      <div key={job.job_id} className="flex items-center justify-between bg-dashboard-card/20 rounded px-4 py-1.5 text-sm">
+                        <div className="flex items-center gap-3">
+                          <span className="w-2 h-2 bg-orange-400 rounded-full" />
+                          <span className="text-dashboard-text-muted">{job.user_email}</span>
+                          <span className="text-dashboard-text-muted text-xs">({job.job_type})</span>
+                        </div>
+                        <span className="text-dashboard-text-muted text-xs">{job.total_leads} leads</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {fairshareStatus.active_job_count === 0 && fairshareStatus.queued_job_count === 0 && fairshareStatus.waiting_room_count === 0 && (
+                <p className="text-dashboard-text-muted text-sm text-center py-4">No active or queued jobs</p>
+              )}
+            </div>
+          )}
 
           {/* Credit Assignment Section */}
           <div className="glass-card p-6">
@@ -459,6 +619,7 @@ export default function AdminConsolePage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Email</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Company</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Credits</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-dashboard-text-muted uppercase">Max Jobs</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Jobs</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Valid Emails</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Created</th>
@@ -478,6 +639,40 @@ export default function AdminConsolePage() {
                     <td className="px-4 py-3 text-dashboard-text-muted">{client.company_name || "-"}</td>
                     <td className={`px-4 py-3 text-right font-medium ${client.credits < 10 ? "text-red-400" : "text-dashboard-text"}`}>
                       {client.credits}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {editingMaxJobsClientId === client.id ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            value={maxJobsValue}
+                            onChange={(e) => setMaxJobsValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleMaxJobsUpdate(client.id);
+                              if (e.key === "Escape") { setEditingMaxJobsClientId(null); setMaxJobsValue(""); }
+                            }}
+                            className="apple-input w-16 text-center text-sm py-1"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleMaxJobsUpdate(client.id)}
+                            disabled={maxJobsLoading}
+                            className="text-green-400 hover:text-green-300 text-xs"
+                          >
+                            {maxJobsLoading ? "..." : "Save"}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setEditingMaxJobsClientId(client.id); setMaxJobsValue(String(client.max_concurrent_jobs || 3)); }}
+                          className="text-dashboard-text hover:text-dashboard-accent transition-colors"
+                          title="Click to edit"
+                        >
+                          {client.max_concurrent_jobs || 3}
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right text-dashboard-text">{client.stats.total_jobs}</td>
                     <td className="px-4 py-3 text-right text-green-400">{client.stats.total_valid_emails}</td>
@@ -954,13 +1149,19 @@ function StatusBadge({ status }: { status: string }) {
     completed: "bg-green-500/20 text-green-400",
     processing: "bg-blue-500/20 text-blue-400",
     pending: "bg-yellow-500/20 text-yellow-400",
+    queued: "bg-yellow-500/20 text-yellow-400",
+    waiting: "bg-orange-500/20 text-orange-400",
     failed: "bg-red-500/20 text-red-400",
     cancelled: "bg-gray-500/20 text-gray-400",
   };
 
+  const displayLabel: Record<string, string> = {
+    waiting: "Waiting Room",
+  };
+
   return (
     <span className={`px-2 py-1 text-xs rounded ${statusClasses[status] || statusClasses.pending}`}>
-      {status}
+      {displayLabel[status] || status}
     </span>
   );
 }
