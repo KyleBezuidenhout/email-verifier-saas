@@ -91,14 +91,19 @@ export interface VayneAuthStatus {
 }
 
 export interface VayneCredits {
-  // Fields that Vayne API actually returns
   credit_available: number;
   daily_limit_leads: number;
   daily_limit_accounts: number;
   enrichment_credits: number;
-  // Optional fields
   subscription_plan?: string;
   subscription_expires?: string;
+}
+
+export interface VayneDailyUsage {
+  used: number;
+  limit: number;
+  remaining: number;
+  resets_at: string | null;
 }
 
 export interface VayneUrlCheck {

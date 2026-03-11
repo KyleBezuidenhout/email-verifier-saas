@@ -27,7 +27,7 @@ from app.schemas.vayne import (
     CreateOrderResponse,
     OrderStatusResponse,
 )
-from app.services.vayne_client import vayne_client
+from app.services.vayne_client import get_vayne_client
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ async def check_linkedin_auth(
     db: Session = Depends(get_db),
 ):
     try:
-        return vayne_client.check_linkedin_auth()
+        return get_vayne_client().check_linkedin_auth()
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -134,7 +134,7 @@ async def update_linkedin_auth(
     db: Session = Depends(get_db),
 ):
     try:
-        return vayne_client.update_linkedin_session(payload.session_cookie)
+        return get_vayne_client().update_linkedin_session(payload.session_cookie)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -145,9 +145,54 @@ async def get_credits(
     db: Session = Depends(get_db),
 ):
     try:
-        return vayne_client.get_credits()
+        return get_vayne_client().get_credits()
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/daily-usage")
+async def get_daily_usage(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get the current user's scraping usage in the last 24 hours."""
+    from app.core.config import settings as app_settings
+    result = db.execute(
+        text("""
+            SELECT COALESCE(SUM(estimated_leads), 0) as used
+            FROM vayne_orders
+            WHERE user_id = :uid
+            AND status != 'failed'
+            AND created_at >= NOW() - INTERVAL '24 hours'
+        """),
+        {"uid": str(current_user.id)}
+    )
+    row = result.fetchone()
+    used = int(row.used) if row else 0
+    limit = app_settings.VAYNE_PER_CLIENT_DAILY_LIMIT
+
+    oldest_result = db.execute(
+        text("""
+            SELECT MIN(created_at) as oldest
+            FROM vayne_orders
+            WHERE user_id = :uid
+            AND status != 'failed'
+            AND created_at >= NOW() - INTERVAL '24 hours'
+        """),
+        {"uid": str(current_user.id)}
+    )
+    oldest_row = oldest_result.fetchone()
+    resets_at = None
+    if oldest_row and oldest_row.oldest:
+        from datetime import timedelta
+        resets_at = (oldest_row.oldest + timedelta(hours=24)).isoformat()
+
+    return {
+        "used": used,
+        "limit": limit,
+        "remaining": max(0, limit - used),
+        "resets_at": resets_at,
+    }
 
 
 @router.post("/validate-url", response_model=UrlValidationResponse)
@@ -157,7 +202,7 @@ async def validate_url(
     db: Session = Depends(get_db),
 ):
     try:
-        return vayne_client.validate_url(payload.url)
+        return get_vayne_client().validate_url(payload.url)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -166,7 +211,7 @@ async def validate_url(
 async def url_check(payload: UrlCheckRequest):
     try:
         logger.info(f"URL check requested for: {payload.sales_nav_url}")
-        result = vayne_client.validate_url(payload.sales_nav_url)
+        result = get_vayne_client().validate_url(payload.sales_nav_url)
         logger.info(f"URL check result: {result}")
         # Determine validity by checking if we got meaningful results from Vayne API
         is_valid = result.get('total') is not None and result.get('type') is not None
@@ -369,7 +414,7 @@ async def poll_order_status(
             }
         
         try:
-            vayne_response = vayne_client.get_order(order.vayne_order_id)
+            vayne_response = get_vayne_client().get_order(order.vayne_order_id)
             logger.info(f"Vayne API poll response for order {order_id}: {vayne_response}")
             
             # Extract status from Vayne response

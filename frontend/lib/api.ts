@@ -8,6 +8,7 @@ import {
   UploadResponse,
   VayneAuthStatus,
   VayneCredits,
+  VayneDailyUsage,
   VayneUrlCheck,
   VayneOrder,
   VayneOrderCreate,
@@ -239,7 +240,6 @@ class ApiClient {
       column_first_name?: string;
       column_last_name?: string;
       column_website?: string;
-      column_company_size?: string;
       source?: string; // e.g., "Sales Nav"
       job_name?: string; // Optional user-provided job name
     }
@@ -547,6 +547,10 @@ class ApiClient {
 
   async getVayneCredits(): Promise<VayneCredits> {
     return this.request("/api/v1/vayne/credits");
+  }
+
+  async getVayneDailyUsage(): Promise<VayneDailyUsage> {
+    return this.request("/api/v1/vayne/daily-usage");
   }
 
   async checkVayneUrl(sales_nav_url: string): Promise<VayneUrlCheck> {

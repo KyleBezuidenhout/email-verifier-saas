@@ -328,23 +328,16 @@ async def wait_for_active_order_completion(db, active_order):
         await asyncio.sleep(ACTIVE_CHECK_INTERVAL)
 
 
-def _try_update_cookie(vayne_client, cookie: str) -> bool:
-    """Attempt to update the LinkedIn session cookie. Returns True on success."""
-    try:
-        vayne_client.update_linkedin_session(cookie)
-        return True
-    except Exception:
-        return False
-
-
 async def process_queued_order(order_row):
     """
     Process a queued order with full validation:
-    1. Authenticate LinkedIn cookie (user-provided, then fallback)
-    2. Validate URL with scraping service to get estimated_leads
-    3. Check user credits against estimated_leads
-    4. Deduct credits and create the scraping order
-    5. On any failure: mark failed with reason and refund if needed
+    1. Check per-client daily limit
+    2. Select API key with available daily capacity
+    3. Push user LinkedIn cookie on selected key
+    4. Validate URL to get estimated_leads
+    5. Check user credits against estimated_leads
+    6. Deduct credits and create the scraping order
+    7. On any failure: mark failed with reason and refund if needed
     """
     if isinstance(order_row.id, UUID):
         order_id = order_row.id
@@ -356,66 +349,131 @@ async def process_queued_order(order_row):
     try:
         log(f"Processing queued order {order_id}", "info")
 
-        vayne_client = get_vayne_client()
+        from app.services.vayne_client import get_vayne_clients
         from app.core.config import ADMIN_EMAIL
 
         # -----------------------------------------------------------------
-        # Step 1: LinkedIn cookie authentication (with fallback)
+        # Step 0: Per-client daily limit check (15k leads / 24h)
         # -----------------------------------------------------------------
-        user_cookie = order_row.linkedin_cookie or ""
-        fallback_cookie = settings.VAYNE_FALLBACK_COOKIE or ""
-        cookie_authenticated = False
+        user_result = db.execute(
+            text("SELECT email FROM users WHERE id = :user_id"),
+            {"user_id": str(order_row.user_id)}
+        )
+        user_row = user_result.fetchone()
+        is_admin = user_row and user_row.email == ADMIN_EMAIL
 
-        if user_cookie.strip():
-            log(f"Trying user-provided cookie for order {order_id}", "info")
-            cookie_authenticated = _try_update_cookie(vayne_client, user_cookie.strip())
-            if cookie_authenticated:
-                log(f"LinkedIn authentication succeeded (user cookie) for order {order_id}", "success")
-
-        if not cookie_authenticated and fallback_cookie.strip():
-            log(f"User cookie failed or missing, trying fallback cookie for order {order_id}", "info")
-            cookie_authenticated = _try_update_cookie(vayne_client, fallback_cookie.strip())
-            if cookie_authenticated:
-                log(f"LinkedIn authentication succeeded (fallback cookie) for order {order_id}", "success")
-
-        if not cookie_authenticated:
-            mark_order_failed(
-                db, order_id,
-                "LinkedIn authentication failed. Please provide a fresh LinkedIn session cookie and try again."
+        if not is_admin:
+            daily_limit = settings.VAYNE_PER_CLIENT_DAILY_LIMIT
+            usage_result = db.execute(
+                text("""
+                    SELECT COALESCE(SUM(estimated_leads), 0) as used
+                    FROM vayne_orders
+                    WHERE user_id = :uid
+                    AND status != 'failed'
+                    AND created_at >= NOW() - INTERVAL '24 hours'
+                """),
+                {"uid": str(order_row.user_id)}
             )
-            return False
-
-        # -----------------------------------------------------------------
-        # Step 2: Validate URL and get estimated lead count
-        # -----------------------------------------------------------------
-        try:
-            log(f"Validating URL for order {order_id}", "info")
-            url_check = vayne_client.validate_url(order_row.sales_nav_url)
-            estimated_leads = url_check.get("total") or 0
-            url_type = url_check.get("type")
-
-            if not url_check.get("total") or not url_type:
+            daily_used = int(usage_result.fetchone().used)
+            if daily_used >= daily_limit:
                 mark_order_failed(
                     db, order_id,
-                    "Invalid Sales Navigator URL. Please check the URL and try again."
+                    f"Daily scraping limit reached. You can scrape up to {daily_limit:,} profiles per day to protect your account. Please try again later."
                 )
                 return False
+            log(f"Daily usage: {daily_used:,}/{daily_limit:,} profiles", "info")
 
-            log(f"URL valid: ~{estimated_leads} estimated leads (type: {url_type})", "success")
+        vayne_clients = get_vayne_clients()
+        if not vayne_clients:
+            mark_order_failed(db, order_id, "No scraping API keys configured. Please contact support.")
+            return False
 
-            # Store estimated_leads on the order for reference
-            db.execute(
-                text("UPDATE vayne_orders SET estimated_leads = :est WHERE id = :oid"),
-                {"est": estimated_leads, "oid": str(order_id)}
-            )
-            db.commit()
-        except Exception as e:
+        # -----------------------------------------------------------------
+        # Step 1: LinkedIn cookie check
+        # -----------------------------------------------------------------
+        user_cookie = (order_row.linkedin_cookie or "").strip()
+        if not user_cookie:
             mark_order_failed(
                 db, order_id,
-                "Failed to validate the Sales Navigator URL. Please check the URL and try again."
+                "Please provide a valid LinkedIn session cookie to start scraping."
             )
-            log(f"URL validation exception for order {order_id}: {e}", "error")
             return False
+
+        # -----------------------------------------------------------------
+        # Step 2: Select API key with daily capacity + push cookie + validate URL
+        # We iterate through keys trying to find one that works.
+        # -----------------------------------------------------------------
+        selected_client = None
+        estimated_leads = 0
+
+        for idx, client in enumerate(vayne_clients):
+            try:
+                credits_info = client.get_credits()
+                daily_remaining = credits_info.get("daily_limit_leads", 0)
+                log(f"Key {idx}: daily_limit_leads={daily_remaining}", "info")
+
+                if daily_remaining <= 0:
+                    log(f"Key {idx}: no daily capacity remaining, skipping", "info")
+                    continue
+
+                # Push user cookie on this key
+                try:
+                    client.update_linkedin_session(user_cookie)
+                    log(f"LinkedIn cookie pushed on key {idx}", "success")
+                except Exception as cookie_err:
+                    log(f"Cookie push failed on key {idx}: {cookie_err}", "error")
+                    continue
+
+                # Validate URL on this key to get estimated_leads
+                try:
+                    url_check = client.validate_url(order_row.sales_nav_url)
+                    est = url_check.get("total") or 0
+                    url_type = url_check.get("type")
+
+                    if not est or not url_type:
+                        mark_order_failed(
+                            db, order_id,
+                            "Invalid Sales Navigator URL. Please check the URL and try again."
+                        )
+                        return False
+
+                    if est > daily_remaining:
+                        log(f"Key {idx}: estimated {est} leads exceeds daily remaining {daily_remaining}, trying next key", "info")
+                        continue
+
+                    estimated_leads = est
+                    selected_client = client
+                    log(f"Selected key {idx}: ~{estimated_leads} estimated leads (type: {url_type})", "success")
+                    break
+                except Exception as url_err:
+                    error_str = str(url_err).lower()
+                    if "unauthorized" in error_str or "invalid" in error_str or "expired" in error_str:
+                        log(f"Key {idx}: cookie auth rejected during URL validation, trying next key", "info")
+                        continue
+                    mark_order_failed(
+                        db, order_id,
+                        "Failed to validate the Sales Navigator URL. Please check the URL and try again."
+                    )
+                    log(f"URL validation exception on key {idx}: {url_err}", "error")
+                    return False
+
+            except Exception as key_err:
+                log(f"Key {idx}: failed to check credits: {key_err}", "error")
+                continue
+
+        if not selected_client:
+            mark_order_failed(
+                db, order_id,
+                "All scraping accounts have reached their daily limit. Please try again tomorrow."
+            )
+            return False
+
+        # Store estimated_leads on the order
+        db.execute(
+            text("UPDATE vayne_orders SET estimated_leads = :est WHERE id = :oid"),
+            {"est": estimated_leads, "oid": str(order_id)}
+        )
+        db.commit()
 
         # -----------------------------------------------------------------
         # Step 3: Credit check
@@ -456,7 +514,7 @@ async def process_queued_order(order_row):
             log(f"Admin user or 0 estimated leads - skipping credit deduction", "info")
 
         # -----------------------------------------------------------------
-        # Step 5: Create the scraping order
+        # Step 5: Create the scraping order (using selected key)
         # -----------------------------------------------------------------
         try:
             log(f"Creating scraping order for order {order_id}", "info")
@@ -464,7 +522,7 @@ async def process_queued_order(order_row):
             base_name = order_row.targeting or "Untitled Order"
             unique_name = f"{base_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-            vayne_response = vayne_client.create_order(
+            vayne_response = selected_client.create_order(
                 url=order_row.sales_nav_url,
                 name=unique_name,
                 limit=None,

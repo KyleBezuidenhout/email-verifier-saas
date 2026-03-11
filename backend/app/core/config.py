@@ -30,13 +30,14 @@ class Settings(BaseSettings):
     MAILTESTER_BASE_URL: str = "https://happy.mailtester.ninja/ninja"
 
     # Vayne (Sales Nav Scraper)
-    VAYNE_API_KEY: str = ""
+    VAYNE_API_KEYS: str = ""  # Comma-separated: "key1,key2"
+    VAYNE_API_KEY: str = ""  # Legacy single key (fallback if VAYNE_API_KEYS is empty)
     VAYNE_API_BASE_URL: str = "https://www.vayne.io"
+    VAYNE_PER_CLIENT_DAILY_LIMIT: int = 15000  # Max leads per client per rolling 24h window
     VAYNE_POLLING_INTERVAL_MS: int = 5000
     VAYNE_POLLING_MAX_INTERVAL_MS: int = 30000
     VAYNE_QUEUE_WORKER_POLL_INTERVAL: int = 30  # seconds
     VAYNE_QUEUE_WORKER_ACTIVE_CHECK_INTERVAL: int = 60  # seconds
-    VAYNE_FALLBACK_COOKIE: str = ""  # Fallback LinkedIn li_at cookie used when user cookie fails/missing
     
     # Webhook authentication
     WEBHOOK_SECRET_TOKEN: str = ""  # Secret token for webhook authentication

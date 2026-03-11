@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
-import { VayneCredits, VayneOrder, VayneOrderCreate } from "@/types";
+import { VayneCredits, VayneDailyUsage, VayneOrder, VayneOrderCreate } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
@@ -13,6 +13,10 @@ export default function SalesNavScraperPage() {
   
   // Credits state
   const [credits, setCredits] = useState<VayneCredits | null>(null);
+  
+  // Daily usage state
+  const [dailyUsage, setDailyUsage] = useState<VayneDailyUsage | null>(null);
+  const [showDailyLimitInfo, setShowDailyLimitInfo] = useState(false);
   
   // URL state (regex-only validation, no API call)
   const [salesNavUrl, setSalesNavUrl] = useState("");
@@ -50,6 +54,16 @@ export default function SalesNavScraperPage() {
       setCredits(creditsData);
     } catch (err) {
       console.error("Failed to load credits:", err);
+    }
+  }, []);
+
+  // Load daily usage
+  const loadDailyUsage = useCallback(async () => {
+    try {
+      const usage = await apiClient.getVayneDailyUsage();
+      setDailyUsage(usage);
+    } catch (err) {
+      console.error("Failed to load daily usage:", err);
     }
   }, []);
 
@@ -93,7 +107,7 @@ export default function SalesNavScraperPage() {
     const loadInitialData = async () => {
       try {
         setInitialLoading(true);
-        await Promise.all([loadCredits(), loadScrapeHistory()]);
+        await Promise.all([loadCredits(), loadScrapeHistory(), loadDailyUsage()]);
       } catch (err) {
         console.error("Error loading initial data:", err);
         setError("Failed to load page data. Please refresh the page.");
@@ -103,7 +117,7 @@ export default function SalesNavScraperPage() {
       }
     };
     loadInitialData();
-  }, [loadCredits, loadScrapeHistory]);
+  }, [loadCredits, loadScrapeHistory, loadDailyUsage]);
 
   // Poll Vayne API for live status updates every 60 seconds (UI-only, does not update database)
   useEffect(() => {
@@ -233,8 +247,8 @@ export default function SalesNavScraperPage() {
       setJobName("");
       setSalesNavUrl("");
       
-      // Refresh credits after order creation
-      await loadCredits();
+      // Refresh credits and daily usage after order creation
+      await Promise.all([loadCredits(), loadDailyUsage()]);
       
     } catch (err) {
       const errorMessage = err instanceof Error 
@@ -375,6 +389,52 @@ export default function SalesNavScraperPage() {
           Import and enrich leads from Sales Navigator
         </p>
       </div>
+
+      {/* Daily Scraping Limit */}
+      {dailyUsage && (
+        <div className="glass-card p-4 mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-dashboard-text">Daily Scraping Limit</span>
+              <div className="relative">
+                <button
+                  onClick={() => setShowDailyLimitInfo(!showDailyLimitInfo)}
+                  className="text-dashboard-text-muted hover:text-dashboard-text transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+                {showDailyLimitInfo && (
+                  <div className="absolute left-0 top-full mt-2 z-50 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-lg py-2 px-3 w-72 shadow-xl">
+                    <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 rotate-45"></div>
+                    <p>Scraping more than 15,000 profiles per day may violate LinkedIn&apos;s terms of service and could result in your account being restricted or banned. This limit resets every 24 hours.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <span className="text-sm text-dashboard-text-muted">
+              {dailyUsage.used.toLocaleString()} / {dailyUsage.limit.toLocaleString()} profiles
+            </span>
+          </div>
+          <div className="w-full bg-dashboard-card rounded-full h-2.5 overflow-hidden">
+            <div
+              className={`h-2.5 rounded-full transition-all duration-500 ${
+                dailyUsage.used / dailyUsage.limit > 0.9 ? "bg-red-500" :
+                dailyUsage.used / dailyUsage.limit > 0.7 ? "bg-yellow-500" :
+                "bg-dashboard-accent"
+              }`}
+              style={{ width: `${Math.min(100, (dailyUsage.used / dailyUsage.limit) * 100)}%` }}
+            />
+          </div>
+          {dailyUsage.used / dailyUsage.limit > 0.9 && (
+            <p className="text-xs text-red-400 mt-1.5">
+              You are approaching your daily limit.
+              {dailyUsage.resets_at && ` Resets ${new Date(dailyUsage.resets_at).toLocaleTimeString()}.`}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Notice about charges */}
       <div className="mb-6 glass-card bg-yellow-500/10 border-yellow-500/30 p-4">
