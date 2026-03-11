@@ -623,11 +623,14 @@ async def n8n_csv_callback(
         
         # Extract CSV data
         csv_data = body.get("csv_data")
-        leads_found = body.get("leads_found")
-        leads_qualified = body.get("leads_qualified")
         
         if not csv_data:
             raise HTTPException(status_code=400, detail="Missing csv_data")
+        
+        # Count actual leads from CSV rows (minus header)
+        csv_lines = csv_data.strip().splitlines()
+        actual_leads = max(0, len(csv_lines) - 1)
+        logger.info(f"CSV contains {actual_leads} leads ({len(csv_lines)} lines including header)")
         
         # Store CSV in R2
         csv_file_path = f"vayne-orders/{order.id}/export.csv"
@@ -640,23 +643,27 @@ async def n8n_csv_callback(
             ContentType="text/csv"
         )
         
-        # Update order status and metadata in postgres
+        # Update order status and metadata
         order.status = "completed"
         if not order.completed_at:
             order.completed_at = datetime.utcnow()
         
-        # Update csv_file_path (using setattr to handle potential missing column)
         if hasattr(order, 'csv_file_path'):
             order.csv_file_path = csv_file_path
         
-        # Update leads counts if provided
-        if leads_found is not None:
-            order.leads_found = leads_found
-        if leads_qualified is not None:
-            order.leads_qualified = leads_qualified
+        order.leads_found = actual_leads
         
-        # NOTE: Credits are charged when job STARTS (in vayne_queue_worker.py)
-        # based on estimated_leads, since leads_found is often NULL or inaccurate
+        # Reconcile credits: refund difference if actual < estimated
+        credits_charged = order.credits_charged or 0
+        if credits_charged > 0 and actual_leads < credits_charged:
+            refund_amount = credits_charged - actual_leads
+            from sqlalchemy import text as sa_text
+            db.execute(
+                sa_text("UPDATE users SET credits = credits + :refund WHERE id = :uid"),
+                {"refund": refund_amount, "uid": str(order.user_id)}
+            )
+            order.credits_charged = actual_leads
+            logger.info(f"Reconciled credits: charged {credits_charged}, actual {actual_leads}, refunded {refund_amount}")
         
         db.commit()
         db.refresh(order)

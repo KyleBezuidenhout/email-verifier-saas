@@ -47,7 +47,7 @@ class VayneClient:
         return self._request("GET", "/api/linkedin_authentication")
 
     def update_linkedin_session(self, session_cookie: str):
-        return self._request("PATCH", "/api/linkedin_authentication", json={"session_cookie": session_cookie})
+        return self._request("PATCH", "/api/linkedin_authentication", json={"linkedin_cookie": session_cookie})
 
     def get_credits(self):
         return self._request("GET", "/api/credits")

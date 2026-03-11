@@ -80,7 +80,6 @@ def send_scraping_completion_email(user_email: str, order_id: str, results: dict
     
     job_name = targeting or f"Order {order_id[:8]}"
     leads_found = results.get("leads_found", 0)
-    leads_qualified = results.get("leads_qualified", 0)
     
     subject = f"✅ Scraping complete: {leads_found} leads found"
     
@@ -94,10 +93,7 @@ def send_scraping_completion_email(user_email: str, order_id: str, results: dict
         
         <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
           <h3 style="margin: 0 0 12px 0; color: #1e293b; font-size: 16px;">📊 Results Summary</h3>
-          <ul style="list-style: none; padding: 0; margin: 0; color: #475569;">
-            <li style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">👥 Leads found: <strong>{leads_found}</strong></li>
-            <li style="padding: 8px 0;">✅ Qualified leads: <strong>{leads_qualified}</strong></li>
-          </ul>
+          <p style="margin: 0; padding: 8px 0; color: #475569;">👥 Leads found: <strong>{leads_found}</strong></p>
         </div>
         
         <a href="{APP_URL}/sales-nav-scraper" 
@@ -286,7 +282,7 @@ async def wait_for_active_order_completion(db, active_order):
             try:
                 user_result = db.execute(
                     text("""
-                        SELECT u.email, vo.targeting, vo.leads_found, vo.leads_qualified 
+                        SELECT u.email, vo.targeting, vo.leads_found 
                         FROM users u 
                         JOIN vayne_orders vo ON u.id = vo.user_id 
                         WHERE vo.id = :order_id
@@ -300,7 +296,6 @@ async def wait_for_active_order_completion(db, active_order):
                         order_id=str(order_id),
                         results={
                             "leads_found": user_row[2] or 0,
-                            "leads_qualified": user_row[3] or 0,
                         },
                         targeting=user_row[1]
                     )
