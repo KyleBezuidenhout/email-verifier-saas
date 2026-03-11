@@ -864,7 +864,7 @@ def process_verification_job(job_id: str) -> bool:
         job.status = "pending"
         db.commit()
         
-        logger.info(f"✅ Created {leads_count} leads for verification job {job_id}")
+        logger.info(f"✅ Created {total_inserted} leads for verification job {job_id}")
         
         # Queue job for verification processing - route through waiting room if needed
         try:
