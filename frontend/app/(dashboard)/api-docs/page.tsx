@@ -144,7 +144,6 @@ const endpoints: Endpoint[] = [
       { name: "column_first_name", type: "string", required: false, description: "CSV column name for first name" },
       { name: "column_last_name", type: "string", required: false, description: "CSV column name for last name" },
       { name: "column_website", type: "string", required: false, description: "CSV column name for website" },
-      { name: "column_company_size", type: "string", required: false, description: "CSV column name for company size" },
     ],
     responseExample: {
       job_id: "123e4567-e89b-12d3-a456-426614174000",

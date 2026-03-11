@@ -22,7 +22,6 @@ const COLUMN_VARIATIONS: Record<keyof ColumnMapping, string[]> = {
   last_name: ["lastname", "last", "lname", "surname", "familyname", "last_name"],
   website: ["website", "domain", "companywebsite", "companydomain", "url", "companyurl", "company_website", "corporatewebsite", "corporate_website", "corporate-website", "primarydomain", "organization_primary_domain", "organizationprimarydomain"],
   email: ["email", "emailaddress", "e-mail", "email_address", "mail"],
-  company_size: [], // Disabled auto-detection - users must select from dropdown
 };
 
 const getRequiredColumns = (mode?: 'enrichment' | 'verification' | 'website-scraper'): (keyof ColumnMapping)[] => {
@@ -63,7 +62,6 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
     last_name: "",
     website: "",
     email: "",
-    company_size: "",
   });
   const [unmappedColumns, setUnmappedColumns] = useState<(keyof ColumnMapping)[]>([]);
   const [duplicateHeaders, setDuplicateHeaders] = useState<string[]>([]);
@@ -96,7 +94,6 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
             last_name: autoDetectColumn(fileHeaders, "last_name") || "",
             website: autoDetectColumn(fileHeaders, "website") || "",
             email: autoDetectColumn(fileHeaders, "email") || "",
-            company_size: autoDetectColumn(fileHeaders, "company_size") || "",
           };
           
           // Find which required columns couldn't be auto-detected
@@ -142,7 +139,6 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
       last_name: "Last Name",
       website: "Website/Domain",
       email: "Email",
-      company_size: "Company Size",
     };
     return labels[col];
   };
@@ -162,7 +158,6 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
       { key: 'first_name', required: true },
       { key: 'last_name', required: true },
       { key: 'website', required: true },
-      { key: 'company_size', required: false },
     ];
   };
 
