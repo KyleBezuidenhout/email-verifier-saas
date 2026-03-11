@@ -618,10 +618,8 @@ def process_enrichment_job(job_id: str) -> bool:
         logger.info(f"💾 Bulk inserting {len(leads_to_create)} leads into database")
         db.bulk_save_objects(leads_to_create)
         
-        # Deduct credits (skip for admin)
-        if not is_admin:
-            logger.info(f"💰 Deducting {leads_count} credits from user {user.id} (had {user.credits}, will have {user.credits - leads_count})")
-            user.credits -= leads_count
+        # Credits are deducted by the Node.js verification worker on job completion
+        # (avoids double-charging since enrichment auto-queues for verification)
         
         # Update job
         job.total_leads = leads_count
@@ -809,26 +807,8 @@ def process_verification_job(job_id: str) -> bool:
             if total_inserted % 5000 == 0 or total_inserted == len(leads_to_create):
                 logger.info(f"💾 Inserted {total_inserted}/{len(leads_to_create)} leads")
         
-        # Get user for credit deduction
-        user = db.query(User).filter(User.id == job.user_id).first()
-        if not user:
-            logger.error(f"User not found for verification job {job_id}")
-            job.status = "failed"
-            db.commit()
-            return False
-        
-        # Deduct credits (skip for admin)
-        is_admin = user.email == ADMIN_EMAIL or getattr(user, 'is_admin', False)
-        leads_count = len(leads_to_create)
-        
-        if not is_admin:
-            if user.credits < leads_count:
-                logger.warning(f"Insufficient credits for user {user.id} (needs {leads_count}, has {user.credits})")
-                job.status = "failed"
-                db.rollback()
-                return False
-            logger.info(f"💰 Deducting {leads_count} credits from user {user.id}")
-            user.credits -= leads_count
+        # Credits are deducted by the Node.js verification worker on job completion
+        # (avoids double-charging since this function queues to the verification worker)
         
         # Update job - total_leads was already set in the endpoint
         job.status = "pending"
