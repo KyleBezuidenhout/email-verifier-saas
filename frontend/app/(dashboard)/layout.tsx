@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Sidebar } from "@/components/common/Sidebar";
 import { Header } from "@/components/common/Header";
 import { Footer } from "@/components/common/Footer";
+import { ImpersonationBanner } from "@/components/common/ImpersonationBanner";
 
 export default function DashboardLayout({
   children,
@@ -12,6 +13,7 @@ export default function DashboardLayout({
 }) {
   return (
     <ProtectedRoute>
+      <ImpersonationBanner />
       <div className="min-h-screen flex bg-dashboard-dark relative">
         {/* Grid Background */}
         <div 

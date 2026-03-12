@@ -13,7 +13,7 @@ interface ColumnMapping {
 interface FilePreviewProps {
   file: File;
   onMappingChange?: (mapping: ColumnMapping, isValid: boolean) => void;
-  mode?: 'enrichment' | 'verification' | 'website-scraper'; // 'enrichment' requires first_name, last_name, website; 'verification' requires email; 'website-scraper' requires website only
+  mode?: 'enrichment' | 'verification' | 'catchall' | 'website-scraper';
 }
 
 // Column variations for auto-detection
@@ -24,12 +24,12 @@ const COLUMN_VARIATIONS: Record<keyof ColumnMapping, string[]> = {
   email: ["email", "emailaddress", "e-mail", "email_address", "mail"],
 };
 
-const getRequiredColumns = (mode?: 'enrichment' | 'verification' | 'website-scraper'): (keyof ColumnMapping)[] => {
-  if (mode === 'verification') {
+const getRequiredColumns = (mode?: 'enrichment' | 'verification' | 'catchall' | 'website-scraper'): (keyof ColumnMapping)[] => {
+  if (mode === 'verification' || mode === 'catchall') {
     return ['email'];
   }
   if (mode === 'website-scraper') {
-    return ['website']; // Only requires website column
+    return ['website'];
   }
   return ['first_name', 'last_name', 'website'];
 };
@@ -143,7 +143,10 @@ export function FilePreview({ file, onMappingChange, mode = 'enrichment' }: File
     return labels[col];
   };
 
-  const getColumnsForMode = (m?: 'enrichment' | 'verification' | 'website-scraper'): { key: keyof ColumnMapping; required: boolean }[] => {
+  const getColumnsForMode = (m?: 'enrichment' | 'verification' | 'catchall' | 'website-scraper'): { key: keyof ColumnMapping; required: boolean }[] => {
+    if (m === 'catchall') {
+      return [{ key: 'email', required: true }];
+    }
     if (m === 'verification') {
       return [
         { key: 'email', required: true },

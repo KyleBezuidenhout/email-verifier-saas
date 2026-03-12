@@ -715,10 +715,19 @@ async def get_fairshare_status(
                         "total_leads": job.total_leads,
                     })
         
+        total_keys_raw = redis_client.get("fairshare:total_keys")
+        total_keys = None
+        if total_keys_raw:
+            try:
+                total_keys = int(total_keys_raw if isinstance(total_keys_raw, str) else total_keys_raw.decode('utf-8'))
+            except Exception:
+                pass
+        
         return {
             "active_job_count": len(active_jobs),
             "queued_job_count": queue_length,
             "waiting_room_count": len(waiting_room_jobs),
+            "total_keys": total_keys,
             "active_jobs": active_jobs,
             "queued_jobs": queued_jobs,
             "waiting_room_jobs": waiting_room_jobs,
@@ -729,6 +738,7 @@ async def get_fairshare_status(
             "active_job_count": 0,
             "queued_job_count": 0,
             "waiting_room_count": 0,
+            "total_keys": None,
             "active_jobs": [],
             "queued_jobs": [],
             "waiting_room_jobs": [],

@@ -15,14 +15,39 @@ interface JobTableProps {
 export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
   const router = useRouter();
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [catchallWarning, setCatchallWarning] = useState<{ jobId: string; action: "cancel" | "delete" } | null>(null);
 
   const handleDelete = (jobId: string) => {
+    const job = jobs.find((j) => j.id === jobId);
+    if (job?.job_type === "catchall_verification" && (job.status === "processing" || job.status === "pending")) {
+      setCatchallWarning({ jobId, action: "delete" });
+      return;
+    }
     if (deleteConfirm === jobId) {
       onDelete(jobId);
       setDeleteConfirm(null);
     } else {
       setDeleteConfirm(jobId);
     }
+  };
+
+  const handleCatchallCancel = (jobId: string) => {
+    const job = jobs.find((j) => j.id === jobId);
+    if (job?.job_type === "catchall_verification") {
+      setCatchallWarning({ jobId, action: "cancel" });
+      return;
+    }
+    onCancel?.(jobId);
+  };
+
+  const confirmCatchallAction = () => {
+    if (!catchallWarning) return;
+    if (catchallWarning.action === "cancel") {
+      onCancel?.(catchallWarning.jobId);
+    } else {
+      onDelete(catchallWarning.jobId);
+    }
+    setCatchallWarning(null);
   };
 
   const handleRowClick = (jobId: string, e: React.MouseEvent) => {
@@ -155,7 +180,7 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onCancel(job.id);
+                        handleCatchallCancel(job.id);
                       }}
                       className="text-yellow-400 hover:text-yellow-300 transition-colors"
                     >
@@ -193,6 +218,45 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
       {jobs.length === 0 && (
         <div className="text-center py-12">
           <p className="text-dashboard-text-muted">No jobs yet. Upload a CSV file to get started.</p>
+        </div>
+      )}
+
+      {/* Catchall credit warning modal */}
+      {catchallWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setCatchallWarning(null)} />
+          <div className="relative glass-surface p-8 max-w-md w-full mx-4">
+            <div className="flex justify-center mb-6">
+              <div className="w-16 h-16 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+            <h2 className="text-xl font-bold text-white text-center mb-3">
+              Credits Are Non-Refundable
+            </h2>
+            <p className="text-gray-400 text-center mb-8 leading-relaxed">
+              Credits for this job are deducted when processing begins and{" "}
+              <strong className="text-white">cannot be refunded</strong>, even if you{" "}
+              {catchallWarning.action === "cancel" ? "cancel" : "delete"} the job.
+              The full credit cost for all emails in this job will still apply.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCatchallWarning(null)}
+                className="flex-1 px-6 py-3 bg-white/5 border border-white/10 text-white rounded-xl font-medium hover:bg-white/10 transition-all"
+              >
+                Go Back
+              </button>
+              <button
+                onClick={confirmCatchallAction}
+                className="flex-1 px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-all"
+              >
+                {catchallWarning.action === "cancel" ? "Cancel Job" : "Delete Job"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

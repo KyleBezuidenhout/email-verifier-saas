@@ -259,7 +259,17 @@ class ApiClient {
     return this.requestWithFile<UploadResponse>("/api/v1/jobs/verify-upload", file, options);
   }
 
-  async getJobs(jobType?: 'enrichment' | 'verification'): Promise<Job[]> {
+  async uploadCatchallFile(
+    file: File,
+    options?: {
+      column_email?: string;
+      job_name?: string;
+    }
+  ): Promise<UploadResponse> {
+    return this.requestWithFile<UploadResponse>("/api/v1/jobs/catchall-upload", file, options);
+  }
+
+  async getJobs(jobType?: 'enrichment' | 'verification' | 'catchall_verification'): Promise<Job[]> {
     const url = jobType ? `/api/v1/jobs?job_type=${jobType}` : "/api/v1/jobs";
     return this.request<Job[]>(url);
   }
@@ -513,6 +523,7 @@ class ApiClient {
     active_job_count: number;
     queued_job_count: number;
     waiting_room_count: number;
+    total_keys: number | null;
     active_jobs: Array<{
       job_id: string;
       user_id: string;
@@ -520,6 +531,7 @@ class ApiClient {
       job_type: string;
       total_leads: number;
       processed_leads: number;
+      keys_allocated: number | null;
       throughput: {
         rate_per_hour: number;
         items_processed: number;
@@ -543,6 +555,14 @@ class ApiClient {
     }>;
   }> {
     return this.request("/api/v1/admin/fairshare/status");
+  }
+
+  async impersonateClient(clientId: string): Promise<{
+    access_token: string;
+    token_type: string;
+    user: { id: string; email: string; full_name: string | null; company_name: string | null };
+  }> {
+    return this.request(`/api/v1/admin/impersonate/${clientId}`, { method: "POST" });
   }
 
   async updateClientMaxJobs(clientId: string, maxJobs: number): Promise<{

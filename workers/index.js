@@ -167,6 +167,9 @@ redisClient.connect().then(() => {
   console.log(`   │ TOTAL: ${totalReqPerSec} requests/second | ${totalRequestsPer30s}/30s`);
   console.log(`   └─────────────────────────────────────────────────────────────┘`);
   console.log(`   Max concurrent workers: 20 (prevents burst)\n`);
+
+  // Publish total key count to Redis so the admin dashboard can display per-job allocation
+  redisClient.set('fairshare:total_keys', String(MAILTESTER_API_KEYS.length)).catch(() => {});
 }).catch(console.error);
 
 // PostgreSQL connection pool
@@ -352,6 +355,7 @@ async function getAllocatedKeys(jobId) {
     }
     
     allocationCache = { keys: myKeys, timestamp: Date.now() };
+    redisClient.set(`fairshare:keys_allocated:${jobId}`, String(myKeys.length), { EX: 120 }).catch(() => {});
     return myKeys;
   } catch (err) {
     console.error('getAllocatedKeys error, using all keys as fallback:', err.message);
@@ -432,6 +436,7 @@ async function unregisterFairshareJob(jobId, heartbeatInterval) {
     await redisClient.hDel('fairshare:active_jobs', jobId);
     await redisClient.del(`fairshare:heartbeat:${jobId}`);
     await redisClient.del(`fairshare:throughput:${jobId}`);
+    await redisClient.del(`fairshare:keys_allocated:${jobId}`);
   } catch (e) {
     console.error('Error unregistering fairshare job:', e.message);
   }
@@ -450,6 +455,7 @@ async function cleanupStaleJobs() {
       if (!alive) {
         await redisClient.hDel('fairshare:active_jobs', jobId);
         await redisClient.del(`fairshare:throughput:${jobId}`);
+        await redisClient.del(`fairshare:keys_allocated:${jobId}`);
         console.log(`Cleaned up stale fairshare job ${jobId} (heartbeat expired, user ${userId})`);
       }
     }

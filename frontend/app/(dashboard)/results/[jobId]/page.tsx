@@ -220,8 +220,8 @@ export default function ResultsPage() {
   }
 
   // Determine back link based on job type
-  const backLink = job?.job_type === 'verification' ? '/verify-emails' : '/find-valid-emails';
-  const backLinkText = job?.job_type === 'verification' ? 'Back to Verify Emails' : 'Back to Find Valid Emails';
+  const backLink = job?.job_type === 'catchall_verification' ? '/verify-catchalls' : job?.job_type === 'verification' ? '/verify-emails' : '/find-valid-emails';
+  const backLinkText = job?.job_type === 'catchall_verification' ? 'Back to Catchall Verifier' : job?.job_type === 'verification' ? 'Back to Verify Emails' : 'Back to Find Valid Emails';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -243,6 +243,8 @@ export default function ResultsPage() {
             <h2 className="text-3xl font-bold text-dashboard-accent">
               {job.job_type === "enrichment"
                 ? `${job.total_leads > 0 ? Math.min(((validLeads.length + catchallLeads.length) / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% of Emails Were Found`
+                : job.job_type === "catchall_verification"
+                ? `${job.total_leads > 0 ? Math.min((validLeads.length / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% Are Deliverable`
                 : `${job.total_leads > 0 ? Math.min((validLeads.length / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% of Emails Are Valid`
               }
             </h2>

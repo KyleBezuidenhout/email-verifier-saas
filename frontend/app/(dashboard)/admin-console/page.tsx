@@ -32,6 +32,7 @@ interface FairshareStatus {
   active_job_count: number;
   queued_job_count: number;
   waiting_room_count: number;
+  total_keys: number | null;
   active_jobs: Array<{
     job_id: string;
     user_id: string;
@@ -39,6 +40,7 @@ interface FairshareStatus {
     job_type: string;
     total_leads: number;
     processed_leads: number;
+    keys_allocated: number | null;
     throughput: {
       rate_per_hour: number;
       items_processed: number;
@@ -317,6 +319,27 @@ export default function AdminConsolePage() {
     }
   };
 
+  // Handle impersonation - login as client
+  const handleImpersonate = async (clientId: string, clientEmail: string) => {
+    try {
+      const res = await apiClient.impersonateClient(clientId);
+      // Save admin token so we can return later
+      const currentToken = document.cookie.split(";").find(c => c.trim().startsWith("token="));
+      if (currentToken) {
+        const adminToken = currentToken.trim().split("=").slice(1).join("=");
+        localStorage.setItem("admin_token", adminToken);
+        localStorage.setItem("impersonating", clientEmail);
+      }
+      // Set client token
+      document.cookie = `token=${res.access_token}; path=/; max-age=604800; SameSite=Lax`;
+      // Redirect to client dashboard
+      window.location.href = "/verify-emails";
+    } catch (err) {
+      console.error("Failed to impersonate:", err);
+      alert(err instanceof Error ? err.message : "Failed to login as client");
+    }
+  };
+
   // Handle job deletion (admin can delete any job)
   const handleDeleteJob = async (jobId: string) => {
     if (deleteConfirmJobId !== jobId) {
@@ -444,6 +467,11 @@ export default function AdminConsolePage() {
                           <span className="text-dashboard-text-muted text-xs">
                             {job.processed_leads}/{job.total_leads} leads
                           </span>
+                          {job.keys_allocated != null && (
+                            <span className="text-purple-400 text-xs font-medium" title="API keys actively assigned to this job">
+                              {job.keys_allocated}/{fairshareStatus.total_keys ?? "?"} keys
+                            </span>
+                          )}
                           {job.throughput && (
                             <span className="text-blue-400 text-xs font-medium">
                               {job.throughput.rate_per_hour.toLocaleString()}/hr
@@ -499,6 +527,135 @@ export default function AdminConsolePage() {
               )}
             </div>
           )}
+
+          {/* Sales Nav Jobs Panel */}
+          {(() => {
+            const salesNavActive = jobs.filter(j => j.job_type === "sales_nav" && j.status === "processing");
+            const salesNavQueued = jobs.filter(j => j.job_type === "sales_nav" && (j.status === "pending" || j.status === "queued"));
+            return (
+              <div className="glass-card p-6">
+                <h2 className="text-lg font-semibold text-dashboard-text mb-4">Sales Nav Jobs</h2>
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-green-400">{salesNavActive.length}</div>
+                    <div className="text-xs text-dashboard-text-muted mt-1">Active</div>
+                  </div>
+                  <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-yellow-400">{salesNavQueued.length}</div>
+                    <div className="text-xs text-dashboard-text-muted mt-1">Queued</div>
+                  </div>
+                </div>
+
+                {salesNavActive.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium text-dashboard-text-muted mb-2">Active</h3>
+                    <div className="space-y-2">
+                      {salesNavActive.map((job) => (
+                        <div key={job.id} className="flex items-center justify-between bg-dashboard-card/30 rounded-lg px-4 py-2 text-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                            <span className="text-dashboard-text">{job.client.email}</span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="text-dashboard-text-muted text-xs">
+                              {job.processed_leads}/{job.total_leads} leads
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {salesNavQueued.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium text-dashboard-text-muted mb-2">Queued</h3>
+                    <div className="space-y-1">
+                      {salesNavQueued.map((job) => (
+                        <div key={job.id} className="flex items-center justify-between bg-dashboard-card/20 rounded px-4 py-1.5 text-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="w-2 h-2 bg-yellow-400 rounded-full" />
+                            <span className="text-dashboard-text-muted">{job.client.email}</span>
+                          </div>
+                          <span className="text-dashboard-text-muted text-xs">{job.total_leads} leads</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {salesNavActive.length === 0 && salesNavQueued.length === 0 && (
+                  <p className="text-dashboard-text-muted text-sm text-center py-4">No active or queued Sales Nav jobs</p>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Catchall Jobs Panel */}
+          {(() => {
+            const catchallActive = jobs.filter(j => j.job_type === "catchall_verification" && j.status === "processing");
+            const catchallQueued = jobs.filter(j => j.job_type === "catchall_verification" && (j.status === "pending" || j.status === "queued"));
+            return (
+              <div className="glass-card p-6">
+                <h2 className="text-lg font-semibold text-dashboard-text mb-4">Catchall Verification Jobs</h2>
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-green-400">{catchallActive.length}</div>
+                    <div className="text-xs text-dashboard-text-muted mt-1">Active</div>
+                  </div>
+                  <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-yellow-400">{catchallQueued.length}</div>
+                    <div className="text-xs text-dashboard-text-muted mt-1">Queued</div>
+                  </div>
+                </div>
+
+                {catchallActive.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium text-dashboard-text-muted mb-2">Active</h3>
+                    <div className="space-y-2">
+                      {catchallActive.map((job) => (
+                        <div key={job.id} className="flex items-center justify-between bg-dashboard-card/30 rounded-lg px-4 py-2 text-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                            <span className="text-dashboard-text">{job.client.email}</span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="text-dashboard-text-muted text-xs">
+                              {job.processed_leads}/{job.total_leads} emails
+                            </span>
+                            {job.valid_emails_found > 0 && (
+                              <span className="text-green-400 text-xs">{job.valid_emails_found} valid</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {catchallQueued.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium text-dashboard-text-muted mb-2">Queued</h3>
+                    <div className="space-y-1">
+                      {catchallQueued.map((job) => (
+                        <div key={job.id} className="flex items-center justify-between bg-dashboard-card/20 rounded px-4 py-1.5 text-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="w-2 h-2 bg-yellow-400 rounded-full" />
+                            <span className="text-dashboard-text-muted">{job.client.email}</span>
+                          </div>
+                          <span className="text-dashboard-text-muted text-xs">{job.total_leads} emails</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {catchallActive.length === 0 && catchallQueued.length === 0 && (
+                  <p className="text-dashboard-text-muted text-sm text-center py-4">No active or queued catchall jobs</p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Credit Assignment Section */}
           <div className="glass-card p-6">
@@ -623,6 +780,7 @@ export default function AdminConsolePage() {
                   <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Jobs</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Valid Emails</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Created</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-dashboard-text-muted uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
@@ -679,6 +837,16 @@ export default function AdminConsolePage() {
                     <td className="px-4 py-3 text-dashboard-text-muted text-sm">
                       {new Date(client.created_at).toLocaleDateString()}
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      {!client.is_admin && (
+                        <button
+                          onClick={() => handleImpersonate(client.id, client.email)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-dashboard-accent/20 text-dashboard-accent hover:bg-dashboard-accent/30 transition-colors"
+                        >
+                          Login
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -708,6 +876,7 @@ export default function AdminConsolePage() {
               <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
                 {jobs.map((job) => {
                   const isSalesNav = job.job_type === "sales_nav";
+                  const isCatchall = job.job_type === "catchall_verification";
                   const isCompleted = job.status === "completed";
                   const isEnrichment = job.job_type === "enrichment";
                   let hitRateDisplay = "--";
@@ -721,12 +890,16 @@ export default function AdminConsolePage() {
                   
                   const typeBadgeClass = isSalesNav
                     ? "bg-orange-500/20 text-orange-400"
+                    : isCatchall
+                    ? "bg-cyan-500/20 text-cyan-400"
                     : isEnrichment
                     ? "bg-blue-500/20 text-blue-400"
                     : "bg-purple-500/20 text-purple-400";
 
                   const typeLabel = isSalesNav
                     ? "Sales Nav"
+                    : isCatchall
+                    ? "Catchall"
                     : job.job_type;
 
                   return (
