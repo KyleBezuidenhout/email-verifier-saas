@@ -9,9 +9,31 @@ Processes emails in chunks with controlled concurrency:
 """
 
 import asyncio
+import json
 import time
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Callable
+
+import redis
+from app.core.config import settings
 from app.services.omniverifier_client import OmniVerifierClient
+
+OMNI_BALANCE_KEY = "omniverifier:credit_balance"
+
+
+def _store_omni_balance(balance: int, credits_deducted: int | None = None):
+    """Persist the latest OmniVerifier catchall credit balance to Redis."""
+    try:
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        payload = {
+            "balance": balance,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if credits_deducted is not None:
+            payload["last_credits_deducted"] = credits_deducted
+        r.set(OMNI_BALANCE_KEY, json.dumps(payload))
+    except Exception:
+        pass
 
 CHUNK_SIZE = 1000
 CONCURRENCY_LIMIT = 5
@@ -49,8 +71,17 @@ async def _process_chunk(
             result["errors"].append(f"{tag} No list ID returned")
             return result
 
+        if "current_balance" in create_resp:
+            _store_omni_balance(create_resp["current_balance"])
+
         await verifier.add_emails_to_list(list_id, emails)
-        await verifier.start_list(list_id)
+        start_resp = await verifier.start_list(list_id)
+
+        if "remaining_balance" in start_resp:
+            _store_omni_balance(
+                start_resp["remaining_balance"],
+                credits_deducted=start_resp.get("credits_deducted"),
+            )
 
         start_time = time.time()
         completed = False
@@ -120,17 +151,6 @@ async def verify_catchall_emails(
             on_chunk_complete(processed_so_far)
 
     try:
-        credits_resp = await verifier.get_credits()
-        balance = credits_resp.get("credits", {}).get("catchall", 0)
-        if balance < len(emails):
-            return {
-                "email_results": {},
-                "total_processed": 0,
-                "valid_count": 0,
-                "risky_count": 0,
-                "errors": [f"Insufficient OmniVerifier credits: {balance} available, {len(emails)} needed"],
-            }
-
         semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
 
         async def _run_with_semaphore(chunk_emails, idx):

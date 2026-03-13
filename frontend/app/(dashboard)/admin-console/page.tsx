@@ -134,7 +134,11 @@ export default function AdminConsolePage() {
   const [lowCreditClients, setLowCreditClients] = useState<ClientData[]>([]);
   const [jobs, setJobs] = useState<AdminJob[]>([]);
   const [apiKeyUsage, setApiKeyUsage] = useState<ApiKeyUsage[]>([]);
-  const [omniCredits, setOmniCredits] = useState<{ available: number } | null>(null);
+  const [omniCredits, setOmniCredits] = useState<{
+    balance: number;
+    last_credits_deducted: number | null;
+    updated_at: string | null;
+  } | null>(null);
   const [vayneStats, setVayneStats] = useState<{
     available_credits: number;
     leads_scraped_today: number;
@@ -214,8 +218,8 @@ export default function AdminConsolePage() {
     try {
       const res = await apiClient.getAdminApiKeyUsage();
       setApiKeyUsage(res.mailtester_keys);
-      if (res.omniverifier && "available" in res.omniverifier) {
-        setOmniCredits(res.omniverifier);
+      if (res.omniverifier && "balance" in res.omniverifier) {
+        setOmniCredits(res.omniverifier as { balance: number; last_credits_deducted: number | null; updated_at: string | null });
       }
       
       // Fetch Vayne stats
@@ -1159,14 +1163,38 @@ export default function AdminConsolePage() {
             </div>
           )}
 
-          {/* OmniVerifier Credits */}
-          {omniCredits && (
-            <div className="glass-card p-6">
-              <h3 className="text-lg font-semibold text-dashboard-text mb-4">OmniVerifier Credits</h3>
-              <p className="text-3xl font-bold text-dashboard-accent">{omniCredits.available.toLocaleString()}</p>
-              <p className="text-sm text-dashboard-text-muted">Available catchall verification credits</p>
-            </div>
-          )}
+          {/* OmniVerifier Catchall Credits */}
+          <div className="glass-card p-6">
+            <h3 className="text-lg font-semibold text-dashboard-text mb-4">OmniVerifier Catchall Credits</h3>
+            {omniCredits ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-3xl font-bold text-cyan-400">{omniCredits.balance.toLocaleString()}</p>
+                  <p className="text-sm text-dashboard-text-muted mt-1">Available catchall verification credits</p>
+                </div>
+                <div className="flex flex-wrap gap-6 text-sm">
+                  {omniCredits.last_credits_deducted != null && (
+                    <div>
+                      <span className="text-dashboard-text-muted">Last deduction: </span>
+                      <span className="text-dashboard-text font-medium">{omniCredits.last_credits_deducted.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {omniCredits.updated_at && (
+                    <div>
+                      <span className="text-dashboard-text-muted">Last updated: </span>
+                      <span className="text-dashboard-text font-medium">
+                        {new Date(omniCredits.updated_at).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-dashboard-text-muted">
+                No balance data yet — balance is recorded after the first catchall job runs.
+              </p>
+            )}
+          </div>
 
           {/* Credits & Limits Display */}
           {vayneStats && !vayneStats.error && (

@@ -27,7 +27,7 @@ from app.models.vayne_order import VayneOrder
 from app.api.dependencies import require_admin
 from app.services.usage_tracker import get_usage_tracker
 from app.services.error_logger import get_error_logger
-from app.services.omniverifier_client import OmniVerifierClient
+
 from app.services.vayne_usage_tracker import get_vayne_usage_tracker
 from app.services.vayne_client import get_vayne_client
 from app.core.config import settings
@@ -542,16 +542,19 @@ async def get_api_key_usage(
     tracker = get_usage_tracker()
     keys_usage = tracker.get_all_keys_usage()
     
-    # Get OmniVerifier credits if configured
+    # Read cached OmniVerifier credit balance from Redis (stored by catchall worker)
     omni_credits = None
     try:
-        omni_client = OmniVerifierClient()
-        credits_response = await omni_client.get_credits()
-        omni_credits = {
-            "available": credits_response.get("credits", 0),
-            "provider": "OmniVerifier"
-        }
-        await omni_client.close()
+        import json as _json
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        raw = r.get("omniverifier:credit_balance")
+        if raw:
+            data = _json.loads(raw)
+            omni_credits = {
+                "balance": data.get("balance", 0),
+                "last_credits_deducted": data.get("last_credits_deducted"),
+                "updated_at": data.get("updated_at"),
+            }
     except Exception as e:
         omni_credits = {"error": str(e)}
     

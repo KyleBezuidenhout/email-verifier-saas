@@ -497,7 +497,7 @@ class ApiClient {
       resets_at: string;
       date: string;
     }>;
-    omniverifier: { available: number; provider: string } | { error: string } | null;
+    omniverifier: { balance: number; last_credits_deducted: number | null; updated_at: string | null } | { error: string } | null;
     total_mailtester_keys: number;
     total_remaining: number;
   }> {
