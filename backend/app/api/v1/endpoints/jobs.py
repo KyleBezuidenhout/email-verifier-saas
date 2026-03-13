@@ -35,6 +35,7 @@ from urllib.parse import urlparse
 # Default queue names (can be overridden by worker_configs table)
 DEFAULT_ENRICHMENT_QUEUE = "enrichment-job-creation"
 DEFAULT_VERIFICATION_QUEUE = "simple-email-verification-queue"
+DEFAULT_CATCHALL_QUEUE = "catchall-verification-queue"
 
 
 def get_verification_queue_for_user(db: Session, user_id) -> str:
@@ -120,6 +121,54 @@ def route_job_to_queue_or_waiting_room(r_client, db: Session, user_id, job_id_st
     except Exception as e:
         print(f"Error routing job {job_id_str}: {e}")
         r_client.rpush(verification_queue, job_id_str)
+        return True
+
+
+def route_catchall_to_queue_or_waiting_room(r_client, db: Session, user_id, job_id_str: str) -> bool:
+    """
+    Route a catchall verification job to the catchall queue or the client's
+    catchall waiting room based on their max_concurrent_jobs cap.
+
+    Uses a completely separate pool from verification/enrichment:
+      - Active hash: catchall:active_jobs
+      - Queue: catchall-verification-queue
+      - Waiting room: catchall:waiting:{user_id}
+
+    Returns True if routed to main queue, False if placed in waiting room.
+    """
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        max_jobs = getattr(user, 'max_concurrent_jobs', 3) if user else 3
+
+        active_jobs = r_client.hgetall("catchall:active_jobs") or {}
+        queue_items = r_client.lrange(DEFAULT_CATCHALL_QUEUE, 0, -1) or []
+
+        user_active = sum(
+            1 for uid in active_jobs.values()
+            if (uid if isinstance(uid, str) else uid.decode('utf-8')) == str(user_id)
+        )
+
+        user_queued = 0
+        for qjid in queue_items:
+            jid = qjid if isinstance(qjid, str) else qjid.decode('utf-8')
+            j = db.query(Job).filter(Job.id == jid).first()
+            if j and str(j.user_id) == str(user_id):
+                user_queued += 1
+
+        current_load = user_active + user_queued
+
+        if current_load < max_jobs:
+            r_client.rpush(DEFAULT_CATCHALL_QUEUE, job_id_str)
+            return True
+        else:
+            waiting_key = f"catchall:waiting:{user_id}"
+            r_client.rpush(waiting_key, job_id_str)
+            db.query(Job).filter(Job.id == job_id_str).update({"status": "waiting"})
+            db.commit()
+            return False
+    except Exception as e:
+        print(f"Error routing catchall job {job_id_str}: {e}")
+        r_client.rpush(DEFAULT_CATCHALL_QUEUE, job_id_str)
         return True
 
 
@@ -1290,14 +1339,21 @@ async def cancel_job(
         cancel_key = f"job:cancelled:{job_id}"
         redis_client.set(cancel_key, "true", ex=3600)
         
-        # Clean up fair-share registry
+        # Clean up fair-share registry (verification/enrichment pool)
         redis_client.hdel("fairshare:active_jobs", str(job_id))
         redis_client.delete(f"fairshare:heartbeat:{job_id}")
         redis_client.delete(f"fairshare:throughput:{job_id}")
         
-        # Remove from waiting room if applicable
+        # Remove from verification/enrichment waiting room if applicable
         waiting_key = f"fairshare:waiting:{job.user_id}"
         redis_client.lrem(waiting_key, 0, str(job_id))
+
+        # Clean up catchall pool (separate from verification/enrichment)
+        redis_client.hdel("catchall:active_jobs", str(job_id))
+        redis_client.delete(f"catchall:heartbeat:{job_id}")
+        catchall_waiting_key = f"catchall:waiting:{job.user_id}"
+        redis_client.lrem(catchall_waiting_key, 0, str(job_id))
+        redis_client.lrem(DEFAULT_CATCHALL_QUEUE, 0, str(job_id))
     except Exception as e:
         print(f"Warning: Could not notify workers via Redis: {e}")
     
@@ -1370,40 +1426,45 @@ async def upload_catchall_file(
     if email_col not in actual_columns:
         raise HTTPException(status_code=400, detail=f"Missing required column: '{email_col}'")
 
-    emails = []
+    parsed_rows = []
     for row in rows:
         e = row.get(email_col, "").strip()
-        if e and "@" in e:
-            emails.append(e)
+        if not e or "@" not in e:
+            continue
+        extra_data = {}
+        for col, val in row.items():
+            if col != email_col and val and str(val).strip():
+                extra_data[col] = str(val).strip()
+        parsed_rows.append({"email": e, "extra_data": extra_data})
 
-    if not emails:
+    if not parsed_rows:
         raise HTTPException(status_code=400, detail="No valid email addresses found in CSV")
 
-    if len(emails) > MAX_CATCHALL_ROWS:
+    if len(parsed_rows) > MAX_CATCHALL_ROWS:
         raise HTTPException(
             status_code=400,
-            detail=f"Maximum {MAX_CATCHALL_ROWS} emails per catchall job. Your file has {len(emails)}.",
+            detail=f"Maximum {MAX_CATCHALL_ROWS} emails per catchall job. Your file has {len(parsed_rows)}.",
         )
 
     # Credit check (1 credit per email) — skip for admin
     is_admin = current_user.email == ADMIN_EMAIL or getattr(current_user, "is_admin", False)
-    if not is_admin and current_user.credits < len(emails):
+    if not is_admin and current_user.credits < len(parsed_rows):
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {len(emails)} credits.",
+            detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {len(parsed_rows)} credits.",
         )
 
     job = Job(
         user_id=current_user.id,
-        status="processing",
+        status="queued",
         job_type="catchall_verification",
         original_filename=file.filename,
         job_name=job_name.strip() if job_name else None,
-        total_leads=len(emails),
+        total_leads=len(parsed_rows),
         processed_leads=0,
         valid_emails_found=0,
         catchall_emails_found=0,
-        cost_in_credits=len(emails),
+        cost_in_credits=len(parsed_rows),
     )
     db.add(job)
     db.commit()
@@ -1420,17 +1481,22 @@ async def upload_catchall_file(
         db.commit()
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
 
-    # Create Lead records
+    # Create Lead records, preserving all extra CSV columns
     leads_to_create = []
-    for email in emails:
+    for pr in parsed_rows:
+        email = pr["email"]
+        extra = pr["extra_data"]
         leads_to_create.append(
             Lead(
                 job_id=job.id,
                 user_id=current_user.id,
                 email=email,
+                first_name=extra.pop("first_name", "") or extra.pop("First Name", ""),
+                last_name=extra.pop("last_name", "") or extra.pop("Last Name", ""),
                 domain=email.split("@")[1] if "@" in email else "",
                 verification_status="pending",
                 is_final_result=False,
+                extra_data=extra,
             )
         )
     db.bulk_save_objects(leads_to_create)
@@ -1438,183 +1504,31 @@ async def upload_catchall_file(
 
     # Deduct credits upfront (non-refundable)
     if not is_admin:
-        current_user.credits -= len(emails)
+        current_user.credits -= len(parsed_rows)
         db.commit()
 
-    # Fire background task
-    asyncio.create_task(_run_catchall_verification(str(job.id), emails))
+    # Route to catchall Redis queue (separate from verification/enrichment)
+    job_id_str = str(job.id)
+    routed_to_queue = route_catchall_to_queue_or_waiting_room(
+        redis_client, db, current_user.id, job_id_str
+    )
 
+    if routed_to_queue:
+        queue_length = redis_client.llen(DEFAULT_CATCHALL_QUEUE)
+        print(f"Catchall job {job_id_str} queued (queue length: {queue_length})")
+    else:
+        print(f"Catchall job {job_id_str} placed in waiting room (client at capacity)")
+
+    status_label = "queued" if routed_to_queue else "waiting"
     return JobUploadResponse(
         job_id=job.id,
-        message=f"Catchall verification started for {len(emails)} emails.",
+        message=f"Catchall verification {status_label} for {len(parsed_rows)} emails.",
     )
 
 
-async def _run_catchall_verification(job_id: str, emails: List[str]):
-    """Background task that orchestrates catchall verification via OmniVerifier."""
-    from app.db.session import SessionLocal
-    from app.services.catchall_verification_service import verify_catchall_emails, JobCancelled
 
-    db = SessionLocal()
-    try:
-        job = db.query(Job).filter(Job.id == job_id).first()
-        if not job:
-            print(f"Catchall job {job_id} not found")
-            return
-
-        def is_cancelled():
-            try:
-                val = redis_client.get(f"job:cancelled:{job_id}")
-                return val is not None
-            except Exception:
-                return False
-
-        def on_chunk_complete(processed_count):
-            try:
-                j = db.query(Job).filter(Job.id == job_id).first()
-                if j:
-                    j.processed_leads = processed_count
-                    db.commit()
-            except Exception:
-                db.rollback()
-
-        try:
-            result = await verify_catchall_emails(
-                emails=emails,
-                title_prefix=f"Job {job_id[:8]}",
-                on_chunk_complete=on_chunk_complete,
-                is_cancelled=is_cancelled,
-            )
-        except JobCancelled:
-            print(f"Catchall job {job_id} was cancelled by user")
-            job = db.query(Job).filter(Job.id == job_id).first()
-            if job and job.status != "cancelled":
-                job.status = "cancelled"
-                db.commit()
-            return
-
-        # Map results back to leads
-        email_results = result.get("email_results", {})
-        leads = db.query(Lead).filter(Lead.job_id == job_id).all()
-
-        valid_count = 0
-        risky_count = 0
-        for lead in leads:
-            r = email_results.get(lead.email.lower())
-            if r:
-                res_code = r.get("result")
-                if res_code == 1:
-                    lead.verification_status = "valid"
-                    lead.verification_tag = "catchall-deliverable"
-                    valid_count += 1
-                elif res_code == 2:
-                    lead.verification_status = "risky"
-                    lead.verification_tag = "catchall-risky"
-                    risky_count += 1
-                else:
-                    lead.verification_status = "invalid"
-            else:
-                lead.verification_status = "unverified"
-
-        job = db.query(Job).filter(Job.id == job_id).first()
-        if not job:
-            return
-        job.valid_emails_found = valid_count
-        job.catchall_emails_found = risky_count
-        job.processed_leads = job.total_leads
-        job.status = "completed"
-        job.completed_at = datetime.utcnow()
-        db.commit()
-
-        _send_catchall_completion_email(db, job)
-
-        errors = result.get("errors", [])
-        if errors:
-            print(f"Catchall job {job_id} completed with errors: {errors}")
-        else:
-            print(f"Catchall job {job_id} completed: {valid_count} valid, {risky_count} risky")
-
-    except Exception as e:
-        print(f"Catchall job {job_id} failed: {e}")
-        import traceback
-        traceback.print_exc()
-        try:
-            job = db.query(Job).filter(Job.id == job_id).first()
-            if job:
-                job.status = "failed"
-                db.commit()
-        except Exception:
-            db.rollback()
-    finally:
-        db.close()
-
-
-def _send_catchall_completion_email(db, job):
-    """Send a completion email to the user when their catchall job finishes."""
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    import os
-
-    gmail_user = os.environ.get("GMAIL_USER")
-    gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
-    app_url = os.environ.get("APP_URL", "https://www.billionverifier.io")
-
-    if not gmail_user or not gmail_pass:
-        print("Gmail credentials not configured — skipping catchall completion email")
-        return
-
-    try:
-        user = db.query(User).filter(User.id == job.user_id).first()
-        if not user:
-            return
-
-        valid = job.valid_emails_found or 0
-        risky = job.catchall_emails_found or 0
-        total = job.total_leads or 0
-        job_id_short = str(job.id)[:8]
-
-        subject = f"Catchall verification complete: {valid} deliverable emails found"
-        html = f"""
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #0077cc 0%, #0099ff 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
-            <h2 style="margin: 0; font-size: 22px;">Catchall Verification Complete!</h2>
-          </div>
-          <div style="background: #f8fafc; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
-            <p style="color: #475569; font-size: 16px; margin-top: 0;">Your catchall verification job has finished processing.</p>
-            <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
-              <h3 style="margin: 0 0 12px 0; color: #1e293b; font-size: 16px;">Results Summary</h3>
-              <ul style="list-style: none; padding: 0; margin: 0; color: #475569;">
-                <li style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">Deliverable: <strong>{valid}</strong></li>
-                <li style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">Risky: <strong>{risky}</strong></li>
-                <li style="padding: 8px 0;">Total processed: <strong>{total}</strong></li>
-              </ul>
-            </div>
-            <a href="{app_url}/results/{job.id}"
-               style="display: inline-block; background: linear-gradient(135deg, #0077cc 0%, #0099ff 100%);
-                      color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px;
-                      font-weight: 600; font-size: 15px;">
-              View &amp; Download Results
-            </a>
-            <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; margin-bottom: 0;">
-              Job ID: {job_id_short}...
-            </p>
-          </div>
-        </div>
-        """
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"Billion Verifier <{gmail_user}>"
-        msg["To"] = user.email
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(gmail_user, gmail_pass)
-            server.sendmail(gmail_user, user.email, msg.as_string())
-
-        print(f"Sent catchall completion email to {user.email}")
-    except Exception as e:
-        print(f"Failed to send catchall completion email: {e}")
+# _run_catchall_verification and _send_catchall_completion_email have been
+# moved to workers/catchall_worker.py which processes jobs from the
+# catchall-verification-queue Redis queue.
 
 

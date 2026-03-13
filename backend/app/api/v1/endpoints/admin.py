@@ -14,6 +14,7 @@ from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID
+import logging
 from zoneinfo import ZoneInfo
 
 import redis
@@ -30,6 +31,7 @@ from app.services.omniverifier_client import OmniVerifierClient
 from app.services.vayne_usage_tracker import get_vayne_usage_tracker
 from app.services.vayne_client import get_vayne_client
 from app.core.config import settings
+from app.core.security import create_access_token
 
 router = APIRouter()
 
@@ -715,19 +717,10 @@ async def get_fairshare_status(
                         "total_leads": job.total_leads,
                     })
         
-        total_keys_raw = redis_client.get("fairshare:total_keys")
-        total_keys = None
-        if total_keys_raw:
-            try:
-                total_keys = int(total_keys_raw if isinstance(total_keys_raw, str) else total_keys_raw.decode('utf-8'))
-            except Exception:
-                pass
-        
         return {
             "active_job_count": len(active_jobs),
             "queued_job_count": queue_length,
             "waiting_room_count": len(waiting_room_jobs),
-            "total_keys": total_keys,
             "active_jobs": active_jobs,
             "queued_jobs": queued_jobs,
             "waiting_room_jobs": waiting_room_jobs,
@@ -738,7 +731,6 @@ async def get_fairshare_status(
             "active_job_count": 0,
             "queued_job_count": 0,
             "waiting_room_count": 0,
-            "total_keys": None,
             "active_jobs": [],
             "queued_jobs": [],
             "waiting_room_jobs": [],
@@ -762,14 +754,15 @@ async def update_client_max_jobs(
     db.commit()
     
     promoted = 0
+    catchall_promoted = 0
     
     # If cap was increased, promote jobs from waiting room to main queue
     if max_jobs > old_max:
+        # --- Verification / Enrichment pool ---
         try:
             verification_queue = settings.VERIFICATION_QUEUE if hasattr(settings, 'VERIFICATION_QUEUE') else "simple-email-verification-queue"
             waiting_key = f"fairshare:waiting:{client_id}"
             
-            # Count current active + queued
             active_jobs = redis_client.hgetall("fairshare:active_jobs") or {}
             queue_items = redis_client.lrange(verification_queue, 0, -1) or []
             
@@ -798,12 +791,81 @@ async def update_client_max_jobs(
             if promoted > 0:
                 db.commit()
         except Exception as e:
-            print(f"Error promoting from waiting room: {e}")
+            print(f"Error promoting from verification waiting room: {e}")
+
+        # --- Catchall verification pool (separate) ---
+        try:
+            catchall_queue = "catchall-verification-queue"
+            catchall_waiting_key = f"catchall:waiting:{client_id}"
+
+            catchall_active = redis_client.hgetall("catchall:active_jobs") or {}
+            catchall_queue_items = redis_client.lrange(catchall_queue, 0, -1) or []
+
+            ca_user_active = sum(
+                1 for uid in catchall_active.values()
+                if (uid if isinstance(uid, str) else uid.decode('utf-8')) == str(client_id)
+            )
+            ca_user_queued = 0
+            for qjid in catchall_queue_items:
+                jid = qjid if isinstance(qjid, str) else qjid.decode('utf-8')
+                j = db.query(Job).filter(Job.id == jid).first()
+                if j and str(j.user_id) == str(client_id):
+                    ca_user_queued += 1
+
+            ca_slots = max_jobs - (ca_user_active + ca_user_queued)
+
+            for _ in range(max(0, ca_slots)):
+                next_job = redis_client.lpop(catchall_waiting_key)
+                if not next_job:
+                    break
+                jid = next_job if isinstance(next_job, str) else next_job.decode('utf-8')
+                db.query(Job).filter(Job.id == jid).update({"status": "queued"})
+                redis_client.rpush(catchall_queue, jid)
+                catchall_promoted += 1
+
+            if catchall_promoted > 0:
+                db.commit()
+        except Exception as e:
+            print(f"Error promoting from catchall waiting room: {e}")
     
     return {
         "client_id": str(client_id),
         "max_concurrent_jobs": max_jobs,
         "previous_max": old_max,
-        "promoted_from_waiting_room": promoted,
+        "promoted_from_waiting_room": promoted + catchall_promoted,
+    }
+
+
+# ============================================
+# IMPERSONATION ENDPOINT
+# ============================================
+
+@router.post("/impersonate/{client_id}")
+async def impersonate_client(
+    client_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Generate an access token for the given client so the admin can log in as them."""
+    client = db.query(User).filter(User.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    access_token = create_access_token(
+        data={"sub": str(client.id)},
+        expires_delta=timedelta(hours=4),
+    )
+
+    logging.info(f"Admin {admin.email} impersonating client {client.email}")
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(client.id),
+            "email": client.email,
+            "full_name": client.full_name,
+            "company_name": client.company_name,
+        },
     }
 
