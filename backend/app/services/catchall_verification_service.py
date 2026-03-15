@@ -84,26 +84,35 @@ async def _process_chunk(
             )
 
         start_time = time.time()
-        completed = False
+        expected_results = len(emails)
+        latest_results: List[Dict] = []
         while time.time() - start_time < MAX_POLL_TIME:
             status_resp = await verifier.get_list_status(list_id)
             s = status_resp.get("status", "").lower()
-            if s == "completed":
-                completed = True
-                break
-            elif s == "failed":
+
+            if s == "failed":
                 result["errors"].append(f"{tag} OmniVerifier processing failed")
                 return result
+
+            if s == "completed":
+                latest_results = await verifier.get_list_results(list_id)
+                if len(latest_results) >= expected_results:
+                    result["results"] = latest_results
+                    if on_progress:
+                        on_progress(expected_results)
+                    return result
+
             await asyncio.sleep(POLL_INTERVAL)
 
-        if not completed:
-            result["errors"].append(f"{tag} Timed out after {MAX_POLL_TIME}s")
-            return result
+        if not latest_results:
+            latest_results = await verifier.get_list_results(list_id)
 
-        raw_results = await verifier.get_list_results(list_id)
-        result["results"] = raw_results
-        if on_progress:
-            on_progress(len(emails))
+        result["results"] = latest_results
+        result["errors"].append(
+            f"{tag} Timed out after {MAX_POLL_TIME}s waiting for full results "
+            f"(expected {expected_results}, got {len(latest_results)})"
+        )
+        return result
 
     except Exception as e:
         result["errors"].append(f"{tag} {str(e)}")
