@@ -399,7 +399,7 @@ function computeMaxConcurrent(allocatedKeyCount, jobType) {
   if (jobType === 'verification') {
     return Math.min(Math.max(allocatedKeyCount * 5, 5), 40);
   }
-  return Math.min(Math.max(allocatedKeyCount * 3, 5), 30);
+  return Math.min(Math.max(allocatedKeyCount * 6, 5), 40);
 }
 
 /**
