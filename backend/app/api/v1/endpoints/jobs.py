@@ -413,11 +413,10 @@ MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024
 @router.post("/upload", response_model=JobUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     file: UploadFile = File(...),
-    company_size: Optional[str] = Form(None),
     column_first_name: Optional[str] = Form(None),
     column_last_name: Optional[str] = Form(None),
     column_website: Optional[str] = Form(None),
-    column_company_size: Optional[str] = Form(None),
+    column_company_size: Optional[str] = Form(None),  # For CSV mapping to extra_data
     source: Optional[str] = Form(None),  # e.g., "Sales Nav"
     job_name: Optional[str] = Form(None),  # Optional user-provided job name
     current_user: User = Depends(get_current_user),
@@ -514,13 +513,11 @@ async def upload_file(
             'last_name': cleaned_last,
             'website': cleaned_website,
         }
-        if company_size_col in actual_columns and row.get(company_size_col):
-            remapped_row['company_size'] = row.get(company_size_col, '').strip()
-        elif company_size:
-            remapped_row['company_size'] = company_size
-        
         # Capture all extra columns (not in mapped_cols) into extra_data
         extra_data = {}
+        # If CSV has company_size column, keep it for reference in extra_data only
+        if company_size_col in actual_columns and row.get(company_size_col):
+            extra_data['company_size'] = row.get(company_size_col, '').strip()
         for col, val in row.items():
             if col not in mapped_cols and val and str(val).strip():
                 extra_data[col] = str(val).strip()
@@ -591,12 +588,12 @@ async def upload_file(
         catchall_emails_found=0,
         cost_in_credits=0,
         source=source,  # Tag job with source (e.g., "Sales Nav")
-        company_size=company_size,  # Store dropdown selection for enrichment worker
+        # company_size no longer used - 8 fixed patterns for all jobs
         # Store manual column mappings for enrichment worker
         column_first_name=column_first_name,
         column_last_name=column_last_name,
         column_website=column_website,
-        column_company_size=column_company_size,
+        column_company_size=column_company_size,  # For reference only, goes to extra_data
     )
     db.add(job)
     db.commit()

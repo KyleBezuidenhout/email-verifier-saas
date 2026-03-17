@@ -27,7 +27,6 @@ export default function FindValidEmailsPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [companySize, setCompanySize] = useState("");
   const [jobName, setJobName] = useState("");
   const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
   const [isMappingValid, setIsMappingValid] = useState(false);
@@ -103,12 +102,6 @@ export default function FindValidEmailsPage() {
       return;
     }
 
-    // Company size is required from dropdown selection
-    if (!companySize || companySize.trim() === "") {
-      setUploadError("Company size is required. Please select a company size range.");
-      return;
-    }
-
     if (selectedFile.size > 200 * 1024 * 1024) {
       setUploadError("File size must be less than 200MB");
       return;
@@ -123,7 +116,6 @@ export default function FindValidEmailsPage() {
       const source = urlParams.get("source");
       
       const response = await apiClient.uploadFile(selectedFile, {
-        company_size: companySize,
         column_first_name: columnMapping.first_name,
         column_last_name: columnMapping.last_name,
         column_website: columnMapping.website,
@@ -135,7 +127,6 @@ export default function FindValidEmailsPage() {
       setSelectedFile(null);
       setColumnMapping(null);
       setIsMappingValid(false);
-      setCompanySize("");
       setJobName("");
       
       // Refresh jobs list
@@ -274,45 +265,12 @@ export default function FindValidEmailsPage() {
               </p>
             </div>
 
-            {/* Company Size Selection - Always Required */}
-            <div className="border-t border-dashboard-border pt-6">
-              <h3 className="text-lg font-medium text-dashboard-text mb-4">
-                Company Size
-              </h3>
-              <div>
-                <label
-                  htmlFor="company-size"
-                  className="block text-sm font-medium text-dashboard-text-muted mb-2"
-                >
-                  Select the company size range for your leads
-                </label>
-                <select
-                  id="company-size"
-                  value={companySize}
-                  onChange={(e) => setCompanySize(e.target.value)}
-                  className={`apple-input w-full ${!companySize ? "border-yellow-500/50" : ""}`}
-                >
-                  <option value="">-- Select company size range --</option>
-                  <option value="1-50">1-50 employees (Small)</option>
-                  <option value="51-200">51-200 employees (Medium)</option>
-                  <option value="201-500">201-500 employees (Mid-Market)</option>
-                  <option value="500+">500+ employees (Enterprise)</option>
-                </select>
-                {!companySize && (
-                  <p className="mt-1 text-xs text-yellow-400">
-                    Required: Select a company size range to optimize email pattern accuracy
-                  </p>
-                )}
-              </div>
-            </div>
-
             <div className="flex justify-end space-x-4 pt-6 border-t border-dashboard-border">
               <button
                 onClick={() => {
                   setSelectedFile(null);
                   setColumnMapping(null);
                   setIsMappingValid(false);
-                  setCompanySize("");
                   setJobName("");
                   setUploadError("");
                 }}

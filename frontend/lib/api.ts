@@ -236,7 +236,6 @@ class ApiClient {
   async uploadFile(
     file: File,
     options?: {
-      company_size?: string;
       column_first_name?: string;
       column_last_name?: string;
       column_website?: string;

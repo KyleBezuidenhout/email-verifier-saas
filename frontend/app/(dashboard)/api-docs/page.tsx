@@ -45,7 +45,6 @@ const endpoints: Endpoint[] = [
     isFileUpload: true,
     bodyParams: [
       { name: "file", type: "file (multipart/form-data)", required: true, description: "CSV file with leads" },
-      { name: "company_size", type: "string", required: false, description: "Default company size" },
       { name: "column_first_name", type: "string", required: false, description: "CSV column name for first name" },
       { name: "column_last_name", type: "string", required: false, description: "CSV column name for last name" },
       { name: "column_website", type: "string", required: false, description: "CSV column name for website" },

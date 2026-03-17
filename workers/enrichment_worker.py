@@ -499,16 +499,15 @@ def parse_csv_from_r2(
             'website': cleaned_website,
         }
         
-        # Add company size if available
-        if company_size_col and row.get(company_size_col):
-            remapped_row['company_size'] = row.get(company_size_col, '').strip()
-        
-        # Capture extra columns
+        # Capture extra columns (including company_size if present)
         mapped_cols = {first_name_col, last_name_col, website_col}
         if company_size_col:
             mapped_cols.add(company_size_col)
         
         extra_data = {}
+        # Store company_size in extra_data (not used for pattern selection, just for reference)
+        if company_size_col and row.get(company_size_col):
+            extra_data['company_size'] = row.get(company_size_col, '').strip()
         for col, val in row.items():
             if col not in mapped_cols and val and str(val).strip():
                 extra_data[col] = str(val).strip()
@@ -572,10 +571,7 @@ def process_enrichment_job(job_id: str) -> bool:
         
         logger.info(f"🔄 Processing enrichment job {job_id} (status: {job.status})")
         
-        # Get default company size from job (user's dropdown selection)
-        default_company_size = getattr(job, 'company_size', None)
-        if default_company_size:
-            logger.info(f"📊 Using default company size from job: {default_company_size}")
+        # company_size no longer used for pattern selection - using 8 fixed patterns
         
         # Skip vayne orders - users upload CSV manually now
         if job.input_file_path and job.input_file_path.startswith("vayne-order:"):
@@ -633,7 +629,7 @@ def process_enrichment_job(job_id: str) -> bool:
             return False
         
         # Create ONE lead per person (permutations generated on-the-fly during verification)
-        # This reduces database storage by 16-32x compared to storing all permutations
+        # This keeps storage lean versus pre-generating/storing permutation rows.
         logger.info(f"🔄 Creating {len(remapped_rows)} leads (1 per person, permutations generated during verification)")
         leads_to_create = []
         for row in remapped_rows:
@@ -641,24 +637,23 @@ def process_enrichment_job(job_id: str) -> bool:
             last_name = row['last_name'].title()
             website = row['website']
             domain = normalize_domain(website)
-            # Use row's company_size if present, otherwise fall back to job's manual selection
-            company_size = row.get('company_size') or default_company_size
+            # Get extra_data (may include company_size from CSV for reference)
+            extra_data = row.get('extra_data', {})
             
             # Create ONE lead per person - email will be populated during verification
-            # Verification worker generates all 32 permutations on-the-fly
+            # Verification worker generates 8 fixed permutations on-the-fly
             lead = Lead(
                 job_id=job.id,
                 user_id=user.id,
                 first_name=first_name,
                 last_name=last_name,
                 domain=domain,
-                company_size=company_size,
+                extra_data=extra_data if extra_data else None,  # Stores CSV company_size etc.
                 email='',  # Populated by verification worker with winning email
                 pattern_used=None,  # Populated by verification worker
                 prevalence_score=None,  # Populated by verification worker
                 verification_status='pending',
                 is_final_result=False,
-                extra_data=row.get('extra_data', {}),
                 enrichment_key=f"{first_name.lower()}_{last_name.lower()}_{domain.lower()}",
             )
             leads_to_create.append(lead)
