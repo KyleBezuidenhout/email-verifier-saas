@@ -26,6 +26,7 @@ class Lead(Base):
     mx_record = Column(Text, nullable=True)  # MX hostname (e.g., "aspmx.l.google.com")
     mx_provider = Column(String(50), nullable=True, index=True)  # Provider category: "outlook", "google", "other"
     extra_data = Column(JSONB, default={})  # Stores all additional CSV columns not in standard schema
+    enrichment_key = Column(Text, nullable=True)  # LOWER(first_name)_LOWER(last_name)_LOWER(domain) for cache lookups
     is_final_result = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 

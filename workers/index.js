@@ -1710,6 +1710,46 @@ function deduplicateLeads(leads) {
   return finalResults;
 }
 
+// Enrichment cache: bulk lookup previously verified valid emails
+// Uses the enrichment_key column (LOWER(first_name)_LOWER(last_name)_LOWER(domain))
+// Batches in chunks of 500 to keep query planner efficient
+async function bulkCacheLookup(people) {
+  const BATCH_SIZE = 500;
+  const cacheMap = new Map();
+
+  for (let i = 0; i < people.length; i += BATCH_SIZE) {
+    const batch = people.slice(i, i + BATCH_SIZE);
+    const keys = batch.map(p =>
+      `${p.first_name.toLowerCase()}_${p.last_name.toLowerCase()}_${p.domain.toLowerCase()}`
+    );
+
+    const placeholders = keys.map((_, idx) => `$${idx + 1}`).join(',');
+
+    try {
+      const result = await pgPool.query(`
+        SELECT DISTINCT ON (enrichment_key)
+          enrichment_key, email, pattern_used,
+          verification_status, mx_record, mx_provider
+        FROM leads
+        WHERE enrichment_key IN (${placeholders})
+          AND is_final_result = true
+          AND verification_status = 'valid'
+          AND enrichment_key IS NOT NULL
+          AND verification_tag IS NULL
+        ORDER BY enrichment_key, created_at DESC
+      `, keys);
+
+      for (const row of result.rows) {
+        cacheMap.set(row.enrichment_key, row);
+      }
+    } catch (error) {
+      console.error(`Cache lookup error for batch starting at ${i}:`, error.message);
+    }
+  }
+
+  return cacheMap;
+}
+
 // Update job status in database
 async function updateJobStatus(jobId, status, updates = {}) {
   const setClause = ['status = $1'];
@@ -2060,7 +2100,7 @@ async function updateLeadWithExtendedCatchall(leadId, originalEmail, originalPat
 // 2. CATCHALL: First catchall found = highest prevalence (leads sorted by prevalence), 
 //    all remaining permutations for this domain will also be catchalls with lower prevalence
 // 3. TIMEOUT: Mail server unresponsive = skip all remaining permutations (they'll all timeout too)
-async function processPersonWithEarlyExit(personKey, personLeads, jobId = null) {
+async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, cacheMap = null) {
   let foundValid = false;
   let bestCatchall = null;
   let hitTimeout = false;  // Track if we hit a timeout (mail server unresponsive)
@@ -2088,8 +2128,49 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null) 
   
   if (isNewFormat) {
     // ============================================
-    // NEW FORMAT: Generate all 32 permutations on-the-fly
+    // ENRICHMENT CACHE CHECK (before any permutations)
     // ============================================
+    if (cacheMap) {
+      const cacheKey = `${leadRecord.first_name.toLowerCase()}_${leadRecord.last_name.toLowerCase()}_${leadRecord.domain.toLowerCase()}`;
+      const cached = cacheMap.get(cacheKey);
+
+      if (cached) {
+        const result = await verifyEmail(cached.email, 0, null, jobId);
+        apiCalls++;
+
+        let reVerifyStatus = result.status;
+        if (result.status === 'unverified') reVerifyStatus = 'not_found';
+
+        if (reVerifyStatus === 'valid') {
+          winningEmail = cached.email;
+          winningPattern = cached.pattern_used;
+          winningMx = result.mx || '';
+          winningProvider = result.provider || '';
+          resultType = 'valid';
+          validFound = 1;
+          finalLeadId = leadRecord.id;
+          savedCalls = 31;
+          console.log(`  ✓ CACHE HIT for ${personKey} - re-verified VALID (${cached.email})`);
+        } else if (reVerifyStatus === 'catchall') {
+          winningEmail = cached.email;
+          winningPattern = cached.pattern_used;
+          winningMx = result.mx || '';
+          winningProvider = result.provider || '';
+          resultType = 'catchall';
+          catchallFound = 1;
+          finalLeadId = leadRecord.id;
+          savedCalls = 31;
+          console.log(`  ~ CACHE HIT for ${personKey} - now CATCHALL (${cached.email})`);
+        } else {
+          console.log(`  ✗ CACHE MISS for ${personKey} - cached email invalid, falling through to permutations`);
+        }
+      }
+    }
+
+    // ============================================
+    // PERMUTATION FLOW (skipped if cache resolved this person)
+    // ============================================
+    if (!winningEmail && !hitTimeout) {
     console.log(`  📧 [NEW FORMAT] Generating permutations on-the-fly for ${personKey}`);
     
     // Generate primary permutations (1-16)
@@ -2230,6 +2311,7 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null) 
         }
       }
     }
+    } // end if (!winningEmail && !hitTimeout) -- permutation flow guard
     
     // Update the single lead record with the result
     if (winningEmail) {
@@ -2978,6 +3060,20 @@ async function processJobFromQueue(jobId) {
     // Convert to array for streaming processing
     const peopleArray = Array.from(leadsByPerson.entries());
     
+    // ==============================================
+    // ENRICHMENT CACHE LOOKUP
+    // ==============================================
+    const allPeople = peopleArray.map(([key, leads]) => ({
+      first_name: leads[0].first_name,
+      last_name: leads[0].last_name,
+      domain: leads[0].domain,
+    }));
+    
+    console.log(`🔍 Running enrichment cache lookup for ${allPeople.length} people...`);
+    const cacheMap = await bulkCacheLookup(allPeople);
+    const cacheHitRate = allPeople.length > 0 ? ((cacheMap.size / allPeople.length) * 100).toFixed(1) : '0.0';
+    console.log(`✅ Cache: ${cacheMap.size}/${allPeople.length} hits (${cacheHitRate}%) - ${allPeople.length - cacheMap.size} people need full verification`);
+    
     // Dynamic concurrency based on allocated keys
     const effectiveMaxPeople = computeMaxConcurrent(allocatedKeys.length, 'enrichment');
     console.log(`Grouped into ${peopleArray.length} unique people - using STREAMING PIPELINE (${effectiveMaxPeople} concurrent)`);
@@ -3027,7 +3123,7 @@ async function processJobFromQueue(jobId) {
       
       try {
         // Process this person (with early exit optimization)
-        const result = await processPersonWithEarlyExit(personKey, personLeads, jobId);
+        const result = await processPersonWithEarlyExit(personKey, personLeads, jobId, cacheMap);
         
         // Handle the result
         if (result.finalLeadId) {

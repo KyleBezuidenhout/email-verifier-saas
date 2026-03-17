@@ -637,8 +637,8 @@ def process_enrichment_job(job_id: str) -> bool:
         logger.info(f"🔄 Creating {len(remapped_rows)} leads (1 per person, permutations generated during verification)")
         leads_to_create = []
         for row in remapped_rows:
-            first_name = row['first_name']
-            last_name = row['last_name']
+            first_name = row['first_name'].title()
+            last_name = row['last_name'].title()
             website = row['website']
             domain = normalize_domain(website)
             # Use row's company_size if present, otherwise fall back to job's manual selection
@@ -659,6 +659,7 @@ def process_enrichment_job(job_id: str) -> bool:
                 verification_status='pending',
                 is_final_result=False,
                 extra_data=row.get('extra_data', {}),
+                enrichment_key=f"{first_name.lower()}_{last_name.lower()}_{domain.lower()}",
             )
             leads_to_create.append(lead)
         
@@ -809,11 +810,11 @@ def process_verification_job(job_id: str) -> bool:
             
             first_name = ''
             if first_name_col in actual_columns:
-                first_name = clean_first_name(row.get(first_name_col, '').strip())
+                first_name = clean_first_name(row.get(first_name_col, '').strip()).title()
             
             last_name = ''
             if last_name_col in actual_columns:
-                last_name = row.get(last_name_col, '').strip()
+                last_name = row.get(last_name_col, '').strip().title()
             
             domain = ''
             if '@' in email:
@@ -835,6 +836,7 @@ def process_verification_job(job_id: str) -> bool:
                 verification_status='pending',
                 is_final_result=False,
                 extra_data=extra_data,
+                enrichment_key=f"{first_name.lower()}_{last_name.lower()}_{domain.lower()}" if first_name and last_name and domain else None,
             )
             leads_to_create.append(lead)
         

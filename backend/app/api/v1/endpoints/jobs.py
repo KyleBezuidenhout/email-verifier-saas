@@ -801,16 +801,20 @@ async def upload_verify_file(
         # ---- SMALL UPLOAD: Create leads synchronously (fast, immediate) ----
         leads_to_create = []
         for row in remapped_rows:
+            fn = row.get('first_name', '').title()
+            ln = row.get('last_name', '').title()
+            dom = row.get('domain', '')
             lead = Lead(
                 job_id=job.id,
                 user_id=current_user.id,
-                first_name=row.get('first_name', ''),
-                last_name=row.get('last_name', ''),
-                domain=row.get('domain', ''),
+                first_name=fn,
+                last_name=ln,
+                domain=dom,
                 email=row['email'],
                 verification_status='pending',
                 is_final_result=False,
                 extra_data=row.get('extra_data', {}),
+                enrichment_key=f"{fn.lower()}_{ln.lower()}_{dom.lower()}" if fn and ln and dom else None,
             )
             leads_to_create.append(lead)
         
@@ -1467,17 +1471,21 @@ async def upload_catchall_file(
     for pr in parsed_rows:
         email = pr["email"]
         extra = pr["extra_data"]
+        fn = (extra.pop("first_name", "") or extra.pop("First Name", "")).title()
+        ln = (extra.pop("last_name", "") or extra.pop("Last Name", "")).title()
+        dom = email.split("@")[1] if "@" in email else ""
         leads_to_create.append(
             Lead(
                 job_id=job.id,
                 user_id=current_user.id,
                 email=email,
-                first_name=extra.pop("first_name", "") or extra.pop("First Name", ""),
-                last_name=extra.pop("last_name", "") or extra.pop("Last Name", ""),
-                domain=email.split("@")[1] if "@" in email else "",
+                first_name=fn,
+                last_name=ln,
+                domain=dom,
                 verification_status="pending",
                 is_final_result=False,
                 extra_data=extra,
+                enrichment_key=f"{fn.lower()}_{ln.lower()}_{dom.lower()}" if fn and ln and dom else None,
             )
         )
     db.bulk_save_objects(leads_to_create)
