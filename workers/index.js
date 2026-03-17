@@ -3317,6 +3317,7 @@ async function processJobFromQueue(jobId) {
     console.log(`   API calls: ${totalApiCalls} total (${apiCallsPerSecond}/sec)`);
     console.log(`   Allocated keys: ${allocatedKeys.length}`);
     console.log(`   Early exit savings: ${savedApiCalls} calls saved (${totalApiCalls + savedApiCalls > 0 ? Math.round((savedApiCalls / (totalApiCalls + savedApiCalls)) * 100) : 0}%)`);
+    console.log(`   Cache hits: ${cacheMap.size}/${allPeople.length} (${cacheHitRate}%)`);
     console.log(`----------------------------------------`);
     console.log(`Credits charged: ${costInCredits} (1 per lead)`);
     console.log(`========================================\n`);
