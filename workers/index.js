@@ -191,6 +191,11 @@ const pgPool = new Pool({
   allowExitOnIdle: false,         // Keep pool alive for long-running worker
 });
 
+// Fair-share constants
+const FAIRSHARE_HEARTBEAT_TTL_S = parseInt(process.env.FAIRSHARE_HEARTBEAT_TTL_S || '120');
+const FAIRSHARE_HEARTBEAT_REFRESH_MS = 15000;
+const FAIRSHARE_CLEANUP_INTERVAL_MS = 30000;
+
 // ==============================================
 // GLOBAL JOB PROCESSING LOCK
 // ==============================================
@@ -384,6 +389,107 @@ const KEY_REMAINING_CACHE_TTL_MS = 30000; // Cache remaining capacity for 30 sec
 // Each key has 250ms spacing between calls (4 req/sec per key = 8 req/sec total with 2 keys)
 const MAX_CONCURRENT_PEOPLE = 20;         // For enrichment jobs (each person = up to 16 API calls)
 const MAX_CONCURRENT_LEADS = 20;          // For verification jobs (each lead = 1 API call)
+
+// ==============================================
+// FAIR-SHARE JOB REGISTRATION
+// ==============================================
+
+async function registerFairshareJob(jobId, userId) {
+  if (WORKER_MODE === 'dedicated') return null;
+  
+  await redisClient.hSet('fairshare:active_jobs', jobId, userId);
+  await redisClient.set(`fairshare:heartbeat:${jobId}`, 'alive', { EX: FAIRSHARE_HEARTBEAT_TTL_S });
+  
+  const heartbeatInterval = setInterval(async () => {
+    try {
+      await redisClient.set(`fairshare:heartbeat:${jobId}`, 'alive', { EX: FAIRSHARE_HEARTBEAT_TTL_S });
+    } catch (e) { /* non-fatal */ }
+  }, FAIRSHARE_HEARTBEAT_REFRESH_MS);
+  
+  return heartbeatInterval;
+}
+
+async function unregisterFairshareJob(jobId, heartbeatInterval) {
+  if (WORKER_MODE === 'dedicated') return;
+  
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  
+  try {
+    await redisClient.hDel('fairshare:active_jobs', jobId);
+    await redisClient.del(`fairshare:heartbeat:${jobId}`);
+    await redisClient.del(`fairshare:throughput:${jobId}`);
+  } catch (e) {
+    console.error('Error unregistering fairshare job:', e.message);
+  }
+}
+
+async function cleanupStaleJobs() {
+  try {
+    const activeJobs = await redisClient.hGetAll('fairshare:active_jobs');
+    for (const [jobId, userId] of Object.entries(activeJobs)) {
+      const alive = await redisClient.exists(`fairshare:heartbeat:${jobId}`);
+      if (!alive) {
+        await redisClient.hDel('fairshare:active_jobs', jobId);
+        await redisClient.del(`fairshare:throughput:${jobId}`);
+        console.log(`Cleaned up stale fairshare job ${jobId} (heartbeat expired, user ${userId})`);
+      }
+    }
+  } catch (e) {
+    console.error('Stale job cleanup error:', e.message);
+  }
+}
+
+setInterval(cleanupStaleJobs, FAIRSHARE_CLEANUP_INTERVAL_MS);
+
+// ==============================================
+// WAITING ROOM PROMOTION
+// ==============================================
+
+async function promoteFromWaitingRoom(userId) {
+  if (!userId || !redisClient.isReady) return;
+  
+  try {
+    const waitingKey = `fairshare:waiting:${userId}`;
+    
+    const userRes = await pgPool.query('SELECT max_concurrent_jobs FROM users WHERE id = $1', [userId]);
+    const maxJobs = userRes.rows[0]?.max_concurrent_jobs || 3;
+    
+    const activeJobs = await redisClient.hGetAll('fairshare:active_jobs');
+    const queueName = VERIFICATION_QUEUE;
+    const queueItems = await redisClient.lRange(queueName, 0, -1);
+    
+    let userActiveCount = 0;
+    for (const [jId, uId] of Object.entries(activeJobs)) {
+      if (String(uId) === String(userId)) userActiveCount++;
+    }
+    
+    let userQueuedCount = 0;
+    for (const qJobId of queueItems) {
+      try {
+        const jr = await pgPool.query('SELECT user_id FROM jobs WHERE id = $1', [qJobId]);
+        if (jr.rows.length > 0 && String(jr.rows[0].user_id) === String(userId)) {
+          userQueuedCount++;
+        }
+      } catch (e) { /* skip */ }
+    }
+    
+    const currentLoad = userActiveCount + userQueuedCount;
+    const slotsAvailable = maxJobs - currentLoad;
+    
+    if (slotsAvailable <= 0) return;
+    
+    for (let i = 0; i < slotsAvailable; i++) {
+      const nextJobId = await redisClient.lPop(waitingKey);
+      if (!nextJobId) break;
+      
+      await pgPool.query("UPDATE jobs SET status = 'queued' WHERE id = $1 AND status = 'waiting'", [nextJobId]);
+      await redisClient.rPush(queueName, nextJobId);
+      console.log(`Promoted job ${nextJobId} from waiting room to main queue for user ${userId}`);
+    }
+  } catch (e) {
+    console.error('Error promoting from waiting room:', e.message);
+  }
+}
 
 // ============================================
 // API USAGE TRACKING (for Admin Dashboard)
@@ -2266,7 +2372,9 @@ async function isJobCancelled(jobId) {
 // Process job from simple queue with EARLY EXIT + PARALLEL PEOPLE optimization
 async function processJobFromQueue(jobId) {
   console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
-  
+
+  let heartbeatInterval = null;
+
   try {
     // Get job details from database
     const jobResult = await pgPool.query(
@@ -2307,7 +2415,10 @@ async function processJobFromQueue(jobId) {
       console.log(`   This job will be processed once the webhook updates it with CSV data`);
       return { status: 'waiting_for_csv', message: 'Job waiting for CSV data' };
     }
-    
+
+    // Register with fair-share system before processing
+    heartbeatInterval = await registerFairshareJob(jobId, String(jobData.user_id));
+
     // Update job status to processing
     await updateJobStatus(jobId, 'processing');
     
@@ -2332,6 +2443,8 @@ async function processJobFromQueue(jobId) {
         await updateJobStatus(jobId, 'completed', {
           completed_at: new Date(),
         });
+        await unregisterFairshareJob(jobId, heartbeatInterval);
+        await promoteFromWaitingRoom(jobData.user_id);
         return { status: 'completed', message: 'No leads to process' };
       }
       
@@ -2494,9 +2607,11 @@ async function processJobFromQueue(jobId) {
         console.log(`Flushed ${flushed} pending lead updates before cancellation`);
         await flushAllUsageTracking();
         await updateJobStatus(jobId, 'cancelled');
+        await unregisterFairshareJob(jobId, heartbeatInterval);
+        await promoteFromWaitingRoom(jobData.user_id);
         return { status: 'cancelled', message: 'Job was cancelled during processing' };
       }
-      
+
       // Final flush of pending updates
       const finalFlushed = await flushPendingLeadUpdates();
       if (finalFlushed > 0) {
@@ -2514,6 +2629,10 @@ async function processJobFromQueue(jobId) {
           finalResultIds
         );
       }
+      
+      // Unregister from fair-share and promote waiting room
+      await unregisterFairshareJob(jobId, heartbeatInterval);
+      await promoteFromWaitingRoom(jobData.user_id);
       
       // Calculate cost (1 credit per lead actually processed, not total_leads)
       const costInCredits = processedCount;
@@ -2631,17 +2750,21 @@ async function processJobFromQueue(jobId) {
       await updateJobStatus(jobId, 'completed', {
         completed_at: new Date(),
       });
+      await unregisterFairshareJob(jobId, heartbeatInterval);
+      await promoteFromWaitingRoom(jobData.user_id);
       return { status: 'completed', message: 'No leads to process' };
     }
-    
+
     if (!jobData.input_file_path) {
       console.error(`❌ CRITICAL: Job ${jobId} has no input_file_path - cannot process enrichment job`);
       await updateJobStatus(jobId, 'failed', {
         completed_at: new Date(),
       });
+      await unregisterFairshareJob(jobId, heartbeatInterval);
+      await promoteFromWaitingRoom(jobData.user_id);
       return { status: 'failed', message: 'Job has no input file path' };
     }
-    
+
     // ============================================
     // EARLY EXIT + PARALLEL PEOPLE OPTIMIZATION
     // ============================================
@@ -2810,9 +2933,11 @@ async function processJobFromQueue(jobId) {
       console.log(`Flushed ${flushed} pending lead updates before cancellation`);
       await flushAllUsageTracking();
       await updateJobStatus(jobId, 'cancelled');
+      await unregisterFairshareJob(jobId, heartbeatInterval);
+      await promoteFromWaitingRoom(jobData.user_id);
       return { status: 'cancelled', message: 'Job was cancelled during processing' };
     }
-    
+
     // Final flush of any remaining pending updates
     const finalFlushed = await flushPendingLeadUpdates();
     if (finalFlushed > 0) {
@@ -2834,9 +2959,13 @@ async function processJobFromQueue(jobId) {
       );
     }
     
+    // Unregister from fair-share and promote waiting room
+    await unregisterFairshareJob(jobId, heartbeatInterval);
+    await promoteFromWaitingRoom(jobData.user_id);
+
     // Calculate cost (1 credit per unique person/lead actually processed)
     const costInCredits = completedPeopleCount;
-    
+
     // Mark job as completed
     await updateJobStatus(jobId, 'completed', {
       processed_leads: completedPeopleCount,
@@ -2921,6 +3050,9 @@ async function processJobFromQueue(jobId) {
       console.error(`Failed to flush pending updates:`, flushError.message);
     }
     
+    // Always unregister from fair-share on failure
+    await unregisterFairshareJob(jobId, heartbeatInterval);
+
     // Try to update job status to failed
     try {
       await updateJobStatus(jobId, 'failed', {
@@ -2930,7 +3062,14 @@ async function processJobFromQueue(jobId) {
     } catch (updateError) {
       console.error(`❌ Failed to update job ${jobId} status to failed:`, updateError);
     }
-    
+
+    try {
+      const jobRes = await pgPool.query('SELECT user_id FROM jobs WHERE id = $1', [jobId]);
+      if (jobRes.rows.length > 0) {
+        await promoteFromWaitingRoom(jobRes.rows[0].user_id);
+      }
+    } catch (e) { /* best effort */ }
+
     throw error;
   }
 }
