@@ -1,0 +1,12 @@
+---
+description: Single source of truth for BillionVerifier / email-verifier-saas repo and worker deploys
+alwaysApply: true
+---
+
+# Canonical repository and workers
+
+- **Production GitHub repo:** `KyleBezuidenhout/email-verifier-saas`. Railway deploys from this repo on `main`.
+- **Node worker source:** `workers/index.js` (built with `workers/Dockerfile.nodejs`). Changes must be committed **in this repo**, not in a duplicate nested folder.
+- **Never assume** a parent folder (e.g. `Cold-Email-SaaS/`) is the deploy root unless it is **this** repo’s root with `origin` pointing to `email-verifier-saas`.
+- **Do not** maintain two local clones of the same remote for the same workstream—edits in the wrong clone will not ship.
+- For architecture and onboarding details, see `docs/SOURCE_OF_TRUTH.md`.
