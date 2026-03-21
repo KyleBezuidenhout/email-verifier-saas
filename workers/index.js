@@ -2400,11 +2400,15 @@ async function processJobFromQueue(jobId) {
       await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
       
       if (finalResultIds.length > 0) {
-        const placeholders = finalResultIds.map((_, i) => `$${i + 1}`).join(',');
-        await pgPool.query(
-          `UPDATE leads SET is_final_result = true WHERE id IN (${placeholders})`,
-          finalResultIds
-        );
+        const FINAL_RESULT_BATCH = 500;
+        for (let i = 0; i < finalResultIds.length; i += FINAL_RESULT_BATCH) {
+          const chunk = finalResultIds.slice(i, i + FINAL_RESULT_BATCH);
+          const placeholders = chunk.map((_, j) => `$${j + 1}`).join(',');
+          await pgPool.query(
+            `UPDATE leads SET is_final_result = true WHERE id IN (${placeholders})`,
+            chunk
+          );
+        }
       }
       
       // Calculate cost (1 credit per lead actually processed, not total_leads)
@@ -2743,11 +2747,15 @@ async function processJobFromQueue(jobId) {
     await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
     
     if (finalResultIds.length > 0) {
-      const placeholders = finalResultIds.map((_, i) => `$${i + 1}`).join(',');
-      await pgPool.query(
-        `UPDATE leads SET is_final_result = true WHERE id IN (${placeholders})`,
-        finalResultIds
-      );
+      const FINAL_RESULT_BATCH = 500;
+      for (let i = 0; i < finalResultIds.length; i += FINAL_RESULT_BATCH) {
+        const chunk = finalResultIds.slice(i, i + FINAL_RESULT_BATCH);
+        const placeholders = chunk.map((_, j) => `$${j + 1}`).join(',');
+        await pgPool.query(
+          `UPDATE leads SET is_final_result = true WHERE id IN (${placeholders})`,
+          chunk
+        );
+      }
     }
     
     // Calculate cost (1 credit per unique person/lead actually processed)
