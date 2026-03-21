@@ -888,306 +888,49 @@ function getPendingUpdateCount() {
 const ADMIN_EMAIL = 'ben@superwave.io';
 
 // ============================================
-// PRIMARY PERMUTATIONS (1-16) - MAIN SET
+// 8 FIXED EMAIL PATTERNS (Ranked by Prevalence)
 // ============================================
-// Generated on-the-fly during verification (not stored in DB)
-// Order differs by company size based on prevalence data (highest first)
+// Based on analysis of 20,000 verified valid emails, these 8 patterns cover
+// 99.78% of all valid email addresses across all company sizes.
 
-const PRIMARY_PATTERNS_BY_SIZE = {
-  "1-50": [
-    { name: "firstname", template: (f, l, first, last) => `${first}`, score: 4191 },              // 1. {first}
-    { name: "flastname", template: (f, l, first, last) => `${f}${last}`, score: 2663 },           // 2. {f}{last}
-    { name: "firstname.lastname", template: (f, l, first, last) => `${first}.${last}`, score: 2266 }, // 3. {first}.{last}
-    { name: "firstnamel", template: (f, l, first, last) => `${first}${l}`, score: 267 },          // 4. {first}{l}
-    { name: "lastname", template: (f, l, first, last) => `${last}`, score: 207 },                 // 5. {last}
-    { name: "lastname.firstname", template: (f, l, first, last) => `${last}.${first}`, score: 185 }, // 6. {last}.{first}
-    { name: "lastnamef", template: (f, l, first, last) => `${last}${f}`, score: 165 },            // 7. {last}{f}
-    { name: "firstname_lastname", template: (f, l, first, last) => `${first}_${last}`, score: 145 }, // 8. {first}_{last}
-    { name: "f.lastname", template: (f, l, first, last) => `${f}.${last}`, score: 125 },          // 9. {f}.{last}
-    { name: "firstnamelastname", template: (f, l, first, last) => `${first}${last}`, score: 115 }, // 10. {first}{last}
-    { name: "lfirstname", template: (f, l, first, last) => `${l}${first}`, score: 95 },           // 11. {l}{first}
-    { name: "lastname_firstname", template: (f, l, first, last) => `${last}_${first}`, score: 85 }, // 12. {last}_{first}
-    { name: "f_lastname", template: (f, l, first, last) => `${f}_${last}`, score: 75 },           // 13. {f}_{last}
-    { name: "firstname-lastname", template: (f, l, first, last) => `${first}-${last}`, score: 65 }, // 14. {first}-{last}
-    { name: "lastname-firstname", template: (f, l, first, last) => `${last}-${first}`, score: 55 }, // 15. {last}-{first}
-    { name: "fl", template: (f, l, first, last) => `${f}${l}`, score: 50 },                       // 16. {f}{l}
-  ],
-  "51-200": [
-    { name: "flastname", template: (f, l, first, last) => `${f}${last}`, score: 4176 },           // 2. {f}{last}
-    { name: "firstname.lastname", template: (f, l, first, last) => `${first}.${last}`, score: 3045 }, // 3. {first}.{last}
-    { name: "firstname", template: (f, l, first, last) => `${first}`, score: 1699 },              // 1. {first}
-    { name: "firstnamel", template: (f, l, first, last) => `${first}${l}`, score: 356 },          // 4. {first}{l}
-    { name: "firstnamelastname", template: (f, l, first, last) => `${first}${last}`, score: 183 }, // 10. {first}{last}
-    { name: "lastname.firstname", template: (f, l, first, last) => `${last}.${first}`, score: 165 }, // 6. {last}.{first}
-    { name: "f.lastname", template: (f, l, first, last) => `${f}.${last}`, score: 145 },          // 9. {f}.{last}
-    { name: "lastnamef", template: (f, l, first, last) => `${last}${f}`, score: 125 },            // 7. {last}{f}
-    { name: "firstname_lastname", template: (f, l, first, last) => `${first}_${last}`, score: 115 }, // 8. {first}_{last}
-    { name: "lastname", template: (f, l, first, last) => `${last}`, score: 95 },                  // 5. {last}
-    { name: "lastname_firstname", template: (f, l, first, last) => `${last}_${first}`, score: 85 }, // 12. {last}_{first}
-    { name: "f_lastname", template: (f, l, first, last) => `${f}_${last}`, score: 75 },           // 13. {f}_{last}
-    { name: "firstname-lastname", template: (f, l, first, last) => `${first}-${last}`, score: 65 }, // 14. {first}-{last}
-    { name: "lastname-firstname", template: (f, l, first, last) => `${last}-${first}`, score: 55 }, // 15. {last}-{first}
-    { name: "lfirstname", template: (f, l, first, last) => `${l}${first}`, score: 50 },           // 11. {l}{first}
-    { name: "fl", template: (f, l, first, last) => `${f}${l}`, score: 45 },                       // 16. {f}{l}
-  ],
-  "201-500": [
-    { name: "flastname", template: (f, l, first, last) => `${f}${last}`, score: 4475 },           // 2. {f}{last}
-    { name: "firstname.lastname", template: (f, l, first, last) => `${first}.${last}`, score: 3516 }, // 3. {first}.{last}
-    { name: "firstname", template: (f, l, first, last) => `${first}`, score: 743 },               // 1. {first}
-    { name: "firstnamel", template: (f, l, first, last) => `${first}${l}`, score: 344 },          // 4. {first}{l}
-    { name: "firstnamelastname", template: (f, l, first, last) => `${first}${last}`, score: 234 }, // 10. {first}{last}
-    { name: "lastname.firstname", template: (f, l, first, last) => `${last}.${first}`, score: 185 }, // 6. {last}.{first}
-    { name: "f.lastname", template: (f, l, first, last) => `${f}.${last}`, score: 165 },          // 9. {f}.{last}
-    { name: "lastnamef", template: (f, l, first, last) => `${last}${f}`, score: 145 },            // 7. {last}{f}
-    { name: "firstname_lastname", template: (f, l, first, last) => `${first}_${last}`, score: 125 }, // 8. {first}_{last}
-    { name: "lastname", template: (f, l, first, last) => `${last}`, score: 95 },                  // 5. {last}
-    { name: "lastname_firstname", template: (f, l, first, last) => `${last}_${first}`, score: 85 }, // 12. {last}_{first}
-    { name: "f_lastname", template: (f, l, first, last) => `${f}_${last}`, score: 75 },           // 13. {f}_{last}
-    { name: "firstname-lastname", template: (f, l, first, last) => `${first}-${last}`, score: 65 }, // 14. {first}-{last}
-    { name: "lastname-firstname", template: (f, l, first, last) => `${last}-${first}`, score: 55 }, // 15. {last}-{first}
-    { name: "lfirstname", template: (f, l, first, last) => `${l}${first}`, score: 50 },           // 11. {l}{first}
-    { name: "fl", template: (f, l, first, last) => `${f}${l}`, score: 45 },                       // 16. {f}{l}
-  ],
-  "500+": [
-    { name: "firstname.lastname", template: (f, l, first, last) => `${first}.${last}`, score: 5631 }, // 3. {first}.{last}
-    { name: "flastname", template: (f, l, first, last) => `${f}${last}`, score: 2175 },           // 2. {f}{last}
-    { name: "firstname", template: (f, l, first, last) => `${first}`, score: 657 },               // 1. {first}
-    { name: "firstname_lastname", template: (f, l, first, last) => `${first}_${last}`, score: 355 }, // 8. {first}_{last}
-    { name: "firstnamelastname", template: (f, l, first, last) => `${first}${last}`, score: 340 }, // 10. {first}{last}
-    { name: "lastname.firstname", template: (f, l, first, last) => `${last}.${first}`, score: 215 }, // 6. {last}.{first}
-    { name: "f.lastname", template: (f, l, first, last) => `${f}.${last}`, score: 185 },          // 9. {f}.{last}
-    { name: "lastnamef", template: (f, l, first, last) => `${last}${f}`, score: 165 },            // 7. {last}{f}
-    { name: "firstnamel", template: (f, l, first, last) => `${first}${l}`, score: 145 },          // 4. {first}{l}
-    { name: "lastname", template: (f, l, first, last) => `${last}`, score: 125 },                 // 5. {last}
-    { name: "lastname_firstname", template: (f, l, first, last) => `${last}_${first}`, score: 95 }, // 12. {last}_{first}
-    { name: "f_lastname", template: (f, l, first, last) => `${f}_${last}`, score: 85 },           // 13. {f}_{last}
-    { name: "firstname-lastname", template: (f, l, first, last) => `${first}-${last}`, score: 75 }, // 14. {first}-{last}
-    { name: "lastname-firstname", template: (f, l, first, last) => `${last}-${first}`, score: 65 }, // 15. {last}-{first}
-    { name: "lfirstname", template: (f, l, first, last) => `${l}${first}`, score: 55 },           // 11. {l}{first}
-    { name: "fl", template: (f, l, first, last) => `${f}${l}`, score: 50 },                       // 16. {f}{l}
-  ],
-  "default": [
-    { name: "firstname.lastname", template: (f, l, first, last) => `${first}.${last}`, score: 3615 }, // 3. {first}.{last}
-    { name: "flastname", template: (f, l, first, last) => `${f}${last}`, score: 3372 },           // 2. {f}{last}
-    { name: "firstname", template: (f, l, first, last) => `${first}`, score: 1823 },              // 1. {first}
-    { name: "firstnamel", template: (f, l, first, last) => `${first}${l}`, score: 278 },          // 4. {first}{l}
-    { name: "firstnamelastname", template: (f, l, first, last) => `${first}${last}`, score: 218 }, // 10. {first}{last}
-    { name: "lastname.firstname", template: (f, l, first, last) => `${last}.${first}`, score: 188 }, // 6. {last}.{first}
-    { name: "firstname_lastname", template: (f, l, first, last) => `${first}_${last}`, score: 185 }, // 8. {first}_{last}
-    { name: "f.lastname", template: (f, l, first, last) => `${f}.${last}`, score: 155 },          // 9. {f}.{last}
-    { name: "lastnamef", template: (f, l, first, last) => `${last}${f}`, score: 150 },            // 7. {last}{f}
-    { name: "lastname", template: (f, l, first, last) => `${last}`, score: 131 },                 // 5. {last}
-    { name: "lastname_firstname", template: (f, l, first, last) => `${last}_${first}`, score: 88 }, // 12. {last}_{first}
-    { name: "f_lastname", template: (f, l, first, last) => `${f}_${last}`, score: 78 },           // 13. {f}_{last}
-    { name: "firstname-lastname", template: (f, l, first, last) => `${first}-${last}`, score: 68 }, // 14. {first}-{last}
-    { name: "lfirstname", template: (f, l, first, last) => `${l}${first}`, score: 63 },           // 11. {l}{first}
-    { name: "lastname-firstname", template: (f, l, first, last) => `${last}-${first}`, score: 58 }, // 15. {last}-{first}
-    { name: "fl", template: (f, l, first, last) => `${f}${l}`, score: 48 },                       // 16. {f}{l}
-  ],
-};
-
-// ============================================
-// EXTENDED PERMUTATIONS (17-32) - FALLBACK SET
-// ============================================
-// Used when all 16 primary permutations return invalid (no valid, no catchall)
-// Order differs by company size based on prevalence data
-
-const EXTENDED_PATTERNS_BY_SIZE = {
-  "1-50": [
-    { name: "lastnamefirstname", template: (f, l, first, last) => `${last}${first}` },   // 17. {last}{first}
-    { name: "firstname.l", template: (f, l, first, last) => `${first}.${l}` },           // 18. {first}.{l}
-    { name: "l.firstname", template: (f, l, first, last) => `${l}.${first}` },           // 19. {l}.{first}
-    { name: "f-lastname", template: (f, l, first, last) => `${f}-${last}` },             // 20. {f}-{last}
-    { name: "l-firstname", template: (f, l, first, last) => `${l}-${first}` },           // 21. {l}-{first}
-    { name: "firstnamef", template: (f, l, first, last) => `${first}${f}` },             // 22. {first}{f}
-    { name: "lastnamel", template: (f, l, first, last) => `${last}${l}` },               // 23. {last}{l}
-    { name: "f.l", template: (f, l, first, last) => `${f}.${l}` },                       // 24. {f}.{l}
-    { name: "f_l", template: (f, l, first, last) => `${f}_${l}` },                       // 25. {f}_{l}
-    { name: "firstname-l", template: (f, l, first, last) => `${first}-${l}` },           // 26. {first}-{l}
-    { name: "lastname-l", template: (f, l, first, last) => `${last}-${l}` },             // 27. {last}-{l}
-    { name: "lf", template: (f, l, first, last) => `${l}${f}` },                         // 28. {l}{f}
-    { name: "l_f", template: (f, l, first, last) => `${l}_${f}` },                       // 29. {l}_{f}
-    { name: "l-f", template: (f, l, first, last) => `${l}-${f}` },                       // 30. {l}-{f}
-    { name: "l.f", template: (f, l, first, last) => `${l}.${f}` },                       // 31. {l}.{f}
-    { name: "flastname_l", template: (f, l, first, last) => `${f}${last}_${l}` },        // 32. {f}{last}_{l}
-  ],
-  "51-200": [
-    { name: "firstname.l", template: (f, l, first, last) => `${first}.${l}` },           // 17. {first}.{l}
-    { name: "lastnamefirstname", template: (f, l, first, last) => `${last}${first}` },   // 18. {last}{first}
-    { name: "l.firstname", template: (f, l, first, last) => `${l}.${first}` },           // 19. {l}.{first}
-    { name: "f-lastname", template: (f, l, first, last) => `${f}-${last}` },             // 20. {f}-{last}
-    { name: "l-firstname", template: (f, l, first, last) => `${l}-${first}` },           // 21. {l}-{first}
-    { name: "firstnamef", template: (f, l, first, last) => `${first}${f}` },             // 22. {first}{f}
-    { name: "lastnamel", template: (f, l, first, last) => `${last}${l}` },               // 23. {last}{l}
-    { name: "f.l", template: (f, l, first, last) => `${f}.${l}` },                       // 24. {f}.{l}
-    { name: "f_l", template: (f, l, first, last) => `${f}_${l}` },                       // 25. {f}_{l}
-    { name: "firstname-l", template: (f, l, first, last) => `${first}-${l}` },           // 26. {first}-{l}
-    { name: "lastname-l", template: (f, l, first, last) => `${last}-${l}` },             // 27. {last}-{l}
-    { name: "lf", template: (f, l, first, last) => `${l}${f}` },                         // 28. {l}{f}
-    { name: "l_f", template: (f, l, first, last) => `${l}_${f}` },                       // 29. {l}_{f}
-    { name: "l-f", template: (f, l, first, last) => `${l}-${f}` },                       // 30. {l}-{f}
-    { name: "l.f", template: (f, l, first, last) => `${l}.${f}` },                       // 31. {l}.{f}
-    { name: "flastname_l", template: (f, l, first, last) => `${f}${last}_${l}` },        // 32. {f}{last}_{l}
-  ],
-  "201-500": [
-    { name: "firstname.l", template: (f, l, first, last) => `${first}.${l}` },           // 17. {first}.{l}
-    { name: "lastnamefirstname", template: (f, l, first, last) => `${last}${first}` },   // 18. {last}{first}
-    { name: "l.firstname", template: (f, l, first, last) => `${l}.${first}` },           // 19. {l}.{first}
-    { name: "f-lastname", template: (f, l, first, last) => `${f}-${last}` },             // 20. {f}-{last}
-    { name: "l-firstname", template: (f, l, first, last) => `${l}-${first}` },           // 21. {l}-{first}
-    { name: "firstnamef", template: (f, l, first, last) => `${first}${f}` },             // 22. {first}{f}
-    { name: "lastnamel", template: (f, l, first, last) => `${last}${l}` },               // 23. {last}{l}
-    { name: "f.l", template: (f, l, first, last) => `${f}.${l}` },                       // 24. {f}.{l}
-    { name: "f_l", template: (f, l, first, last) => `${f}_${l}` },                       // 25. {f}_{l}
-    { name: "firstname-l", template: (f, l, first, last) => `${first}-${l}` },           // 26. {first}-{l}
-    { name: "lastname-l", template: (f, l, first, last) => `${last}-${l}` },             // 27. {last}-{l}
-    { name: "lf", template: (f, l, first, last) => `${l}${f}` },                         // 28. {l}{f}
-    { name: "l_f", template: (f, l, first, last) => `${l}_${f}` },                       // 29. {l}_{f}
-    { name: "l-f", template: (f, l, first, last) => `${l}-${f}` },                       // 30. {l}-{f}
-    { name: "l.f", template: (f, l, first, last) => `${l}.${f}` },                       // 31. {l}.{f}
-    { name: "flastname_l", template: (f, l, first, last) => `${f}${last}_${l}` },        // 32. {f}{last}_{l}
-  ],
-  "500+": [
-    { name: "firstname.l", template: (f, l, first, last) => `${first}.${l}` },           // 17. {first}.{l}
-    { name: "lastnamefirstname", template: (f, l, first, last) => `${last}${first}` },   // 18. {last}{first}
-    { name: "l.firstname", template: (f, l, first, last) => `${l}.${first}` },           // 19. {l}.{first}
-    { name: "f-lastname", template: (f, l, first, last) => `${f}-${last}` },             // 20. {f}-{last}
-    { name: "l-firstname", template: (f, l, first, last) => `${l}-${first}` },           // 21. {l}-{first}
-    { name: "firstnamef", template: (f, l, first, last) => `${first}${f}` },             // 22. {first}{f}
-    { name: "lastnamel", template: (f, l, first, last) => `${last}${l}` },               // 23. {last}{l}
-    { name: "f.l", template: (f, l, first, last) => `${f}.${l}` },                       // 24. {f}.{l}
-    { name: "f_l", template: (f, l, first, last) => `${f}_${l}` },                       // 25. {f}_{l}
-    { name: "firstname-l", template: (f, l, first, last) => `${first}-${l}` },           // 26. {first}-{l}
-    { name: "lastname-l", template: (f, l, first, last) => `${last}-${l}` },             // 27. {last}-{l}
-    { name: "lf", template: (f, l, first, last) => `${l}${f}` },                         // 28. {l}{f}
-    { name: "l_f", template: (f, l, first, last) => `${l}_${f}` },                       // 29. {l}_{f}
-    { name: "l-f", template: (f, l, first, last) => `${l}-${f}` },                       // 30. {l}-{f}
-    { name: "l.f", template: (f, l, first, last) => `${l}.${f}` },                       // 31. {l}.{f}
-    { name: "flastname_l", template: (f, l, first, last) => `${f}${last}_${l}` },        // 32. {f}{last}_{l}
-  ],
-  "default": [
-    { name: "firstname.l", template: (f, l, first, last) => `${first}.${l}` },           // 17. {first}.{l}
-    { name: "lastnamefirstname", template: (f, l, first, last) => `${last}${first}` },   // 18. {last}{first}
-    { name: "l.firstname", template: (f, l, first, last) => `${l}.${first}` },           // 19. {l}.{first}
-    { name: "f-lastname", template: (f, l, first, last) => `${f}-${last}` },             // 20. {f}-{last}
-    { name: "l-firstname", template: (f, l, first, last) => `${l}-${first}` },           // 21. {l}-{first}
-    { name: "firstnamef", template: (f, l, first, last) => `${first}${f}` },             // 22. {first}{f}
-    { name: "lastnamel", template: (f, l, first, last) => `${last}${l}` },               // 23. {last}{l}
-    { name: "f.l", template: (f, l, first, last) => `${f}.${l}` },                       // 24. {f}.{l}
-    { name: "f_l", template: (f, l, first, last) => `${f}_${l}` },                       // 25. {f}_{l}
-    { name: "firstname-l", template: (f, l, first, last) => `${first}-${l}` },           // 26. {first}-{l}
-    { name: "lastname-l", template: (f, l, first, last) => `${last}-${l}` },             // 27. {last}-{l}
-    { name: "lf", template: (f, l, first, last) => `${l}${f}` },                         // 28. {l}{f}
-    { name: "l_f", template: (f, l, first, last) => `${l}_${f}` },                       // 29. {l}_{f}
-    { name: "l-f", template: (f, l, first, last) => `${l}-${f}` },                       // 30. {l}-{f}
-    { name: "l.f", template: (f, l, first, last) => `${l}.${f}` },                       // 31. {l}.{f}
-    { name: "flastname_l", template: (f, l, first, last) => `${f}${last}_${l}` },        // 32. {f}{last}_{l}
-  ],
-};
+const FIXED_PATTERNS = [
+  { name: "firstname", template: (f, l, first, last) => `${first}`, score: 99 },
+  { name: "flastname", template: (f, l, first, last) => `${f}${last}`, score: 98 },
+  { name: "firstname.lastname", template: (f, l, first, last) => `${first}.${last}`, score: 97 },
+  { name: "firstnamel", template: (f, l, first, last) => `${first}${l}`, score: 96 },
+  { name: "firstnamelastname", template: (f, l, first, last) => `${first}${last}`, score: 95 },
+  { name: "lastname", template: (f, l, first, last) => `${last}`, score: 94 },
+  { name: "fl", template: (f, l, first, last) => `${f}${l}`, score: 93 },
+  { name: "f.lastname", template: (f, l, first, last) => `${f}.${last}`, score: 92 },
+];
 
 /**
  * Normalize a name by removing accents and converting to lowercase ASCII
  */
 function normalizeName(name) {
   if (!name) return '';
-  // Remove accents using normalize + replace
   return name.normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')  // Remove diacritics
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
 }
 
 /**
- * Map company size string to a standardized key
- */
-function getCompanySizeKey(companySize) {
-  if (!companySize) return 'default';
-  
-  const sizeStr = String(companySize).trim().toLowerCase();
-  
-  // Direct matches
-  if (sizeStr.includes('1-50') || sizeStr.includes('1-10') || sizeStr.includes('2-10') || sizeStr.includes('11-50')) {
-    return '1-50';
-  } else if (sizeStr.includes('51-200') || sizeStr.includes('51-100') || sizeStr.includes('101-200')) {
-    return '51-200';
-  } else if (sizeStr.includes('201-500') || sizeStr.includes('201-300') || sizeStr.includes('301-500')) {
-    return '201-500';
-  } else if (sizeStr.includes('500+') || sizeStr.includes('501+') || sizeStr.includes('501-1000') || 
-             sizeStr.includes('1001-') || sizeStr.includes('1000+') || sizeStr.includes('5000+') || 
-             sizeStr.includes('10000+')) {
-    return '500+';
-  }
-  
-  // Try numeric parsing
-  const numbers = sizeStr.match(/\d+/);
-  if (numbers) {
-    const sizeNum = parseInt(numbers[0], 10);
-    if (sizeNum >= 1 && sizeNum <= 50) return '1-50';
-    if (sizeNum >= 51 && sizeNum <= 200) return '51-200';
-    if (sizeNum >= 201 && sizeNum <= 500) return '201-500';
-    if (sizeNum > 500) return '500+';
-  }
-  
-  return 'default';
-}
-
-/**
- * Generate extended email permutations (17-32) for a person
- * Used as fallback when all 16 primary permutations return invalid
- * @param {string} firstName - Person's first name
- * @param {string} lastName - Person's last name
- * @param {string} domain - Email domain
- * @param {string} companySize - Company size string (e.g., "1-50", "51-200")
- * @returns {Array} Array of {email, pattern} objects in prevalence order
- */
-function generateExtendedPermutations(firstName, lastName, domain, companySize) {
-  const first = normalizeName(firstName);
-  const last = normalizeName(lastName);
-  
-  if (!first || !last || !domain) {
-    return [];
-  }
-  
-  const f = first[0];  // First initial
-  const l = last[0];   // Last initial
-  
-  // Get pattern order for this company size
-  const sizeKey = getCompanySizeKey(companySize);
-  const patterns = EXTENDED_PATTERNS_BY_SIZE[sizeKey] || EXTENDED_PATTERNS_BY_SIZE['default'];
-  
-  // Generate emails in the correct order
-  return patterns.map(pattern => ({
-    email: `${pattern.template(f, l, first, last)}@${domain}`,
-    pattern: pattern.name,
-  }));
-}
-
-/**
- * Generate primary email permutations (1-16) for a person
- * Used for on-the-fly permutation generation (new 1-row-per-lead format)
- * @param {string} firstName - Person's first name
- * @param {string} lastName - Person's last name
- * @param {string} domain - Email domain
- * @param {string} companySize - Company size string (e.g., "1-50", "51-200")
- * @returns {Array} Array of {email, pattern, score} objects in prevalence order (highest first)
+ * Generate the 8 fixed permutations for a person
+ * companySize is ignored (kept for backward compatibility)
  */
 function generatePrimaryPermutations(firstName, lastName, domain, companySize) {
   const first = normalizeName(firstName);
   const last = normalizeName(lastName);
-  
+
   if (!first || !last || !domain) {
     return [];
   }
-  
-  const f = first[0];  // First initial
-  const l = last[0];   // Last initial
-  
-  // Get pattern order for this company size (already sorted by prevalence)
-  const sizeKey = getCompanySizeKey(companySize);
-  const patterns = PRIMARY_PATTERNS_BY_SIZE[sizeKey] || PRIMARY_PATTERNS_BY_SIZE['default'];
-  
-  // Generate emails in prevalence order (highest first)
-  return patterns.map(pattern => ({
+
+  const f = first[0];
+  const l = last[0];
+
+  return FIXED_PATTERNS.map(pattern => ({
     email: `${pattern.template(f, l, first, last)}@${domain}`,
     pattern: pattern.name,
     score: pattern.score,
@@ -2060,41 +1803,10 @@ async function markLeadAsNotFound(leadId) {
   );
 }
 
-// Update a lead with a valid email found in extended permutations (17-32)
-async function updateLeadWithExtendedValid(leadId, email, pattern, mx = '', provider = '') {
-  await pgPool.query(
-    `UPDATE leads SET 
-      email = $1, 
-      pattern_used = $2, 
-      verification_status = 'valid', 
-      mx_record = $3,
-      mx_provider = $4,
-      is_final_result = true 
-    WHERE id = $5`,
-    [email, pattern, mx, provider, leadId]
-  );
-}
-
-// Update a lead with catchall found in extended permutations (17-32)
-// Uses the original permutation 1 email (highest prevalence) as the result
-async function updateLeadWithExtendedCatchall(leadId, originalEmail, originalPattern, mx = '', provider = '') {
-  await pgPool.query(
-    `UPDATE leads SET 
-      email = $1, 
-      pattern_used = $2, 
-      verification_status = 'catchall', 
-      mx_record = $3,
-      mx_provider = $4,
-      is_final_result = true 
-    WHERE id = $5`,
-    [originalEmail, originalPattern, mx, provider, leadId]
-  );
-}
-
 // Process a single person's permutations with early exit (returns result object)
 // Supports TWO formats:
-// - OLD FORMAT (backward compat): personLeads = array of 16 leads with pre-generated emails
-// - NEW FORMAT (1 row per lead): personLeads = array of 1 lead with empty email, generate permutations on-the-fly
+// - OLD FORMAT (backward compat): personLeads = array of pre-generated leads
+// - NEW FORMAT (1 row per lead): personLeads = array of 1 lead with empty email, generate 8 patterns on-the-fly
 // Early exit triggers:
 // 1. VALID: First valid email found = best result, skip remaining permutations
 // 2. CATCHALL: First catchall found = highest prevalence (leads sorted by prevalence), 
@@ -2114,7 +1826,6 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
   
   // Get the lead record (used for both formats)
   const leadRecord = personLeads[0];
-  const companySize = leadRecord.company_size || 'default';
   
   // Detect format: NEW format has single lead with empty email
   // OLD format has multiple leads with pre-generated emails
@@ -2149,7 +1860,7 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
           resultType = 'valid';
           validFound = 1;
           finalLeadId = leadRecord.id;
-          savedCalls = 31;
+          savedCalls = 7;
           console.log(`  ✓ CACHE HIT for ${personKey} - re-verified VALID (${cached.email})`);
         } else if (reVerifyStatus === 'catchall') {
           winningEmail = cached.email;
@@ -2159,7 +1870,7 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
           resultType = 'catchall';
           catchallFound = 1;
           finalLeadId = leadRecord.id;
-          savedCalls = 31;
+          savedCalls = 7;
           console.log(`  ~ CACHE HIT for ${personKey} - now CATCHALL (${cached.email})`);
         } else {
           console.log(`  ✗ CACHE MISS for ${personKey} - cached email invalid, falling through to permutations`);
@@ -2171,146 +1882,74 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
     // PERMUTATION FLOW (skipped if cache resolved this person)
     // ============================================
     if (!winningEmail && !hitTimeout) {
-    console.log(`  📧 [NEW FORMAT] Generating permutations on-the-fly for ${personKey}`);
-    
-    // Generate primary permutations (1-16)
-    const primaryEmails = generatePrimaryPermutations(
-      leadRecord.first_name,
-      leadRecord.last_name,
-      leadRecord.domain,
-      companySize
-    );
-    
-    // Process primary permutations (1-16)
-    for (const perm of primaryEmails) {
-      try {
-        const result = await verifyEmail(perm.email, 0, null, jobId);
-        apiCalls++;
-        permutationsVerified++;
-        
-        // Check for timeout
-        const isTimeout = result.message && result.message.toLowerCase().includes('timeout');
-        if (isTimeout) {
-          hitTimeout = true;
-          finalLeadId = leadRecord.id;
-          resultType = 'not_found';
-          const remaining = (16 - permutationsVerified) + 16; // remaining primary + all extended
-          savedCalls = remaining;
-          console.log(`  ⏱️ TIMEOUT for ${personKey} on permutation ${permutationsVerified}/16 - skipping ${remaining} remaining`);
-          break;
-        }
-        
-        let finalStatus = result.status;
-        if (result.status === 'unverified') finalStatus = 'not_found';
-        
-        if (finalStatus === 'valid') {
-          foundValid = true;
-          validFound = 1;
-          resultType = 'valid';
-          finalLeadId = leadRecord.id;
-          winningEmail = perm.email;
-          winningPattern = perm.pattern;
-          winningMx = result.mx || '';
-          winningProvider = result.provider || '';
-          const remaining = (16 - permutationsVerified) + 16;
-          savedCalls = remaining;
-          console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/16 (${perm.pattern}) - skipping ${remaining} remaining`);
-          break;
-        } else if (finalStatus === 'catchall') {
-          bestCatchall = { email: perm.email, pattern: perm.pattern };
-          resultType = 'catchall';
-          catchallFound = 1;
-          finalLeadId = leadRecord.id;
-          winningEmail = perm.email;
-          winningPattern = perm.pattern;
-          winningMx = result.mx || '';
-          winningProvider = result.provider || '';
-          const remaining = (16 - permutationsVerified) + 16;
-          savedCalls = remaining;
-          console.log(`  ~ CATCHALL found for ${personKey} on permutation ${permutationsVerified}/16 (${perm.pattern}) - skipping ${remaining} remaining`);
-          break;
-        }
-      } catch (error) {
-        console.error(`Error processing permutation ${perm.email}:`, error.message);
-        apiCalls++;
-        permutationsVerified++;
-      }
-    }
-    
-    // If no valid/catchall found in primary 16, try extended (17-32)
-    if (!foundValid && !bestCatchall && !hitTimeout) {
-      const extendedEmails = generateExtendedPermutations(
+      console.log(`  📧 [NEW FORMAT] Generating 8 fixed permutations for ${personKey}`);
+
+      const primaryEmails = generatePrimaryPermutations(
         leadRecord.first_name,
         leadRecord.last_name,
         leadRecord.domain,
-        companySize
+        null
       );
-      
-      console.log(`  🔄 All 16 primary invalid for ${personKey} - trying extended (17-32)...`);
-      let extIdx = 0;
-      
-      for (const ext of extendedEmails) {
+
+      for (const perm of primaryEmails) {
         try {
-          const result = await verifyEmail(ext.email, 0, null, jobId);
+          const result = await verifyEmail(perm.email, 0, null, jobId);
           apiCalls++;
-          extIdx++;
-          
+          permutationsVerified++;
+
           const isTimeout = result.message && result.message.toLowerCase().includes('timeout');
           if (isTimeout) {
             hitTimeout = true;
             finalLeadId = leadRecord.id;
             resultType = 'not_found';
-            savedCalls += extendedEmails.length - extIdx;
-            console.log(`  ⏱️ TIMEOUT for ${personKey} in extended ${extIdx + 16}/32 - skipping remaining`);
+            const remaining = primaryEmails.length - permutationsVerified;
+            savedCalls = remaining;
+            console.log(`  ⏱️ TIMEOUT for ${personKey} on permutation ${permutationsVerified}/${primaryEmails.length} - skipping ${remaining} remaining`);
             break;
           }
-          
+
           let finalStatus = result.status;
           if (result.status === 'unverified') finalStatus = 'not_found';
-          
+
           if (finalStatus === 'valid') {
             foundValid = true;
             validFound = 1;
             resultType = 'valid';
             finalLeadId = leadRecord.id;
-            winningEmail = ext.email;
-            winningPattern = ext.pattern;
+            winningEmail = perm.email;
+            winningPattern = perm.pattern;
             winningMx = result.mx || '';
             winningProvider = result.provider || '';
-            savedCalls += extendedEmails.length - extIdx;
-            console.log(`  ✓ VALID found for ${personKey} in EXTENDED ${extIdx + 16}/32 (${ext.pattern})`);
+            const remaining = primaryEmails.length - permutationsVerified;
+            savedCalls = remaining;
+            console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/${primaryEmails.length} (${perm.pattern}) - skipping ${remaining} remaining`);
             break;
           } else if (finalStatus === 'catchall') {
-            // For catchall in extended, use highest prevalence pattern (first primary)
-            const firstPrimary = primaryEmails[0];
-            bestCatchall = { email: firstPrimary.email, pattern: firstPrimary.pattern };
+            bestCatchall = { email: perm.email, pattern: perm.pattern };
             resultType = 'catchall';
             catchallFound = 1;
             finalLeadId = leadRecord.id;
-            winningEmail = firstPrimary.email;
-            winningPattern = firstPrimary.pattern;
+            winningEmail = perm.email;
+            winningPattern = perm.pattern;
             winningMx = result.mx || '';
             winningProvider = result.provider || '';
-            savedCalls += extendedEmails.length - extIdx;
-            console.log(`  ~ CATCHALL found for ${personKey} in EXTENDED ${extIdx + 16}/32 - using perm 1 (${firstPrimary.email})`);
+            const remaining = primaryEmails.length - permutationsVerified;
+            savedCalls = remaining;
+            console.log(`  ~ CATCHALL found for ${personKey} on permutation ${permutationsVerified}/${primaryEmails.length} (${perm.pattern}) - skipping ${remaining} remaining`);
             break;
           }
         } catch (error) {
-          console.error(`Error processing extended ${ext.email}:`, error.message);
+          console.error(`Error processing permutation ${perm.email}:`, error.message);
           apiCalls++;
-          extIdx++;
+          permutationsVerified++;
         }
       }
-      
-      // All 32 exhausted
-      if (!foundValid && !bestCatchall) {
+
+      if (!foundValid && !bestCatchall && !hitTimeout) {
         finalLeadId = leadRecord.id;
         resultType = 'not_found';
-        if (!hitTimeout) {
-          console.log(`  ✗ NOT_FOUND for ${personKey} (verified all 32 permutations)`);
-        }
+        console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${primaryEmails.length} permutations)`);
       }
-    }
     } // end if (!winningEmail && !hitTimeout) -- permutation flow guard
     
     // Update the single lead record with the result
@@ -2342,211 +1981,75 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
     // ============================================
     // OLD FORMAT: Use pre-stored permutations (backward compatibility)
     // ============================================
-    
-    // Process all 16 permutations one by one (in order of prevalence score)
+    const totalPermutations = personLeads.length;
+
     for (const lead of personLeads) {
       try {
         const result = await verifyEmail(lead.email, 0, null, jobId);
         apiCalls++;
         permutationsVerified++;
-        
+
         const isTimeout = result.message && result.message.toLowerCase().includes('timeout');
         if (isTimeout) {
-          // *** EARLY EXIT: Mail server timeout ***
-          // If the mail server doesn't respond, it won't respond for any permutation
           hitTimeout = true;
           finalLeadId = lead.id;
           resultType = 'not_found';
-          
-          // Calculate saved calls (remaining primary + all 16 extended)
-          const remainingPrimary = personLeads.length - permutationsVerified;
-          const extendedPermutations = 16;  // Extended permutations that we'll skip
-          savedCalls = remainingPrimary + extendedPermutations;
-          
-          console.log(`  ⏱️ TIMEOUT for ${personKey} - mail server unresponsive, skipping ${remainingPrimary} primary + ${extendedPermutations} extended permutations`);
-          
-          // Mark remaining primary permutation leads as not_found (without making API calls)
+
+          const remaining = totalPermutations - permutationsVerified;
+          savedCalls = remaining;
+
+          console.log(`  ⏱️ TIMEOUT for ${personKey} - mail server unresponsive, skipping ${remaining} remaining permutations`);
+
           for (let i = permutationsVerified; i < personLeads.length; i++) {
             queueLeadUpdate(personLeads[i].id, 'not_found', '', '');
           }
-          break; // Stop verifying this person's remaining permutations
+          break;
         }
-        
-        // Map 'unverified' to 'not_found' for enrichment jobs
+
         let finalStatus = result.status;
         if (result.status === 'unverified') {
           finalStatus = 'not_found';
         }
-        
+
         queueLeadUpdate(lead.id, finalStatus, result.mx, result.provider);
-        
+
         if (finalStatus === 'valid') {
-          // *** EARLY EXIT: Found valid email! ***
           finalLeadId = lead.id;
-          validFound = 1;
           foundValid = true;
           resultType = 'valid';
-          
-          // Calculate how many API calls we saved
-          const remainingPermutations = personLeads.length - permutationsVerified;
-          savedCalls = remainingPermutations;
-          
-          console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/16 - skipping ${remainingPermutations} remaining`);
-          break; // Stop verifying this person's remaining permutations
-          
+          validFound = 1;
+
+          const remaining = totalPermutations - permutationsVerified;
+          savedCalls = remaining;
+
+          console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/${totalPermutations} - skipping ${remaining} remaining`);
+          break;
+
         } else if (finalStatus === 'catchall') {
-          // *** EARLY EXIT FOR CATCHALLS ***
-          // Since leads are ordered by prevalence (highest first), the first catchall
-          // we encounter is the best one. All remaining permutations for this catchall
-          // domain will also be catchalls with lower prevalence scores.
           bestCatchall = lead;
           finalLeadId = lead.id;
           resultType = 'catchall';
           catchallFound = 1;
-          
-          const remainingPermutations = personLeads.length - permutationsVerified;
-          savedCalls = remainingPermutations;
-          
-          console.log(`  ~ CATCHALL found for ${personKey} on permutation ${permutationsVerified}/16 - skipping ${remainingPermutations} remaining (highest prevalence)`);
-          break; // Stop verifying this person's remaining permutations
+
+          const remaining = totalPermutations - permutationsVerified;
+          savedCalls = remaining;
+
+          console.log(`  ~ CATCHALL found for ${personKey} on permutation ${permutationsVerified}/${totalPermutations} - skipping ${remaining} remaining`);
+          break;
         }
-        // If invalid/not_found, continue to next permutation
-        
+
       } catch (error) {
         console.error(`Error processing lead ${lead.id}:`, error.message);
-        queueLeadUpdate(lead.id, 'not_found', '', '');  // Enrichment: map errors to not_found
+        queueLeadUpdate(lead.id, 'not_found', '', '');
         apiCalls++;
         permutationsVerified++;
       }
     }
-    
-    // If no valid or catchall found in primary 16, try extended permutations (17-32)
-    // Note: Valid, catchall, and timeout all early-exit in the loop above
-    // Skip extended permutations entirely if we hit a timeout (mail server won't respond)
+
     if (!foundValid && !bestCatchall && !hitTimeout) {
-      // Get the first lead's info for extended permutation generation
-      const firstLead = personLeads[0];
-      const oldCompanySize = firstLead.company_size || 'default';
-      
-      // Generate extended permutations (17-32) in company-size-specific order
-      const extendedEmails = generateExtendedPermutations(
-        firstLead.first_name,
-        firstLead.last_name,
-        firstLead.domain,
-        oldCompanySize
-      );
-      
-      console.log(`  🔄 All 16 primary permutations invalid for ${personKey} - trying extended permutations (17-32)...`);
-      
-      let extendedPermutationIndex = 0;
-      let extendedValidEmail = null;
-      let extendedValidPattern = null;
-      let extendedValidMx = '';
-      let extendedValidProvider = '';
-      let extendedCatchallEmail = null;
-      let extendedCatchallPattern = null;
-      let extendedCatchallMx = '';
-      let extendedCatchallProvider = '';
-      
-      // Verify extended permutations one-by-one
-      for (const extended of extendedEmails) {
-        try {
-          const result = await verifyEmail(extended.email, 0, null, jobId);
-          apiCalls++;
-          extendedPermutationIndex++;
-          
-          // Check for timeout in extended permutations - early exit
-          const isTimeout = result.message && result.message.toLowerCase().includes('timeout');
-          if (isTimeout) {
-            // *** EARLY EXIT: Mail server timeout in extended permutations ***
-            hitTimeout = true;
-            finalLeadId = firstLead.id;
-            resultType = 'not_found';
-            
-            const remainingExtended = extendedEmails.length - extendedPermutationIndex;
-            savedCalls += remainingExtended;
-            
-            console.log(`  ⏱️ TIMEOUT for ${personKey} in extended permutation ${extendedPermutationIndex + 16}/32 - skipping ${remainingExtended} remaining`);
-            break;
-          }
-          
-          // Map 'unverified' to 'not_found' for enrichment jobs
-          let finalStatus = result.status;
-          if (result.status === 'unverified') {
-            finalStatus = 'not_found';
-          }
-          
-          if (finalStatus === 'valid') {
-            // *** EARLY EXIT: Found valid in extended set! ***
-            extendedValidEmail = extended.email;
-            extendedValidPattern = extended.pattern;
-            extendedValidMx = result.mx || '';
-            extendedValidProvider = result.provider || '';
-            foundValid = true;
-            resultType = 'valid';
-            validFound = 1;
-            finalLeadId = firstLead.id;
-            
-            const remainingExtended = extendedEmails.length - extendedPermutationIndex;
-            savedCalls += remainingExtended;
-            
-            console.log(`  ✓ VALID found for ${personKey} in EXTENDED permutation ${extendedPermutationIndex + 16}/32 (${extended.pattern}) - skipping ${remainingExtended} remaining`);
-            break;
-            
-          } else if (finalStatus === 'catchall') {
-            // *** EARLY EXIT: Catchall found in extended set ***
-            // Use the original permutation 1's email (highest prevalence) as the result
-            extendedCatchallEmail = firstLead.email;  // Original perm 1 email
-            extendedCatchallPattern = firstLead.pattern_used;  // Original perm 1 pattern
-            extendedCatchallMx = result.mx || '';
-            extendedCatchallProvider = result.provider || '';
-            bestCatchall = firstLead;
-            resultType = 'catchall';
-            catchallFound = 1;
-            finalLeadId = firstLead.id;
-            
-            const remainingExtended = extendedEmails.length - extendedPermutationIndex;
-            savedCalls += remainingExtended;
-            
-            console.log(`  ~ CATCHALL found for ${personKey} in EXTENDED permutation ${extendedPermutationIndex + 16}/32 - using perm 1 email (${firstLead.email})`);
-            break;
-          }
-          // If invalid, continue to next extended permutation
-          
-        } catch (error) {
-          console.error(`Error processing extended permutation ${extended.email}:`, error.message);
-          apiCalls++;
-          extendedPermutationIndex++;
-        }
-      }
-      
-      // After extended permutations: update the lead record based on result
-      if (foundValid && extendedValidEmail) {
-        // Valid found in extended set - update lead with the valid email
-        await updateLeadWithExtendedValid(
-          firstLead.id, 
-          extendedValidEmail, 
-          extendedValidPattern,
-          extendedValidMx,
-          extendedValidProvider
-        );
-      } else if (bestCatchall && extendedCatchallEmail) {
-        // Catchall found in extended set - update lead with original perm 1 email
-        await updateLeadWithExtendedCatchall(
-          firstLead.id,
-          extendedCatchallEmail,
-          extendedCatchallPattern,
-          extendedCatchallMx,
-          extendedCatchallProvider
-        );
-      } else {
-        // All 32 permutations exhausted OR timeout - mark as not_found
-        finalLeadId = firstLead.id;
-        resultType = 'not_found';
-        if (!hitTimeout) {
-          console.log(`  ✗ NOT_FOUND for ${personKey} (verified all 32 permutations including extended)`);
-        }
-      }
+      finalLeadId = personLeads[0].id;
+      resultType = 'not_found';
+      console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${totalPermutations} permutations)`);
     }
   }
 
