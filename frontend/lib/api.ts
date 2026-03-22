@@ -115,14 +115,15 @@ class ApiClient {
   private async requestWithFile<T>(
     endpoint: string,
     file: File,
-    additionalData?: Record<string, string | number | boolean>
+    additionalData?: Record<string, string | number | boolean>,
+    timeoutMs: number = 120_000
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const token = this.getToken();
 
     const formData = new FormData();
     formData.append("file", file);
-    
+
     if (additionalData) {
       Object.entries(additionalData).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -131,28 +132,40 @@ class ApiClient {
       });
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/fd1ac76c-6edf-44e6-a6e9-e1aa6c49e1fb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:126',message:'FormData before send',data:{endpoint,fileName:file.name,fileSize:file.size,additionalDataKeys:additionalData?Object.keys(additionalData):[],additionalDataValues:additionalData?Object.values(additionalData).map(v=>String(v)):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-
     const headers: Record<string, string> = {};
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: formData,
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Handle 401 Unauthorized - token expired or invalid
+    let response: Response;
+    try {
+      console.log(`[upload] POST ${endpoint} file=${file.name} size=${file.size}`);
+      response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: formData,
+        signal: controller.signal,
+      });
+      console.log(`[upload] response status=${response.status}`);
+    } catch (err) {
+      clearTimeout(timer);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error(
+          `Upload timed out after ${timeoutMs / 1000}s. The server may be overloaded — please try again.`
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+
     if (response.status === 401) {
-      // Clear invalid token
       document.cookie = "token=; path=/; max-age=0";
       if (typeof window !== "undefined") {
         document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
-        // Only redirect to login if we're not already on public pages (home, login, register)
         const currentPath = window.location.pathname;
         if (currentPath !== "/" && currentPath !== "/login" && currentPath !== "/register") {
           window.location.href = "/login";

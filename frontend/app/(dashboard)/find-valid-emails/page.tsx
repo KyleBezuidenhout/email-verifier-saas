@@ -111,10 +111,17 @@ export default function FindValidEmailsPage() {
     setUploadError("");
 
     try {
-      // Check if this is from Sales Nav Scraper
       const urlParams = new URLSearchParams(window.location.search);
       const source = urlParams.get("source");
-      
+
+      console.log("[upload] starting", {
+        file: selectedFile.name,
+        size: selectedFile.size,
+        mapping: columnMapping,
+        source,
+        jobName,
+      });
+
       const response = await apiClient.uploadFile(selectedFile, {
         column_first_name: columnMapping.first_name,
         column_last_name: columnMapping.last_name,

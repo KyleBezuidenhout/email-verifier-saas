@@ -380,8 +380,8 @@ def validate_and_clean_row(first_name: str, last_name: str, website: str) -> Tup
 
 router = APIRouter()
 
-# Initialize Redis connection for job queue
-redis_client = redis.from_url(settings.REDIS_URL)
+# Initialize Redis connection for job queue (with timeouts to prevent hangs)
+redis_client = redis.from_url(settings.REDIS_URL, socket_timeout=10, socket_connect_timeout=10)
 
 # Try to use BullMQ Python package, fallback to manual implementation
 try:
@@ -397,13 +397,15 @@ except ImportError:
     USE_BULLMQ_PACKAGE = False
     print("BullMQ package not found, using manual queue implementation")
 
-# Initialize S3 client for Cloudflare R2
+# Initialize S3 client for Cloudflare R2 (with timeouts to prevent hangs)
+from botocore.config import Config as BotoConfig
 s3_client = boto3.client(
     's3',
     endpoint_url=settings.CLOUDFLARE_R2_ENDPOINT_URL,
     aws_access_key_id=settings.CLOUDFLARE_R2_ACCESS_KEY_ID,
     aws_secret_access_key=settings.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
-    region_name='auto'
+    region_name='auto',
+    config=BotoConfig(connect_timeout=10, read_timeout=30, retries={'max_attempts': 2}),
 )
 
 # Max file size for CSV uploads: 200MB
@@ -422,6 +424,7 @@ async def upload_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    print(f"📤 UPLOAD START: user={current_user.email}, file={file.filename}, job_name={job_name}")
     # Validate file type
     if not file.filename.endswith('.csv'):
         raise HTTPException(
@@ -598,10 +601,12 @@ async def upload_file(
     db.add(job)
     db.commit()
     db.refresh(job)
-    
+    print(f"📤 UPLOAD: job {job.id} created in DB")
+
     # Upload file to R2
     input_file_path = f"jobs/{job.id}/input/{file.filename}"
     try:
+        print(f"📤 UPLOAD: uploading to R2 ({len(contents)} bytes)...")
         s3_client.put_object(
             Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
             Key=input_file_path,
@@ -609,27 +614,30 @@ async def upload_file(
         )
         job.input_file_path = input_file_path
         db.commit()
+        print(f"📤 UPLOAD: R2 upload done")
     except Exception as e:
+        print(f"📤 UPLOAD: R2 upload FAILED: {e}")
         db.delete(job)
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload file: {str(e)}"
         )
-    
+
     # Queue job for enrichment (RPUSH for FIFO ordering)
     try:
         job_id_str = str(job.id)
         queue_name = get_enrichment_queue_for_user(db, current_user.id)
+        print(f"📤 UPLOAD: pushing to Redis queue '{queue_name}'...")
         redis_client.rpush(queue_name, job_id_str)
         queue_length = redis_client.llen(queue_name)
-        print(f"QUEUED job {job.id} to enrichment queue '{queue_name}' (queue length: {queue_length})")
+        print(f"📤 UPLOAD: QUEUED job {job.id} (queue length: {queue_length})")
     except Exception as e:
-        print(f"Failed to queue job {job.id}: {e}")
+        print(f"📤 UPLOAD: Redis push FAILED (non-fatal): {e}")
         import traceback
         traceback.print_exc()
-        pass
-    
+
+    print(f"📤 UPLOAD COMPLETE: job {job.id} for user {current_user.email}")
     return JobUploadResponse(
         job_id=job.id,
         message="File uploaded successfully. Processing started."
