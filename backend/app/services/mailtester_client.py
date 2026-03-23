@@ -14,13 +14,18 @@ class MailTesterClient:
         self.base_url = settings.MAILTESTER_BASE_URL
         self.client = httpx.AsyncClient(timeout=30.0)
 
-    async def verify_email(self, email: str, attempt: int = 0) -> Dict[str, str]:
+    async def verify_email(self, email: str, attempt: int = 0, api_key: str = None) -> Dict[str, str]:
         """
         Verify a single email address with retry logic.
         Returns status: valid, catchall, invalid, or unverified (if all retries exhausted).
         
+        Args:
+            api_key: Optional override key. Falls back to self.api_key if not provided.
+        
         Note: Timeouts are NOT retried - they indicate the mail server won't respond.
         """
+        key = api_key or self.api_key
+        
         # Timeout patterns - these indicate unresponsive mail servers, don't retry
         timeout_patterns = ['timeout', 'timed out']
         
@@ -35,7 +40,7 @@ class MailTesterClient:
         try:
             response = await self.client.get(
                 self.base_url,
-                params={"email": email, "key": self.api_key}
+                params={"email": email, "key": key}
             )
             response.raise_for_status()
             data = response.json()
@@ -64,7 +69,7 @@ class MailTesterClient:
                     backoff_seconds = attempt + 1  # 1s, 2s, 3s
                     print(f"⚠️ API error for {email}: {message} - retrying in {backoff_seconds}s (attempt {attempt + 1}/{self.MAX_TOTAL_ATTEMPTS})")
                     await asyncio.sleep(backoff_seconds)
-                    return await self.verify_email(email, attempt + 1)
+                    return await self.verify_email(email, attempt + 1, api_key=key)
                 
                 # All retries exhausted
                 print(f"❌ All {self.MAX_TOTAL_ATTEMPTS} attempts exhausted for {email}: {message}")
@@ -117,7 +122,7 @@ class MailTesterClient:
                 backoff_seconds = attempt + 1  # 1s, 2s, 3s
                 print(f"⚠️ Error verifying {email}: {e} - retrying in {backoff_seconds}s (attempt {attempt + 1}/{self.MAX_TOTAL_ATTEMPTS})")
                 await asyncio.sleep(backoff_seconds)
-                return await self.verify_email(email, attempt + 1)
+                return await self.verify_email(email, attempt + 1, api_key=key)
             
             # All retries exhausted
             print(f"❌ All {self.MAX_TOTAL_ATTEMPTS} attempts exhausted for {email}: {e}")

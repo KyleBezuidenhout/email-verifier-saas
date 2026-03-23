@@ -21,6 +21,8 @@ import {
   WebsiteScraperHealthStatus,
   WebsiteScraperUploadResponse,
   WebsiteScraperPreviewResponse,
+  EnrichRequest,
+  EnrichResponse,
 } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
@@ -983,6 +985,31 @@ class ApiClient {
 
   async getWebsiteScraperPreview(jobId: string, limit = 25): Promise<WebsiteScraperPreviewResponse> {
     return this.request(`/api/v1/website-scraper/jobs/${jobId}/preview?limit=${limit}`);
+  }
+
+  // ============================================
+  // ENRICHMENT API (Single Email Enrichment)
+  // ============================================
+
+  async enrichSingle(params: EnrichRequest, apiKey: string): Promise<EnrichResponse> {
+    const url = `${this.baseUrl}/api/v1/enrich`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        detail: response.statusText,
+      }));
+      throw new Error(error.detail || "Enrichment failed");
+    }
+
+    return response.json();
   }
 }
 

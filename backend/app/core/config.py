@@ -63,6 +63,19 @@ class Settings(BaseSettings):
     # Cloudflare R2 Public URL for file access
     CLOUDFLARE_R2_PUBLIC_URL: str = ""  # Public URL for accessing R2 files
 
+    # MailTester per-key tuning (comma-separated, one per key — defaults used if empty)
+    MAILTESTER_KEY_SPACINGS: str = ""             # ms between requests per key (default 250)
+    MAILTESTER_KEY_REQUESTS_PER_30S: str = ""     # max requests in 30 s window per key (default 165)
+    MAILTESTER_KEY_DAILY_LIMITS: str = ""         # daily cap per key (default 500000)
+
+    # Enrichment API rate limiting / concurrency
+    ENRICH_API_RATE_LIMIT_PER_SECOND: int = 5
+    ENRICH_API_RATE_LIMIT_PER_MINUTE: int = 120
+    ENRICH_API_MAX_CONCURRENT_PER_USER: int = 5
+    ENRICH_API_CONCURRENT_PER_KEY: int = 10       # global cap = num_keys * this
+    ENRICH_API_ACQUIRE_TIMEOUT_SECONDS: float = 30.0
+    ENRICH_API_REQUEST_TIMEOUT_SECONDS: float = 45.0
+
     # App
     APP_NAME: str = "Email Verifier SaaS"
     DEBUG: bool = False

@@ -10,7 +10,7 @@ import logging
 from time import time
 
 from app.core.config import settings
-from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne, vayne_direct, payments, local_scraper, website_scraper, webhooks
+from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne, vayne_direct, payments, local_scraper, website_scraper, webhooks, enrich
 
 # Configure logging
 logging.basicConfig(
@@ -180,6 +180,8 @@ app.include_router(local_scraper.router, prefix="/api/v1/local-scraper", tags=["
 app.include_router(website_scraper.router, prefix="/api/v1/website-scraper", tags=["website-scraper"])
 # Webhooks router - handles callbacks from external services (Apify, etc.)
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
+# Enrichment API - single email enrichment for integrations (Clay, etc.)
+app.include_router(enrich.router, prefix="/api/v1", tags=["enrich"])
 
 
 # Run migrations and log routes on startup
@@ -263,5 +265,13 @@ async def startup_tasks():
         logger.warning("⚠️  NO WEBHOOK ROUTES FOUND!")
         print("⚠️  NO WEBHOOK ROUTES FOUND!")
     logger.info("=" * 80)
+
+
+@app.on_event("shutdown")
+async def shutdown_tasks():
+    """Close async connections on shutdown."""
+    from app.api.v1.endpoints.enrich import shutdown_enrich
+    await shutdown_enrich()
+    logger.info("Enrichment API connections closed")
 
 

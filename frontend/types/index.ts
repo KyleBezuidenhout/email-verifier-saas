@@ -272,3 +272,23 @@ export interface WebsiteScraperPreviewResponse {
   hit_rate_percentage: number;
 }
 
+// Single Email Enrichment API
+export interface EnrichRequest {
+  first_name?: string;
+  last_name?: string;
+  name?: string;
+  company_website: string;
+}
+
+export interface EnrichResponse {
+  first_name: string;
+  last_name: string;
+  company_website: string;
+  email: string;
+  status: 'valid' | 'catchall' | 'not_found';
+  pattern: string | null;
+  mx_provider: string | null;
+  credits_used: number;
+  credits_remaining: number;
+}
+
