@@ -8,6 +8,7 @@ Also provides per-user and global concurrency management via Redis counters.
 """
 import asyncio
 import hashlib
+import random
 import time
 import logging
 from dataclasses import dataclass
@@ -256,30 +257,87 @@ class MailTesterRateLimiter:
         return best_key if best_remaining > 0 else None
 
 
-class UserConcurrencyManager:
-    """Redis-based per-user concurrency limiter (distributed across processes)."""
+_ATOMIC_ACQUIRE_LUA = """
+local count = tonumber(redis.call('GET', KEYS[1]) or '0')
+if count >= tonumber(ARGV[1]) then return 0 end
+redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+return 1
+"""
 
-    def __init__(self, redis_client: aioredis.Redis, max_per_user: int = 5):
+_SLOT_TTL = 120  # Must exceed max request lifetime (30s wait + 45s enrich = 75s)
+
+
+class UserConcurrencyManager:
+    """Redis-based per-user concurrency limiter with server-side waiting."""
+
+    def __init__(self, redis_client: aioredis.Redis, max_per_user: int = 5, max_queued: int = 200):
         self.redis = redis_client
         self.max_per_user = max_per_user
+        self.max_queued = max_queued
 
     def _key(self, user_id: str) -> str:
         return f"enrich:concurrency:{user_id}"
 
+    def _pending_key(self, user_id: str) -> str:
+        return f"enrich:pending:{user_id}"
+
     async def acquire(self, user_id: str) -> bool:
-        key = self._key(user_id)
-        count = await self.redis.incr(key)
-        await self.redis.expire(key, 60)
-        if count > self.max_per_user:
-            await self.redis.decr(key)
-            return False
-        return True
+        """Atomic check-and-increment via Lua script."""
+        result = await self.redis.eval(
+            _ATOMIC_ACQUIRE_LUA, 1,
+            self._key(user_id), str(self.max_per_user), str(_SLOT_TTL),
+        )
+        return bool(result)
+
+    async def wait_and_acquire(self, user_id: str, timeout_seconds: float) -> Tuple[bool, str]:
+        """
+        Wait for a concurrency slot, polling with jitter.
+
+        Returns (True, "") on success.
+        Returns (False, "queue_full") if pending count exceeds max_queued.
+        Returns (False, "timeout") if deadline expires.
+        Handles CancelledError to avoid leaking the pending counter.
+        """
+        pending_key = self._pending_key(user_id)
+
+        pending_count = await self.redis.incr(pending_key)
+        await self.redis.expire(pending_key, _SLOT_TTL)
+
+        if pending_count > self.max_queued:
+            await self.redis.decr(pending_key)
+            return False, "queue_full"
+
+        deadline = time.monotonic() + timeout_seconds
+        try:
+            while True:
+                if await self.acquire(user_id):
+                    return True, ""
+
+                if time.monotonic() >= deadline:
+                    await self.redis.decr(pending_key)
+                    return False, "timeout"
+
+                await self.redis.expire(pending_key, _SLOT_TTL)
+                await asyncio.sleep(0.3 + random.uniform(0, 0.4))
+
+        except asyncio.CancelledError:
+            await self.redis.decr(pending_key)
+            raise
 
     async def release(self, user_id: str) -> None:
         key = self._key(user_id)
-        val = await self.redis.decr(key)
-        if val < 0:
-            await self.redis.set(key, 0, ex=60)
+        pending_key = self._pending_key(user_id)
+
+        pipe = self.redis.pipeline()
+        pipe.decr(key)
+        pipe.decr(pending_key)
+        results = await pipe.execute()
+
+        if results[0] < 0:
+            await self.redis.set(key, 0, ex=_SLOT_TTL)
+        if results[1] < 0:
+            await self.redis.set(pending_key, 0, ex=_SLOT_TTL)
 
 
 class GlobalAdmissionControl:
@@ -305,17 +363,30 @@ class GlobalAdmissionControl:
         return max(self.rate_limiter.num_keys * self.per_key_multiplier, 5)
 
     async def acquire(self) -> bool:
-        count = await self.redis.incr(self.REDIS_KEY)
-        await self.redis.expire(self.REDIS_KEY, 60)
-        if count > self.max_concurrent:
-            await self.redis.decr(self.REDIS_KEY)
-            return False
-        return True
+        """Atomic check-and-increment via Lua script."""
+        result = await self.redis.eval(
+            _ATOMIC_ACQUIRE_LUA, 1,
+            self.REDIS_KEY, str(self.max_concurrent), str(_SLOT_TTL),
+        )
+        return bool(result)
+
+    async def wait_and_acquire(self, timeout_seconds: float) -> bool:
+        """Wait for a global slot, polling with jitter."""
+        deadline = time.monotonic() + timeout_seconds
+        try:
+            while True:
+                if await self.acquire():
+                    return True
+                if time.monotonic() >= deadline:
+                    return False
+                await asyncio.sleep(0.2 + random.uniform(0, 0.3))
+        except asyncio.CancelledError:
+            raise
 
     async def release(self) -> None:
         val = await self.redis.decr(self.REDIS_KEY)
         if val < 0:
-            await self.redis.set(self.REDIS_KEY, 0, ex=60)
+            await self.redis.set(self.REDIS_KEY, 0, ex=_SLOT_TTL)
 
 
 class UserRateLimiter:

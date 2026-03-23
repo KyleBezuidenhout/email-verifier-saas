@@ -2,23 +2,25 @@
 POST /api/v1/enrich -- Single email enrichment endpoint.
 
 Layers:
-  0a. GlobalAdmissionControl   (Redis, auto-scales with num_keys)
-  0b. UserConcurrencyManager   (Redis, per-user distributed semaphore)
-   1. UserRateLimiter           (Redis, 5 req/s + 120 req/min sliding window)
-   2. MailTester per-key rate   (acquireForKey inside enrichment service)
-   3. 45 s wall-clock timeout   (asyncio.wait_for inside enrichment service)
+  0a. GlobalAdmissionControl   (Redis, auto-scales with num_keys — waits for slot)
+  0b. UserConcurrencyManager   (Redis, per-user — waits for slot)
+   1. MailTester per-key rate   (acquireForKey inside enrichment service)
+   2. 45 s wall-clock timeout   (asyncio.wait_for inside enrichment service)
 """
 import asyncio
 import logging
+import time
+import uuid
+from typing import Optional
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import text
 
-from app.api.dependencies import get_current_user
 from app.core.config import settings, ADMIN_EMAIL
-from app.db.session import get_db
+from app.core.security import decode_token
+from app.db.session import SessionLocal
 from app.models.user import User
 from app.schemas.enrich import EnrichRequest, EnrichResponse
 from app.services.mailtester_client import MailTesterClient
@@ -26,7 +28,6 @@ from app.services.mailtester_rate_limiter import (
     MailTesterRateLimiter,
     UserConcurrencyManager,
     GlobalAdmissionControl,
-    UserRateLimiter,
 )
 from app.services.name_parser import parse_full_name
 from app.services.permutation import normalize_domain
@@ -35,12 +36,13 @@ from app.services.realtime_enrichment import enrich_single
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+_security = HTTPBearer(auto_error=False)
+
 # ── Module-level singletons (initialised on first request) ──
 _redis: aioredis.Redis | None = None
 _mt_rate_limiter: MailTesterRateLimiter | None = None
 _user_concurrency: UserConcurrencyManager | None = None
 _global_admission: GlobalAdmissionControl | None = None
-_user_rate_limiter: UserRateLimiter | None = None
 _mt_client: MailTesterClient | None = None
 
 
@@ -63,7 +65,8 @@ def _get_user_concurrency() -> UserConcurrencyManager:
     if _user_concurrency is None:
         _user_concurrency = UserConcurrencyManager(
             _get_redis(),
-            max_per_user=getattr(settings, "ENRICH_API_MAX_CONCURRENT_PER_USER", 5),
+            max_per_user=settings.ENRICH_API_MAX_CONCURRENT_PER_USER,
+            max_queued=settings.ENRICH_API_MAX_QUEUED_PER_USER,
         )
     return _user_concurrency
 
@@ -74,20 +77,9 @@ def _get_global_admission() -> GlobalAdmissionControl:
         _global_admission = GlobalAdmissionControl(
             _get_redis(),
             _get_mt_rate_limiter(),
-            per_key_multiplier=getattr(settings, "ENRICH_API_CONCURRENT_PER_KEY", 10),
+            per_key_multiplier=settings.ENRICH_API_CONCURRENT_PER_KEY,
         )
     return _global_admission
-
-
-def _get_user_rate_limiter() -> UserRateLimiter:
-    global _user_rate_limiter
-    if _user_rate_limiter is None:
-        _user_rate_limiter = UserRateLimiter(
-            _get_redis(),
-            per_second=getattr(settings, "ENRICH_API_RATE_LIMIT_PER_SECOND", 5),
-            per_minute=getattr(settings, "ENRICH_API_RATE_LIMIT_PER_MINUTE", 120),
-        )
-    return _user_rate_limiter
 
 
 def _get_mt_client() -> MailTesterClient:
@@ -112,17 +104,129 @@ def _is_admin(user: User) -> bool:
     return getattr(user, "is_admin", False) or user.email == ADMIN_EMAIL
 
 
+# ── Lightweight auth dependency (releases DB connection immediately) ──
+
+async def _get_user_for_enrich(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_security),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> User:
+    """Authenticate without holding a DB connection for the request lifetime.
+
+    Opens a standalone session, queries the user, detaches it, and closes
+    the session so the pool connection is returned before any queue wait.
+    """
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials. Provide either Bearer token or X-API-Key header.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    db = SessionLocal()
+    try:
+        if x_api_key:
+            try:
+                api_key_uuid = uuid.UUID(x_api_key)
+                user = db.query(User).filter(User.api_key == api_key_uuid).first()
+                if user and user.is_active:
+                    db.expunge(user)
+                    return user
+                raise HTTPException(401, "Invalid API key or account inactive")
+            except (ValueError, TypeError):
+                raise HTTPException(401, "Invalid API key format")
+
+        if credentials:
+            payload = decode_token(credentials.credentials)
+            if payload is None:
+                raise credentials_exception
+            user_id = payload.get("sub")
+            if not user_id:
+                raise credentials_exception
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                raise credentials_exception
+            if not user.is_active:
+                raise HTTPException(403, "User account is inactive")
+            db.expunge(user)
+            return user
+
+        raise credentials_exception
+    finally:
+        db.close()
+
+
+# ── Credit helpers (standalone sessions, released immediately) ──
+
+async def _reserve_credit(user_id: str) -> Optional[int]:
+    """Atomically deduct 1 credit. Returns new balance, or None if insufficient."""
+    loop = asyncio.get_event_loop()
+
+    def _do():
+        db = SessionLocal()
+        try:
+            row = db.execute(
+                text(
+                    "UPDATE users SET credits = credits - 1 "
+                    "WHERE id = :uid AND credits >= 1 "
+                    "RETURNING credits"
+                ),
+                {"uid": user_id},
+            ).fetchone()
+            db.commit()
+            return row[0] if row else None
+        finally:
+            db.close()
+
+    return await loop.run_in_executor(None, _do)
+
+
+async def _refund_credit(user_id: str) -> None:
+    """Return 1 credit on failure. Safe to call even if reservation already refunded."""
+    loop = asyncio.get_event_loop()
+
+    def _do():
+        db = SessionLocal()
+        try:
+            db.execute(
+                text("UPDATE users SET credits = credits + 1 WHERE id = :uid"),
+                {"uid": user_id},
+            )
+            db.commit()
+        finally:
+            db.close()
+
+    try:
+        await loop.run_in_executor(None, _do)
+    except Exception:
+        logger.exception("Failed to refund credit for user %s", user_id)
+
+
+async def _get_credits(user_id: str) -> int:
+    """Read current credit balance (for admin responses)."""
+    loop = asyncio.get_event_loop()
+
+    def _do():
+        db = SessionLocal()
+        try:
+            return db.execute(
+                text("SELECT credits FROM users WHERE id = :uid"),
+                {"uid": user_id},
+            ).scalar() or 0
+        finally:
+            db.close()
+
+    return await loop.run_in_executor(None, _do)
+
+
+# ── Endpoint ──
+
 @router.post("/enrich", response_model=EnrichResponse)
 async def enrich_endpoint(
     body: EnrichRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user: User = Depends(_get_user_for_enrich),
 ):
-    loop = asyncio.get_event_loop()
     user_id = str(current_user.id)
     is_admin = _is_admin(current_user)
 
-    # ── Parse name ──
+    # ── Validate (fast, no resources held) ──
     try:
         parsed = parse_full_name(
             name=body.name,
@@ -136,92 +240,67 @@ async def enrich_endpoint(
     if not domain:
         raise HTTPException(status_code=422, detail="Invalid company_website")
 
-    # ── Layer 1: Per-user rate limit ──
-    allowed, retry_after = await _get_user_rate_limiter().check(user_id)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Rate limit exceeded. Retry after {retry_after:.0f}s",
-            headers={"Retry-After": str(int(retry_after))},
-        )
+    # ── Atomic credit reservation (standalone session, released immediately) ──
+    credit_reserved = False
+    credits_remaining = 0
+    if not is_admin:
+        reserved = await _reserve_credit(user_id)
+        if reserved is None:
+            raise HTTPException(status_code=402, detail="Insufficient credits")
+        credits_remaining = reserved
+        credit_reserved = True
 
-    # ── Layer 0a: Global admission ──
-    if not await _get_global_admission().acquire():
-        raise HTTPException(
-            status_code=503,
-            detail="Service at capacity. Please retry in a few seconds.",
-            headers={"Retry-After": "3"},
-        )
-
-    global_acquired = True
+    # ── Wait for concurrency slots (no DB connection held) ──
+    acquire_timeout = settings.ENRICH_API_ACQUIRE_TIMEOUT_SECONDS
+    start = time.monotonic()
     user_acquired = False
+    global_acquired = False
 
     try:
-        # ── Layer 0b: Per-user concurrency ──
-        if not await _get_user_concurrency().acquire(user_id):
-            raise HTTPException(
-                status_code=429,
-                detail="Too many concurrent enrichments. Please wait for previous requests to complete.",
-                headers={"Retry-After": "2"},
+        # Per-user concurrency wait
+        ok, reason = await _get_user_concurrency().wait_and_acquire(
+            user_id, acquire_timeout,
+        )
+        if not ok:
+            detail = (
+                "Too many queued enrichments for this account."
+                if reason == "queue_full"
+                else "Enrichment slots busy. Please retry shortly."
             )
+            raise HTTPException(status_code=503, detail=detail)
         user_acquired = True
 
-        # ── Credit check (skip for admin) ──
-        if not is_admin:
-            def _check_credits():
-                return db.execute(
-                    text("SELECT credits FROM users WHERE id = :uid"),
-                    {"uid": user_id},
-                ).scalar()
+        # Global admission wait (minimum 5s budget to avoid timeout cliff)
+        elapsed = time.monotonic() - start
+        global_budget = max(acquire_timeout - elapsed, 5.0)
+        global_acquired = await _get_global_admission().wait_and_acquire(global_budget)
+        if not global_acquired:
+            raise HTTPException(
+                status_code=503,
+                detail="Service at capacity. Please retry shortly.",
+            )
 
-            credits = await loop.run_in_executor(None, _check_credits)
-            if credits is None or credits < 1:
-                raise HTTPException(status_code=402, detail="Insufficient credits")
+        # ── Enrich (on-demand DB session, bounded by concurrency cap) ──
+        db = SessionLocal()
+        try:
+            result = await enrich_single(
+                first_name=parsed.first_name,
+                last_name=parsed.last_name,
+                domain=domain,
+                user_id=user_id,
+                db=db,
+                rate_limiter=_get_mt_rate_limiter(),
+                client=_get_mt_client(),
+                timeout_seconds=settings.ENRICH_API_REQUEST_TIMEOUT_SECONDS,
+            )
+        finally:
+            db.close()
 
-        # ── Enrich ──
-        timeout = getattr(settings, "ENRICH_API_REQUEST_TIMEOUT_SECONDS", 45.0)
-        result = await enrich_single(
-            first_name=parsed.first_name,
-            last_name=parsed.last_name,
-            domain=domain,
-            user_id=user_id,
-            db=db,
-            rate_limiter=_get_mt_rate_limiter(),
-            client=_get_mt_client(),
-            timeout_seconds=timeout,
-        )
+        # Success — credit consumed, prevent refund in finally block
+        credit_reserved = False
 
-        # ── Credit deduction (skip for admin) ──
-        credits_remaining = 0
-        credits_used = 0
-        if not is_admin:
-            def _deduct():
-                row = db.execute(
-                    text(
-                        "UPDATE users SET credits = GREATEST(0, credits - 1) "
-                        "WHERE id = :uid AND credits >= 1 "
-                        "RETURNING credits"
-                    ),
-                    {"uid": user_id},
-                ).fetchone()
-                db.commit()
-                return row
-
-            row = await loop.run_in_executor(None, _deduct)
-            if row:
-                credits_remaining = row[0]
-                credits_used = 1
-            else:
-                logger.warning("TOCTOU: credits exhausted during enrichment for user %s", user_id)
-                credits_remaining = 0
-                credits_used = 1
-        else:
-            def _get_credits():
-                return db.execute(
-                    text("SELECT credits FROM users WHERE id = :uid"),
-                    {"uid": user_id},
-                ).scalar() or 0
-            credits_remaining = await loop.run_in_executor(None, _get_credits)
+        if is_admin:
+            credits_remaining = await _get_credits(user_id)
 
         return EnrichResponse(
             first_name=parsed.first_name,
@@ -231,12 +310,15 @@ async def enrich_endpoint(
             status=result.status,
             pattern=result.pattern,
             mx_provider=result.mx_provider,
-            credits_used=credits_used,
+            credits_used=0 if is_admin else 1,
             credits_remaining=credits_remaining,
         )
 
     finally:
-        if user_acquired:
-            await _get_user_concurrency().release(user_id)
         if global_acquired:
             await _get_global_admission().release()
+        if user_acquired:
+            await _get_user_concurrency().release(user_id)
+        if credit_reserved:
+            logger.info("Refunding credit for user %s (enrichment did not complete)", user_id)
+            await _refund_credit(user_id)

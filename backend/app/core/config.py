@@ -68,11 +68,10 @@ class Settings(BaseSettings):
     MAILTESTER_KEY_REQUESTS_PER_30S: str = ""     # max requests in 30 s window per key (default 165)
     MAILTESTER_KEY_DAILY_LIMITS: str = ""         # daily cap per key (default 500000)
 
-    # Enrichment API rate limiting / concurrency
-    ENRICH_API_RATE_LIMIT_PER_SECOND: int = 5
-    ENRICH_API_RATE_LIMIT_PER_MINUTE: int = 120
+    # Enrichment API concurrency
     ENRICH_API_MAX_CONCURRENT_PER_USER: int = 5
     ENRICH_API_CONCURRENT_PER_KEY: int = 10       # global cap = num_keys * this
+    ENRICH_API_MAX_QUEUED_PER_USER: int = 200     # max waiting + active requests per user
     ENRICH_API_ACQUIRE_TIMEOUT_SECONDS: float = 30.0
     ENRICH_API_REQUEST_TIMEOUT_SECONDS: float = 45.0
 
