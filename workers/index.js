@@ -3042,7 +3042,17 @@ async function recoverStaleJobs() {
     'crash_recovery_lock', process.pid.toString(), { NX: true, EX: 60 }
   );
   if (!lockAcquired) {
-    console.log('[RECOVERY] Another worker is handling crash recovery, skipping');
+    console.log('[RECOVERY] Another worker is handling crash recovery, waiting for recovery to complete...');
+    // Wait for the recovery worker to finish instead of racing ahead
+    for (let i = 0; i < 30; i++) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const lockStillHeld = await redisClient.get('crash_recovery_lock');
+      if (!lockStillHeld) {
+        console.log('[RECOVERY] Recovery completed by other worker, proceeding');
+        return;
+      }
+    }
+    console.log('[RECOVERY] Recovery lock held for >60s, proceeding anyway');
     return;
   }
 
@@ -3050,26 +3060,32 @@ async function recoverStaleJobs() {
     `SELECT id, job_type, user_id, processed_leads, total_leads
      FROM jobs
      WHERE status = 'processing'
-       AND completed_at IS NULL
        AND (last_heartbeat IS NULL OR last_heartbeat < NOW() - INTERVAL '2 minutes')
      ORDER BY created_at ASC`
   );
 
+  let recoveredCount = 0;
   for (const job of staleJobs.rows) {
     console.log(`[RECOVERY] Re-queuing stale job ${job.id} ` +
       `(type: ${job.job_type}, progress: ${job.processed_leads}/${job.total_leads})`);
 
-    await pgPool.query(
-      `UPDATE jobs SET status = 'pending', last_heartbeat = NULL WHERE id = $1`,
-      [job.id]
-    );
+    try {
+      await pgPool.query(
+        `UPDATE jobs SET status = 'pending', last_heartbeat = NULL, completed_at = NULL WHERE id = $1`,
+        [job.id]
+      );
 
-    await unregisterFairshareJob(String(job.id), null);
+      await unregisterFairshareJob(String(job.id), null);
 
-    await redisClient.rPush(VERIFICATION_QUEUE, String(job.id));
+      const pushResult = await redisClient.rPush(VERIFICATION_QUEUE, String(job.id));
+      console.log(`[RECOVERY] Pushed job ${job.id} to queue (queue length: ${pushResult})`);
+      recoveredCount++;
+    } catch (e) {
+      console.error(`[RECOVERY] FAILED to re-queue job ${job.id}: ${e.message}`);
+    }
   }
 
-  console.log(`[RECOVERY] Recovered ${staleJobs.rows.length} stale job(s)`);
+  console.log(`[RECOVERY] Recovered ${recoveredCount}/${staleJobs.rows.length} stale job(s)`);
 }
 
 // Boot sequence: ensure schema -> recover stale jobs -> start polling
