@@ -778,6 +778,29 @@ async function logVerificationError(userId, userEmail, jobId, errorType, errorMe
 // Current job context for error logging
 let currentJobContext = { userId: null, userEmail: null, jobId: null };
 
+// Track active job ID for graceful shutdown re-queuing
+let activeJobId = null;
+let isShuttingDown = false;
+
+process.on('SIGTERM', async () => {
+  console.log('[SHUTDOWN] SIGTERM received, starting graceful shutdown...');
+  isShuttingDown = true;
+  if (activeJobId) {
+    try {
+      console.log(`[SHUTDOWN] Re-queuing active job ${activeJobId}`);
+      await pgPool.query(
+        `UPDATE jobs SET status = 'pending', last_heartbeat = NULL WHERE id = $1 AND status = 'processing'`,
+        [activeJobId]
+      );
+      await redisClient.rPush(VERIFICATION_QUEUE, String(activeJobId));
+      console.log(`[SHUTDOWN] Job ${activeJobId} returned to queue`);
+    } catch (e) {
+      console.error(`[SHUTDOWN] Failed to re-queue job ${activeJobId}: ${e.message}`);
+    }
+  }
+  process.exit(0);
+});
+
 // ==============================================
 // DEFERRED DATABASE WRITE SYSTEM
 // ==============================================
@@ -1761,13 +1784,17 @@ async function pollSimpleQueue() {
         }
         
         try {
+          activeJobId = jobIdStr;
           await processJobFromQueue(jobIdStr);
+          activeJobId = null;
           console.log(`\n[${new Date().toISOString()}] Job ${jobIdStr} completed successfully`);
         } catch (error) {
+          activeJobId = null;
           console.error(`\n[${new Date().toISOString()}] Error processing job ${jobIdStr}:`, error.message);
           console.error('Stack:', error.stack);
         }
       } else {
+        if (isShuttingDown) break;
         const now = Date.now();
         if (!lastQueuePollLog || now - lastQueuePollLog > 30000) {
           console.log(`[${new Date().toISOString()}] Waiting for jobs in queue '${queueName}'... (filter: ${JOB_TYPE_FILTER})`);
@@ -3037,13 +3064,48 @@ async function ensureLastHeartbeatColumn() {
   }
 }
 
+async function doRecovery(label) {
+  const staleJobs = await pgPool.query(
+    `SELECT id, job_type, user_id, processed_leads, total_leads
+     FROM jobs
+     WHERE status = 'processing'
+       AND (last_heartbeat IS NULL OR last_heartbeat < NOW() - INTERVAL '2 minutes')
+     ORDER BY created_at ASC`
+  );
+
+  if (staleJobs.rows.length === 0) return 0;
+
+  let recoveredCount = 0;
+  for (const job of staleJobs.rows) {
+    console.log(`[${label}] Re-queuing stale job ${job.id} ` +
+      `(type: ${job.job_type}, progress: ${job.processed_leads}/${job.total_leads})`);
+
+    try {
+      await pgPool.query(
+        `UPDATE jobs SET status = 'pending', last_heartbeat = NULL, completed_at = NULL WHERE id = $1`,
+        [job.id]
+      );
+
+      await unregisterFairshareJob(String(job.id), null);
+
+      const pushResult = await redisClient.rPush(VERIFICATION_QUEUE, String(job.id));
+      console.log(`[${label}] Pushed job ${job.id} to queue (queue length: ${pushResult})`);
+      recoveredCount++;
+    } catch (e) {
+      console.error(`[${label}] FAILED to re-queue job ${job.id}: ${e.message}`);
+    }
+  }
+
+  console.log(`[${label}] Recovered ${recoveredCount}/${staleJobs.rows.length} stale job(s)`);
+  return recoveredCount;
+}
+
 async function recoverStaleJobs() {
   const lockAcquired = await redisClient.set(
     'crash_recovery_lock', process.pid.toString(), { NX: true, EX: 60 }
   );
   if (!lockAcquired) {
     console.log('[RECOVERY] Another worker is handling crash recovery, waiting for recovery to complete...');
-    // Wait for the recovery worker to finish instead of racing ahead
     for (let i = 0; i < 30; i++) {
       await new Promise(resolve => setTimeout(resolve, 2000));
       const lockStillHeld = await redisClient.get('crash_recovery_lock');
@@ -3056,40 +3118,30 @@ async function recoverStaleJobs() {
     return;
   }
 
-  const staleJobs = await pgPool.query(
-    `SELECT id, job_type, user_id, processed_leads, total_leads
-     FROM jobs
-     WHERE status = 'processing'
-       AND (last_heartbeat IS NULL OR last_heartbeat < NOW() - INTERVAL '2 minutes')
-     ORDER BY created_at ASC`
-  );
-
-  let recoveredCount = 0;
-  for (const job of staleJobs.rows) {
-    console.log(`[RECOVERY] Re-queuing stale job ${job.id} ` +
-      `(type: ${job.job_type}, progress: ${job.processed_leads}/${job.total_leads})`);
-
-    try {
-      await pgPool.query(
-        `UPDATE jobs SET status = 'pending', last_heartbeat = NULL, completed_at = NULL WHERE id = $1`,
-        [job.id]
-      );
-
-      await unregisterFairshareJob(String(job.id), null);
-
-      const pushResult = await redisClient.rPush(VERIFICATION_QUEUE, String(job.id));
-      console.log(`[RECOVERY] Pushed job ${job.id} to queue (queue length: ${pushResult})`);
-      recoveredCount++;
-    } catch (e) {
-      console.error(`[RECOVERY] FAILED to re-queue job ${job.id}: ${e.message}`);
-    }
-  }
-
-  console.log(`[RECOVERY] Recovered ${recoveredCount}/${staleJobs.rows.length} stale job(s)`);
+  await doRecovery('RECOVERY');
 }
 
-// Boot sequence: ensure schema -> recover stale jobs -> start polling
+const PERIODIC_RECOVERY_INTERVAL_MS = 3 * 60 * 1000;
+
+async function periodicRecovery() {
+  if (isShuttingDown) return;
+  const lockAcquired = await redisClient.set(
+    'crash_recovery_lock', process.pid.toString(), { NX: true, EX: 60 }
+  );
+  if (!lockAcquired) return;
+
+  try {
+    await doRecovery('PERIODIC-RECOVERY');
+  } catch (e) {
+    console.error('[PERIODIC-RECOVERY] Error:', e.message);
+  }
+}
+
+// Boot sequence: ensure schema -> recover stale jobs -> start polling + periodic sweep
 ensureLastHeartbeatColumn()
   .then(() => recoverStaleJobs())
-  .then(() => pollSimpleQueue())
+  .then(() => {
+    setInterval(periodicRecovery, PERIODIC_RECOVERY_INTERVAL_MS);
+    return pollSimpleQueue();
+  })
   .catch(console.error);
