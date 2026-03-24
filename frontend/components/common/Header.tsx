@@ -98,14 +98,10 @@ export function Header() {
             </svg>
           </button>
           {showMenu && (
-            <div className="absolute right-0 mt-2 w-56 bg-dashboard-card border border-dashboard-border rounded-xl py-2 z-50 shadow-lg">
-              <div className="px-4 py-3 border-b border-dashboard-border">
-                <p className="text-sm font-medium text-dashboard-text">{user.full_name || "User"}</p>
-                <p className="text-xs text-dashboard-text-muted mt-0.5">{user.email}</p>
-              </div>
+            <div className="absolute right-0 mt-1 w-36 bg-dashboard-card border border-dashboard-border rounded-lg py-1 z-50 shadow-lg">
               <Link
                 href="/settings"
-                className="block px-4 py-2 text-sm text-dashboard-text hover:bg-dashboard-surface-alt transition-colors"
+                className="block px-3 py-1.5 text-sm text-dashboard-text hover:bg-dashboard-surface-alt transition-colors"
                 onClick={() => setShowMenu(false)}
               >
                 Settings
@@ -115,7 +111,7 @@ export function Header() {
                   handleLogout();
                   setShowMenu(false);
                 }}
-                className="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-dashboard-surface-alt transition-colors"
+                className="block w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-dashboard-surface-alt transition-colors"
               >
                 Logout
               </button>

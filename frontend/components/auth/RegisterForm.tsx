@@ -38,9 +38,9 @@ export function RegisterForm() {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    confirmPassword: "",
     full_name: "",
-    company_name: "",
+    company_website: "",
+    referral_source: "",
   });
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState("");
@@ -62,17 +62,18 @@ export function RegisterForm() {
     setError("");
 
     if (!isEmailAllowed(formData.email)) {
-      setError("Please use a company email or Gmail address. Personal email providers like iCloud, Outlook, and Yahoo are not supported.");
-      return;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match");
+      setError("Please Enter A Company Email");
       return;
     }
 
     if (formData.password.length < 6) {
       setError("Password must be at least 6 characters");
+      return;
+    }
+
+    const wordCount = formData.referral_source.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount > 20) {
+      setError("Referral answer must be 20 words or less");
       return;
     }
 
@@ -88,7 +89,8 @@ export function RegisterForm() {
         email: formData.email,
         password: formData.password,
         full_name: formData.full_name,
-        company_name: formData.company_name || undefined,
+        company_website: formData.company_website,
+        referral_source: formData.referral_source,
       });
       router.push("/sales-nav-scraper");
     } catch (err) {
@@ -137,16 +139,33 @@ export function RegisterForm() {
       </div>
 
       <div>
-        <label htmlFor="company_name" className="block text-sm font-medium text-white mb-2">
-          Company Name <span className="text-gray-500">(optional)</span>
+        <label htmlFor="company_website" className="block text-sm font-medium text-white mb-2">
+          Company Website
         </label>
         <input
-          id="company_name"
-          type="text"
-          value={formData.company_name}
-          onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+          id="company_website"
+          type="url"
+          required
+          value={formData.company_website}
+          onChange={(e) => setFormData({ ...formData, company_website: e.target.value })}
           className="glass-input w-full"
-          placeholder="Acme Inc."
+          placeholder="https://yourcompany.com"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="referral_source" className="block text-sm font-medium text-white mb-2">
+          Who referred you? <span className="text-gray-500">(Want to give credit where credit is due)</span>
+        </label>
+        <input
+          id="referral_source"
+          type="text"
+          required
+          maxLength={150}
+          value={formData.referral_source}
+          onChange={(e) => setFormData({ ...formData, referral_source: e.target.value })}
+          className="glass-input w-full"
+          placeholder="John from Twitter, Google search, etc."
         />
       </div>
 
@@ -183,21 +202,6 @@ export function RegisterForm() {
         )}
       </div>
 
-      <div>
-        <label htmlFor="confirmPassword" className="block text-sm font-medium text-white mb-2">
-          Confirm Password
-        </label>
-        <input
-          id="confirmPassword"
-          type="password"
-          required
-          value={formData.confirmPassword}
-          onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-          className="glass-input w-full"
-          placeholder="••••••••"
-        />
-      </div>
-
       <div className="flex items-center">
         <input
           id="terms"
@@ -220,7 +224,7 @@ export function RegisterForm() {
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || !acceptTerms}
         className="w-full bg-[#0099FF] text-white py-2 px-4 rounded-lg hover:bg-[#0099FF]/90 focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-all"
         style={{ boxShadow: '0 0 20px rgba(0, 153, 255, 0.2)' }}
       >

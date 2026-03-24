@@ -1,14 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
-from datetime import timedelta
+from datetime import timedelta, datetime
+import secrets
 
 from app.db.session import get_db
 from app.models.user import User
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.core.config import settings
-from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserResponse, UserUpdate
+from app.schemas.auth import (
+    UserRegister, UserLogin, TokenResponse, UserResponse, UserUpdate,
+    ForgotPasswordRequest, ResetPasswordRequest,
+)
 from app.api.dependencies import get_current_user
+from app.services.email_service import send_password_reset_email
 
 router = APIRouter()
 security = HTTPBearer()
@@ -31,7 +36,10 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
         hashed_password=hashed_password,
         full_name=user_data.full_name,
         company_name=user_data.company_name,
-        credits=100,  # Default credits for new users
+        company_website=user_data.company_website,
+        referral_source=user_data.referral_source,
+        daily_cold_emails=user_data.daily_cold_emails,
+        credits=100,
     )
     
     db.add(new_user)
@@ -184,3 +192,45 @@ async def regenerate_api_key(
         created_at=current_user.created_at.isoformat(),
     )
 
+
+@router.post("/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Generate a password reset token and email it to the user. Always returns 200 to avoid email enumeration."""
+    user = db.query(User).filter(User.email == data.email).first()
+
+    if user:
+        token = secrets.token_urlsafe(48)
+        user.password_reset_token = token
+        user.password_reset_expires = datetime.utcnow() + timedelta(hours=24)
+        db.commit()
+        send_password_reset_email(user.email, token)
+
+    return {"message": "If an account with that email exists, a password reset link has been sent."}
+
+
+@router.post("/reset-password")
+async def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Validate the reset token and set a new password."""
+    if len(data.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters",
+        )
+
+    user = db.query(User).filter(
+        User.password_reset_token == data.token,
+        User.password_reset_expires > datetime.utcnow(),
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset link. Please request a new one.",
+        )
+
+    user.hashed_password = get_password_hash(data.new_password)
+    user.password_reset_token = None
+    user.password_reset_expires = None
+    db.commit()
+
+    return {"message": "Password has been reset successfully. You can now sign in."}

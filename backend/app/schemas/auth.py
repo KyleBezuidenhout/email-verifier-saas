@@ -25,20 +25,18 @@ class UserRegister(BaseModel):
     password: str
     full_name: str
     company_name: Optional[str] = None
+    company_website: str
+    referral_source: str
+    daily_cold_emails: Optional[int] = None
 
     @field_validator("email")
     @classmethod
     def validate_email_domain(cls, v: str) -> str:
         domain = v.lower().split("@")[1]
-        # Gmail is explicitly allowed
         if domain == "gmail.com":
             return v
-        # Check if domain is in blocked list
         if domain in BLOCKED_EMAIL_DOMAINS:
-            raise ValueError(
-                "Please use a company email or Gmail address. "
-                "Personal email providers like iCloud, Outlook, and Yahoo are not supported."
-            )
+            raise ValueError("Please Enter A Company Email")
         return v
 
 
@@ -73,6 +71,15 @@ class UserUpdate(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 
 class TokenResponse(BaseModel):

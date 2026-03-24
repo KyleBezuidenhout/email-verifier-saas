@@ -223,6 +223,20 @@ class ApiClient {
     return response;
   }
 
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>("/api/v1/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async resetPassword(token: string, new_password: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>("/api/v1/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, new_password }),
+    });
+  }
+
   async logout(): Promise<void> {
     await this.request("/api/v1/auth/logout", {
       method: "POST",

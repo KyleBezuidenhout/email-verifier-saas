@@ -61,6 +61,9 @@ export interface RegisterRequest {
   password: string;
   full_name: string;
   company_name?: string;
+  company_website: string;
+  referral_source: string;
+  daily_cold_emails?: number;
 }
 
 export interface AuthResponse {
