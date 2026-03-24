@@ -277,7 +277,9 @@ async def startup_tasks():
 async def shutdown_tasks():
     """Close async connections on shutdown."""
     from app.api.v1.endpoints.enrich import shutdown_enrich
+    from app.api.v1.endpoints.webhooks import shutdown_webhooks
     await shutdown_enrich()
-    logger.info("Enrichment API connections closed")
+    await shutdown_webhooks()
+    logger.info("Async connections closed")
 
 

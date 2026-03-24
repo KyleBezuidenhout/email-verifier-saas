@@ -8,7 +8,7 @@ Pushes webhook payloads to Redis queue for worker processing.
 from fastapi import APIRouter, HTTPException, Request
 import logging
 import json
-import redis
+import redis.asyncio as aioredis
 
 from app.db.session import SessionLocal
 from app.models.local_scraper_order import LocalScraperOrder
@@ -18,11 +18,23 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Redis queue for webhook processing (handled by worker)
 WEBHOOK_QUEUE = "google-maps-webhook-queue"
 
-# Initialize Redis client
-redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+_redis: aioredis.Redis | None = None
+
+
+def _get_redis() -> aioredis.Redis:
+    global _redis
+    if _redis is None:
+        _redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+    return _redis
+
+
+async def shutdown_webhooks() -> None:
+    global _redis
+    if _redis:
+        await _redis.close()
+        _redis = None
 
 
 @router.post("/apify")
@@ -89,8 +101,7 @@ async def apify_webhook(request: Request):
         # Add webhook URL to payload for worker to use
         body["webhookUrl"] = str(request.url)
         
-        # Push to Redis queue for worker processing
-        redis_client.lpush(WEBHOOK_QUEUE, json.dumps(body))
+        await _get_redis().lpush(WEBHOOK_QUEUE, json.dumps(body))
         logger.info(f"📤 Queued webhook for worker: order={order_id}, city={city_index}, event={event_type}")
         
         return {"status": "queued", "event": event_type}
@@ -98,7 +109,7 @@ async def apify_webhook(request: Request):
     except json.JSONDecodeError:
         logger.error("Invalid JSON in webhook body")
         raise HTTPException(status_code=400, detail="Invalid JSON")
-    except redis.RedisError as e:
+    except aioredis.RedisError as e:
         logger.error(f"Redis error queueing webhook: {e}")
         # Return 500 so Apify will retry
         raise HTTPException(status_code=500, detail="Failed to queue webhook")
