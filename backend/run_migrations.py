@@ -27,6 +27,7 @@ def run_migrations():
         from migrate_vayne_orders_columns import run_migration as migrate_vayne_orders_columns
         from migrate_add_job_company_size import migrate as migrate_job_company_size
         from migrate_add_max_concurrent_jobs import migrate as migrate_max_concurrent_jobs
+        from migrate_add_last_heartbeat import migrate as migrate_last_heartbeat
 
         # Run migrations
         migrate_catchall_key()
@@ -39,6 +40,7 @@ def run_migrations():
         migrate_vayne_orders_columns()
         migrate_job_company_size()
         migrate_max_concurrent_jobs()
+        migrate_last_heartbeat()
 
         print("✓ All migrations completed successfully!")
         return True

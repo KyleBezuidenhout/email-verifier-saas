@@ -2154,6 +2154,7 @@ async function processJobFromQueue(jobId) {
   console.log(`\n[${new Date().toISOString()}] Processing job: ${jobId}`);
   
   let heartbeatInterval = null;
+  let pgHeartbeatInterval = null;
   
   try {
     // Get job details from database
@@ -2188,9 +2189,24 @@ async function processJobFromQueue(jobId) {
       return { status: 'cancelled', message: 'Job was cancelled' };
     }
     
+    if (jobData.status === 'completed' || jobData.status === 'failed') {
+      console.log(`Job ${jobId} already ${jobData.status}, skipping`);
+      return { status: jobData.status, message: `Job already ${jobData.status}` };
+    }
+    
     if (jobData.status === 'waiting_for_csv') {
       console.log(`Job ${jobId} is waiting for CSV data (status: waiting_for_csv), skipping processing...`);
       return { status: 'waiting_for_csv', message: 'Job waiting for CSV data' };
+    }
+    
+    // Detect resume mode from actual lead state (not stale processed_leads counter)
+    const actualProcessedResult = await pgPool.query(
+      "SELECT COUNT(*) as cnt FROM leads WHERE job_id = $1 AND verification_status != 'pending'",
+      [jobId]
+    );
+    const isResuming = parseInt(actualProcessedResult.rows[0].cnt) > 0;
+    if (isResuming) {
+      console.log(`[RESUME] Job ${jobId} resuming — ${actualProcessedResult.rows[0].cnt} leads already processed`);
     }
     
     // Register with fair-share system before processing
@@ -2198,8 +2214,16 @@ async function processJobFromQueue(jobId) {
     const allocatedKeys = await getAllocatedKeys(jobId);
     console.log(`Fair-share: allocated ${allocatedKeys.length}/${MAILTESTER_API_KEYS.length} keys to job ${jobId}`);
     
-    // Update job status to processing
+    // Update job status to processing + set initial heartbeat
     await updateJobStatus(jobId, 'processing');
+    await pgPool.query('UPDATE jobs SET last_heartbeat = NOW() WHERE id = $1', [jobId]);
+    
+    // Standalone Postgres heartbeat (independent of fair-share, works in dedicated mode too)
+    pgHeartbeatInterval = setInterval(async () => {
+      try {
+        await pgPool.query('UPDATE jobs SET last_heartbeat = NOW() WHERE id = $1', [jobId]);
+      } catch (e) { /* non-fatal */ }
+    }, FAIRSHARE_HEARTBEAT_REFRESH_MS);
     
     // ============================================
     // VERIFICATION JOBS: Direct verification only (no permutations)
@@ -2207,21 +2231,22 @@ async function processJobFromQueue(jobId) {
     if (jobType === 'verification') {
       console.log(`Verification job detected - processing leads directly (no permutations)`);
       
-      // Get all leads for this job (no need to order by prevalence_score)
+      // Only fetch pending leads (skip already-processed leads on resume)
       const leadsResult = await pgPool.query(
-        'SELECT * FROM leads WHERE job_id = $1 ORDER BY id',
+        "SELECT * FROM leads WHERE job_id = $1 AND verification_status = 'pending' ORDER BY id",
         [jobId]
       );
       
       const leads = leadsResult.rows;
-      const totalLeads = leads.length;
+      const totalLeads = jobData.total_leads;
       
-      console.log(`Found ${totalLeads} leads to verify`);
+      console.log(`Found ${leads.length} pending leads to verify (${totalLeads} total)`);
       
-      if (totalLeads === 0) {
+      if (leads.length === 0) {
         await updateJobStatus(jobId, 'completed', {
           completed_at: new Date(),
         });
+        clearInterval(pgHeartbeatInterval);
         await unregisterFairshareJob(jobId, heartbeatInterval);
         await promoteFromWaitingRoom(jobData.user_id);
         return { status: 'completed', message: 'No leads to process' };
@@ -2231,6 +2256,34 @@ async function processJobFromQueue(jobId) {
       let validCount = 0;
       let catchallCount = 0;
       const finalResultIds = [];
+      
+      // On resume: seed counters from DB and collect pre-crash lead IDs
+      if (isResuming) {
+        const resumeStats = await pgPool.query(
+          `SELECT
+             COUNT(*) FILTER (WHERE verification_status != 'pending') as processed,
+             COUNT(*) FILTER (WHERE verification_status = 'valid') as valid,
+             COUNT(*) FILTER (WHERE verification_status = 'catchall') as catchall
+           FROM leads WHERE job_id = $1`,
+          [jobId]
+        );
+        processedCount = parseInt(resumeStats.rows[0].processed) || 0;
+        validCount = parseInt(resumeStats.rows[0].valid) || 0;
+        catchallCount = parseInt(resumeStats.rows[0].catchall) || 0;
+
+        // Verification: is_final_result is only bulk-written at completion,
+        // so pre-crash leads have is_final_result=false. Collect by status instead.
+        const preCrashLeads = await pgPool.query(
+          "SELECT id FROM leads WHERE job_id = $1 AND verification_status != 'pending'",
+          [jobId]
+        );
+        for (const row of preCrashLeads.rows) {
+          finalResultIds.push(row.id);
+        }
+
+        console.log(`[RESUME] Seeded: ${processedCount} processed, ${validCount} valid, ${catchallCount} catchall, ${finalResultIds.length} pre-finalized`);
+      }
+      
       let lastProgressUpdate = Date.now();
       
       const isSmallJob = totalLeads <= SMALL_JOB_THRESHOLD;
@@ -2244,7 +2297,7 @@ async function processJobFromQueue(jobId) {
       
       // Dynamic concurrency based on allocated keys
       const effectiveMaxLeads = computeMaxConcurrent(allocatedKeys.length, 'verification');
-      console.log(`Starting verification with STREAMING PIPELINE: ${totalLeads} leads (${effectiveMaxLeads} concurrent)`);
+      console.log(`Starting verification with STREAMING PIPELINE: ${leads.length} pending leads (${effectiveMaxLeads} concurrent)`);
       console.log(`Using ${allocatedKeys.length}/${MAILTESTER_API_KEYS.length} allocated API keys`);
       
       // ==============================================
@@ -2384,6 +2437,7 @@ async function processJobFromQueue(jobId) {
         console.log(`Flushed ${flushed} pending lead updates before cancellation`);
         await flushAllUsageTracking();
         await updateJobStatus(jobId, 'cancelled');
+        clearInterval(pgHeartbeatInterval);
         await unregisterFairshareJob(jobId, heartbeatInterval);
         await promoteFromWaitingRoom(jobData.user_id);
         return { status: 'cancelled', message: 'Job was cancelled during processing' };
@@ -2396,8 +2450,20 @@ async function processJobFromQueue(jobId) {
       }
       await flushAllUsageTracking();
       
-      // Mark all processed leads as final results
-      await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
+      // Mark all processed leads as final results (preserve pre-crash finalized leads on resume)
+      if (isResuming && finalResultIds.length > 0) {
+        const EXCLUDE_BATCH = 500;
+        for (let i = 0; i < finalResultIds.length; i += EXCLUDE_BATCH) {
+          const chunk = finalResultIds.slice(i, i + EXCLUDE_BATCH);
+          const placeholders = chunk.map((_, j) => `$${j + 2}`).join(',');
+          await pgPool.query(
+            `UPDATE leads SET is_final_result = false WHERE job_id = $1 AND id NOT IN (${placeholders}) AND is_final_result = true`,
+            [jobId, ...chunk]
+          );
+        }
+      } else {
+        await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
+      }
       
       if (finalResultIds.length > 0) {
         const FINAL_RESULT_BATCH = 500;
@@ -2457,7 +2523,8 @@ async function processJobFromQueue(jobId) {
         }
       }
       
-      // Unregister from fair-share and promote waiting room
+      // Unregister from fair-share, stop heartbeat, promote waiting room
+      clearInterval(pgHeartbeatInterval);
       await unregisterFairshareJob(jobId, heartbeatInterval);
       await promoteFromWaitingRoom(jobData.user_id);
       
@@ -2500,12 +2567,25 @@ async function processJobFromQueue(jobId) {
     console.log(`Input file path: ${jobData.input_file_path || 'N/A'}`);
     console.log(`========================================\n`);
     
-    // Get all leads for this job
+    // Get leads for this job (on resume, exclude entire people already finalized via enrichment_key)
     console.log(`📋 Fetching leads for job ${jobId}...`);
-    const leadsResult = await pgPool.query(
-      'SELECT * FROM leads WHERE job_id = $1 ORDER BY prevalence_score DESC',
-      [jobId]
-    );
+    let leadsResult;
+    if (isResuming) {
+      leadsResult = await pgPool.query(
+        `SELECT * FROM leads WHERE job_id = $1
+           AND enrichment_key NOT IN (
+             SELECT enrichment_key FROM leads
+             WHERE job_id = $1 AND is_final_result = true AND verification_status != 'pending'
+           )
+           ORDER BY prevalence_score DESC`,
+        [jobId]
+      );
+    } else {
+      leadsResult = await pgPool.query(
+        'SELECT * FROM leads WHERE job_id = $1 ORDER BY prevalence_score DESC',
+        [jobId]
+      );
+    }
     
     const leads = leadsResult.rows;
     const totalPermutations = leads.length;
@@ -2532,6 +2612,7 @@ async function processJobFromQueue(jobId) {
       await updateJobStatus(jobId, 'completed', {
         completed_at: new Date(),
       });
+      clearInterval(pgHeartbeatInterval);
       await unregisterFairshareJob(jobId, heartbeatInterval);
       await promoteFromWaitingRoom(jobData.user_id);
       return { status: 'completed', message: 'No leads to process' };
@@ -2542,6 +2623,7 @@ async function processJobFromQueue(jobId) {
       await updateJobStatus(jobId, 'failed', {
         completed_at: new Date(),
       });
+      clearInterval(pgHeartbeatInterval);
       await unregisterFairshareJob(jobId, heartbeatInterval);
       await promoteFromWaitingRoom(jobData.user_id);
       return { status: 'failed', message: 'Job has no input file path' };
@@ -2598,6 +2680,33 @@ async function processJobFromQueue(jobId) {
     let totalApiCalls = 0;
     let savedApiCalls = 0;
     const finalResultIds = [];
+    
+    // On resume: seed counters from DB and collect pre-crash finalized lead IDs
+    if (isResuming) {
+      const resumeStats = await pgPool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE verification_status != 'pending') as processed,
+           COUNT(*) FILTER (WHERE verification_status = 'valid') as valid,
+           COUNT(*) FILTER (WHERE verification_status = 'catchall') as catchall
+         FROM leads WHERE job_id = $1`,
+        [jobId]
+      );
+      completedPeopleCount = parseInt(resumeStats.rows[0].processed) || 0;
+      validCount = parseInt(resumeStats.rows[0].valid) || 0;
+      catchallCount = parseInt(resumeStats.rows[0].catchall) || 0;
+
+      // Enrichment: is_final_result is written eagerly via markLeadAsFinal, so this is reliable
+      const existingFinals = await pgPool.query(
+        'SELECT id FROM leads WHERE job_id = $1 AND is_final_result = true',
+        [jobId]
+      );
+      for (const row of existingFinals.rows) {
+        finalResultIds.push(row.id);
+      }
+
+      console.log(`[RESUME] Seeded: ${completedPeopleCount} processed, ${validCount} valid, ${catchallCount} catchall, ${finalResultIds.length} pre-finalized`);
+    }
+    
     let lastProgressUpdate = Date.now();
     let itemsSinceLastCancelCheck = 0;
     let personIndex = 0;
@@ -2728,6 +2837,7 @@ async function processJobFromQueue(jobId) {
       console.log(`Flushed ${flushed} pending lead updates before cancellation`);
       await flushAllUsageTracking();
       await updateJobStatus(jobId, 'cancelled');
+      clearInterval(pgHeartbeatInterval);
       await unregisterFairshareJob(jobId, heartbeatInterval);
       await promoteFromWaitingRoom(jobData.user_id);
       return { status: 'cancelled', message: 'Job was cancelled during processing' };
@@ -2743,8 +2853,20 @@ async function processJobFromQueue(jobId) {
     await flushAllUsageTracking();
     console.log(`📊 Usage tracking flushed to Redis`);
     
-    // Unmark all leads first, then mark final results
-    await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
+    // Unmark leads then mark final results (preserve pre-crash finalized leads on resume)
+    if (isResuming && finalResultIds.length > 0) {
+      const EXCLUDE_BATCH = 500;
+      for (let i = 0; i < finalResultIds.length; i += EXCLUDE_BATCH) {
+        const chunk = finalResultIds.slice(i, i + EXCLUDE_BATCH);
+        const placeholders = chunk.map((_, j) => `$${j + 2}`).join(',');
+        await pgPool.query(
+          `UPDATE leads SET is_final_result = false WHERE job_id = $1 AND id NOT IN (${placeholders}) AND is_final_result = true`,
+          [jobId, ...chunk]
+        );
+      }
+    } else {
+      await pgPool.query('UPDATE leads SET is_final_result = false WHERE job_id = $1', [jobId]);
+    }
     
     if (finalResultIds.length > 0) {
       const FINAL_RESULT_BATCH = 500;
@@ -2806,7 +2928,8 @@ async function processJobFromQueue(jobId) {
       }
     }
     
-    // Unregister from fair-share and promote waiting room
+    // Unregister from fair-share, stop heartbeat, promote waiting room
+    clearInterval(pgHeartbeatInterval);
     await unregisterFairshareJob(jobId, heartbeatInterval);
     await promoteFromWaitingRoom(jobData.user_id);
     
@@ -2850,7 +2973,8 @@ async function processJobFromQueue(jobId) {
       console.error(`Failed to flush pending updates:`, flushError.message);
     }
     
-    // Always unregister from fair-share on failure
+    // Always unregister from fair-share and stop heartbeat on failure
+    if (pgHeartbeatInterval) clearInterval(pgHeartbeatInterval);
     await unregisterFairshareJob(jobId, heartbeatInterval);
     
     try {
@@ -2900,5 +3024,56 @@ healthServer.listen(HEALTH_PORT, '0.0.0.0', () => {
   console.log(`✅ Health check server running on port ${HEALTH_PORT}`);
 });
 
-// Start simple queue poller
-pollSimpleQueue().catch(console.error);
+// ============================================
+// CRASH RECOVERY
+// ============================================
+
+async function ensureLastHeartbeatColumn() {
+  try {
+    await pgPool.query('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMPTZ');
+    console.log('[STARTUP] Ensured last_heartbeat column exists');
+  } catch (e) {
+    console.error('[STARTUP] Failed to ensure last_heartbeat column:', e.message);
+  }
+}
+
+async function recoverStaleJobs() {
+  const lockAcquired = await redisClient.set(
+    'crash_recovery_lock', process.pid.toString(), { NX: true, EX: 60 }
+  );
+  if (!lockAcquired) {
+    console.log('[RECOVERY] Another worker is handling crash recovery, skipping');
+    return;
+  }
+
+  const staleJobs = await pgPool.query(
+    `SELECT id, job_type, user_id, processed_leads, total_leads
+     FROM jobs
+     WHERE status = 'processing'
+       AND completed_at IS NULL
+       AND (last_heartbeat IS NULL OR last_heartbeat < NOW() - INTERVAL '2 minutes')
+     ORDER BY created_at ASC`
+  );
+
+  for (const job of staleJobs.rows) {
+    console.log(`[RECOVERY] Re-queuing stale job ${job.id} ` +
+      `(type: ${job.job_type}, progress: ${job.processed_leads}/${job.total_leads})`);
+
+    await pgPool.query(
+      `UPDATE jobs SET status = 'pending', last_heartbeat = NULL WHERE id = $1`,
+      [job.id]
+    );
+
+    await unregisterFairshareJob(String(job.id), null);
+
+    await redisClient.rPush(VERIFICATION_QUEUE, String(job.id));
+  }
+
+  console.log(`[RECOVERY] Recovered ${staleJobs.rows.length} stale job(s)`);
+}
+
+// Boot sequence: ensure schema -> recover stale jobs -> start polling
+ensureLastHeartbeatColumn()
+  .then(() => recoverStaleJobs())
+  .then(() => pollSimpleQueue())
+  .catch(console.error);
