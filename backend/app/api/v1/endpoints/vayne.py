@@ -591,13 +591,10 @@ async def download_order_csv(
             logger.error(f"Failed to fetch CSV from file_url: {str(e)}")
             raise HTTPException(status_code=404, detail="Failed to download CSV file. Please try again later.")
         
-        # Generate filename
-        targeting = getattr(order, 'targeting', None) or 'export'
-        # Sanitize filename
+        targeting = getattr(order, 'targeting', None) or ''
         safe_targeting = "".join(c for c in targeting if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
-        if not safe_targeting:
-            safe_targeting = "export"
-        filename = f"{safe_targeting}_{str(order_id)[:8]}.csv"
+        base_name = safe_targeting.replace(' ', '_') if safe_targeting else str(order_id)[:8]
+        filename = f"results-{base_name}.csv"
         
         return StreamingResponse(
             iter([csv_content]),

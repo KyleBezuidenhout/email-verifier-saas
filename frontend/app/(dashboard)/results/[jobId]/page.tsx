@@ -195,7 +195,11 @@ export default function ResultsPage() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `results-${jobId}.csv`;
+    const baseName = job?.job_name?.trim()
+      ? job.job_name.trim().replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "_").slice(0, 50)
+      : jobId;
+    const filterSuffix = filter !== "all" ? `-${filter}` : "";
+    a.download = `results-${baseName}${filterSuffix}.csv`;
     a.click();
   };
 
