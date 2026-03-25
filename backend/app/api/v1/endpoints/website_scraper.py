@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Initialize Redis connection for job queue
-redis_client = redis.from_url(settings.REDIS_URL)
+redis_client = redis.from_url(settings.REDIS_URL, socket_timeout=5, socket_connect_timeout=5)
 
 # Queue name for website scraper jobs
 WEBSITE_SCRAPER_QUEUE = "website-scraper-queue"

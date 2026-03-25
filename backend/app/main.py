@@ -217,6 +217,7 @@ async def startup_tasks():
         from migrate_add_password_reset import run_migration as migrate_password_reset
         from migrate_add_email_verification import run_migration as migrate_email_verification
         from migrate_add_queue_depth_snapshots import run_migration as migrate_queue_depth_snapshots
+        from migrate_add_vayne_orders_index import run_migration as migrate_vayne_orders_index
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -241,6 +242,7 @@ async def startup_tasks():
         migrate_password_reset()
         migrate_email_verification()
         migrate_queue_depth_snapshots()
+        migrate_vayne_orders_index()
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)

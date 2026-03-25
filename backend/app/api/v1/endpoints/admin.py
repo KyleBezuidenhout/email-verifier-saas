@@ -38,7 +38,7 @@ from app.core.security import create_access_token
 router = APIRouter()
 
 # Redis client for job cancellation notifications
-redis_client = redis.from_url(settings.REDIS_URL)
+redis_client = redis.from_url(settings.REDIS_URL, socket_timeout=5, socket_connect_timeout=5)
 
 # GMT+2 timezone
 GMT_PLUS_2 = ZoneInfo("Africa/Johannesburg")
@@ -548,7 +548,7 @@ async def get_api_key_usage(
     omni_credits = None
     try:
         import json as _json
-        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=5, socket_connect_timeout=5)
         raw = r.get("omniverifier:credit_balance")
         if raw:
             data = _json.loads(raw)
@@ -881,7 +881,7 @@ async def impersonate_client(
 ANALYTICS_CACHE_TTL = 3600       # 1 hour for time-series data
 MEDIAN_CACHE_TTL = 86400         # 24 hours for historical medians
 
-redis_cache = redis.from_url(settings.REDIS_URL, decode_responses=True)
+redis_cache = redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=5, socket_connect_timeout=5)
 
 
 def _get_queue_depth_current(db: Session) -> dict:

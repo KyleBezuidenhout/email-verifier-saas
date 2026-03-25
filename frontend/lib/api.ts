@@ -41,7 +41,8 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    timeoutMs: number = 30_000
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const token = this.getToken();
@@ -54,10 +55,14 @@ class ApiClient {
       headers.Authorization = `Bearer ${token}`;
     }
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
       const response = await fetch(url, {
         ...options,
         headers,
+        signal: controller.signal,
       });
 
       // Handle 401 Unauthorized - token expired or invalid
@@ -105,14 +110,19 @@ class ApiClient {
 
       return JSON.parse(text);
     } catch (error) {
-      // Handle network errors (Failed to fetch, CORS, etc.)
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error(
+          "Request timed out. The server may be slow or unavailable — please try again."
+        );
+      }
       if (error instanceof TypeError && error.message === "Failed to fetch") {
         throw new Error(
           `Unable to connect to backend. Please check that the API is running at ${this.baseUrl}`
         );
       }
-      // Re-throw other errors
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
   }
 

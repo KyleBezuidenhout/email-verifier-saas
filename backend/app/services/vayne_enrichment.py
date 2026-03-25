@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # S3 client not needed here anymore - enrichment worker handles CSV processing
 
 # Initialize Redis connection
-redis_client = redis.from_url(settings.REDIS_URL)
+redis_client = redis.from_url(settings.REDIS_URL, socket_timeout=5, socket_connect_timeout=5)
 
 
 async def create_placeholder_enrichment_job(order: VayneOrder, db: Session) -> Optional[Job]:

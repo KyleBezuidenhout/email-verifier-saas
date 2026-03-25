@@ -69,7 +69,7 @@ s3_client = boto3.client(
 )
 
 # Initialize Redis client for job queue
-redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=5, socket_connect_timeout=5)
 
 # Queue name for Google Maps scraper jobs
 GOOGLE_MAPS_SCRAPER_QUEUE = "google-maps-scraper-queue"

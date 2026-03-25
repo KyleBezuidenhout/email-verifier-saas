@@ -65,7 +65,7 @@ router = APIRouter()
 
 # Initialize Redis client
 try:
-    redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+    redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=5, socket_connect_timeout=5)
     redis_client.ping()
     logger.info("✅ Redis connected successfully")
 except Exception as e:
@@ -117,7 +117,7 @@ async def test_webhook_exists():
 
 
 @router.get("/auth", response_model=LinkedInAuthStatus)
-async def check_linkedin_auth(
+def check_linkedin_auth(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -128,7 +128,7 @@ async def check_linkedin_auth(
 
 
 @router.patch("/auth", response_model=LinkedInAuthStatus)
-async def update_linkedin_auth(
+def update_linkedin_auth(
     payload: UpdateSessionRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -140,7 +140,7 @@ async def update_linkedin_auth(
 
 
 @router.get("/credits", response_model=CreditsResponse)
-async def get_credits(
+def get_credits(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -151,7 +151,7 @@ async def get_credits(
 
 
 @router.get("/daily-usage")
-async def get_daily_usage(
+def get_daily_usage(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -196,7 +196,7 @@ async def get_daily_usage(
 
 
 @router.post("/validate-url", response_model=UrlValidationResponse)
-async def validate_url(
+def validate_url(
     payload: UrlValidationRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -208,7 +208,7 @@ async def validate_url(
 
 
 @router.post("/url-check", response_model=UrlValidationResponse)
-async def url_check(payload: UrlCheckRequest):
+def url_check(payload: UrlCheckRequest):
     try:
         logger.info(f"URL check requested for: {payload.sales_nav_url}")
         result = get_vayne_client().validate_url(payload.sales_nav_url)
@@ -235,7 +235,7 @@ async def url_check(payload: UrlCheckRequest):
 
 
 @router.post("/orders", response_model=CreateOrderResponse)
-async def create_order(
+def create_order(
     payload: CreateOrderRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -293,7 +293,7 @@ async def create_order(
 
 
 @router.get("/orders")
-async def list_orders(
+def list_orders(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     status: Optional[str] = Query(None),
@@ -340,7 +340,7 @@ async def list_orders(
 
 
 @router.get("/orders/{order_id}", response_model=OrderStatusResponse)
-async def get_order(
+def get_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -367,7 +367,7 @@ async def get_order(
 
 
 @router.get("/orders/{order_id}/poll-status")
-async def poll_order_status(
+def poll_order_status(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -474,7 +474,7 @@ async def poll_order_status(
 
 
 @router.delete("/orders/{order_id}")
-async def delete_order(
+def delete_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -511,7 +511,7 @@ async def delete_order(
 
 
 @router.post("/orders/{order_id}/cancel")
-async def cancel_order(
+def cancel_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -558,7 +558,7 @@ async def cancel_order(
 
 
 @router.get("/orders/{order_id}/download")
-async def download_order_csv(
+def download_order_csv(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -583,10 +583,9 @@ async def download_order_csv(
         
         # Fetch CSV from the file_url
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.get(file_url)
-                response.raise_for_status()
-                csv_content = response.content
+            response = httpx.get(file_url, timeout=60.0)
+            response.raise_for_status()
+            csv_content = response.content
         except Exception as e:
             logger.error(f"Failed to fetch CSV from file_url: {str(e)}")
             raise HTTPException(status_code=404, detail="Failed to download CSV file. Please try again later.")
