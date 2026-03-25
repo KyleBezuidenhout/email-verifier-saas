@@ -457,6 +457,22 @@ async function cleanupStaleJobs() {
         await redisClient.del(`fairshare:throughput:${jobId}`);
         await redisClient.del(`fairshare:keys_allocated:${jobId}`);
         console.log(`Cleaned up stale fairshare job ${jobId} (heartbeat expired, user ${userId})`);
+
+        // Re-queue the job if it's still stuck in 'processing' (atomic: only one worker succeeds)
+        try {
+          const result = await pgPool.query(
+            `UPDATE jobs SET status = 'pending', last_heartbeat = NULL, completed_at = NULL
+             WHERE id = $1 AND status = 'processing'
+             RETURNING id`,
+            [jobId]
+          );
+          if (result.rows.length > 0) {
+            await redisClient.rPush(VERIFICATION_QUEUE, jobId);
+            console.log(`Re-queued orphaned job ${jobId} to verification queue`);
+          }
+        } catch (requeueErr) {
+          console.error(`Failed to re-queue orphaned job ${jobId}:`, requeueErr.message);
+        }
       }
     }
   } catch (e) {
@@ -2910,9 +2926,10 @@ async function processJobFromQueue(jobId) {
     // Calculate cost (1 credit per unique person/lead actually processed)
     const costInCredits = completedPeopleCount;
     
-    // Mark job as completed
+    // Mark job as completed — use total_leads so progress bar shows 100%
+    // (completedPeopleCount may be less due to deduplication by enrichment_key)
     await updateJobStatus(jobId, 'completed', {
-      processed_leads: completedPeopleCount,
+      processed_leads: jobData.total_leads,
       valid_emails_found: validCount,
       catchall_emails_found: catchallCount,
       cost_in_credits: costInCredits,
@@ -3064,13 +3081,14 @@ async function ensureLastHeartbeatColumn() {
   }
 }
 
-async function doRecovery(label) {
+async function doRecovery(label, heartbeatThreshold = '2 minutes') {
   const staleJobs = await pgPool.query(
     `SELECT id, job_type, user_id, processed_leads, total_leads
      FROM jobs
      WHERE status = 'processing'
-       AND (last_heartbeat IS NULL OR last_heartbeat < NOW() - INTERVAL '2 minutes')
-     ORDER BY created_at ASC`
+       AND (last_heartbeat IS NULL OR last_heartbeat < NOW() - $1::interval)
+     ORDER BY created_at ASC`,
+    [heartbeatThreshold]
   );
 
   if (staleJobs.rows.length === 0) return 0;
@@ -3118,7 +3136,7 @@ async function recoverStaleJobs() {
     return;
   }
 
-  await doRecovery('RECOVERY');
+  await doRecovery('RECOVERY', '30 seconds');
 }
 
 const PERIODIC_RECOVERY_INTERVAL_MS = 3 * 60 * 1000;
