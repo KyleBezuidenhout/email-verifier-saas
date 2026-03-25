@@ -129,7 +129,7 @@ async def check_health():
 
 
 @router.get("/states", response_model=StateListResponse)
-async def list_states(db: Session = Depends(get_db)):
+def list_states(db: Session = Depends(get_db)):
     """Get list of available US states for scraping"""
     try:
         result = db.execute(text("""
@@ -159,7 +159,7 @@ async def list_states(db: Session = Depends(get_db)):
 
 
 @router.get("/cities/{state}", response_model=CityListResponse)
-async def list_cities(
+def list_cities(
     state: str,
     db: Session = Depends(get_db)
 ):
@@ -181,7 +181,7 @@ async def list_cities(
 
 
 @router.post("/estimate", response_model=CostEstimateResponse)
-async def estimate_cost(
+def estimate_cost(
     payload: CostEstimateRequest,
     db: Session = Depends(get_db),
 ):
@@ -220,7 +220,7 @@ async def estimate_cost(
 
 
 @router.post("/orders", response_model=GoogleMapsScraperOrderResponse)
-async def create_order(
+def create_order(
     payload: GoogleMapsScraperOrderCreate,
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -405,7 +405,7 @@ async def create_order(
 
 
 @router.get("/orders", response_model=GoogleMapsScraperOrderListResponse)
-async def list_orders(
+def list_orders(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -435,7 +435,7 @@ async def list_orders(
 
 
 @router.get("/orders/{order_id}", response_model=GoogleMapsScraperOrderResponse)
-async def get_order(
+def get_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -453,7 +453,7 @@ async def get_order(
 
 
 @router.get("/orders/{order_id}/status", response_model=GoogleMapsScraperStatusResponse)
-async def get_order_status(
+def get_order_status(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -526,7 +526,7 @@ async def get_order_status(
 
 
 @router.delete("/orders/{order_id}")
-async def delete_order(
+def delete_order(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -546,7 +546,7 @@ async def delete_order(
             run_id = run_info.get("run_id")
             if run_id and run_info.get("status") == "running":
                 try:
-                    await apify_service.abort_run(run_id)
+                    apify_service.abort_run_sync(run_id)
                 except Exception as e:
                     logger.warning(f"Failed to abort run {run_id}: {e}")
     
@@ -561,7 +561,7 @@ async def delete_order(
 
 
 @router.get("/orders/{order_id}/download")
-async def download_results(
+def download_results(
     order_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -626,7 +626,7 @@ async def download_results(
 
 
 @router.get("/orders/{order_id}/preview")
-async def preview_results(
+def preview_results(
     order_id: str,
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),

@@ -379,7 +379,7 @@ async def upload_csv(
 
 
 @router.get("/jobs", response_model=WebsiteScraperJobListResponse)
-async def list_jobs(
+def list_jobs(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -409,7 +409,7 @@ async def list_jobs(
 
 
 @router.get("/jobs/{job_id}", response_model=WebsiteScraperJobResponse)
-async def get_job(
+def get_job(
     job_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -435,7 +435,7 @@ async def get_job(
 
 
 @router.get("/jobs/{job_id}/status", response_model=WebsiteScraperJobStatusResponse)
-async def get_job_status(
+def get_job_status(
     job_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -470,7 +470,7 @@ async def get_job_status(
 
 
 @router.delete("/jobs/{job_id}")
-async def delete_job(
+def delete_job(
     job_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -508,7 +508,7 @@ async def delete_job(
 
 
 @router.get("/jobs/{job_id}/download")
-async def download_results(
+def download_results(
     job_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -572,7 +572,7 @@ async def download_results(
 
 
 @router.get("/jobs/{job_id}/preview")
-async def preview_results(
+def preview_results(
     job_id: str,
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),

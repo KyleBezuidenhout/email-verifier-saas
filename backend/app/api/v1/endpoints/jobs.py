@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, or_, update
 from typing import Optional, List, Tuple
 import csv
 import io
@@ -907,7 +907,7 @@ async def upload_verify_file(
 
 
 @router.get("", response_model=List[JobResponse])
-async def get_jobs(
+def get_jobs(
     job_type: Optional[str] = Query(None, description="Filter by job type: 'enrichment' or 'verification'"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -947,7 +947,7 @@ async def get_jobs(
 
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job(
+def get_job(
     job_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -1312,7 +1312,7 @@ async def verify_catchalls(
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_job(
+def delete_job(
     job_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -1349,6 +1349,7 @@ async def delete_job(
     except Exception as e:
         print(f"Warning: Could not notify workers via Redis: {e}")
     
+    db.execute(update(Lead).where(Lead.job_id == job_uuid).values(job_id=None))
     db.delete(job)
     db.commit()
     
@@ -1357,7 +1358,7 @@ async def delete_job(
 
 
 @router.post("/{job_id}/cancel", status_code=status.HTTP_200_OK)
-async def cancel_job(
+def cancel_job(
     job_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -1417,7 +1418,7 @@ async def cancel_job(
 
 
 @router.get("/debug/queue-status")
-async def debug_queue_status(
+def debug_queue_status(
     current_user: User = Depends(get_current_user),
 ):
     """Debug endpoint to check queue status"""

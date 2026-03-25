@@ -251,24 +251,29 @@ class ApifyGoogleMapsService:
             raise Exception(f"Could not connect to Apify API")
     
     async def abort_run(self, run_id: str) -> Dict[str, Any]:
-        """
-        Abort a running Apify run.
-        
-        Args:
-            run_id: The Apify run ID
-            
-        Returns:
-            Confirmation response
-        """
+        """Abort a running Apify run (async version)."""
         try:
             url = f"{self.BASE_URL}/acts/{self.ACTOR_ID}/runs/{run_id}/abort"
-            
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(url, headers=self._headers)
                 response.raise_for_status()
-                logger.info(f"✅ Aborted Apify run: {run_id}")
+                logger.info(f"Aborted Apify run: {run_id}")
                 return response.json().get("data", {})
-                
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error aborting run: {e.response.status_code}")
+            raise Exception(f"Failed to abort run: {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error aborting run: {str(e)}")
+            raise Exception(f"Could not connect to Apify API")
+
+    def abort_run_sync(self, run_id: str) -> Dict[str, Any]:
+        """Abort a running Apify run (sync version for use in def endpoints)."""
+        try:
+            url = f"{self.BASE_URL}/acts/{self.ACTOR_ID}/runs/{run_id}/abort"
+            response = httpx.post(url, headers=self._headers, timeout=self.timeout)
+            response.raise_for_status()
+            logger.info(f"Aborted Apify run: {run_id}")
+            return response.json().get("data", {})
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error aborting run: {e.response.status_code}")
             raise Exception(f"Failed to abort run: {e.response.text}")

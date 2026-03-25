@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.get("/{job_id}", response_model=List[LeadResponse])
-async def get_results(
+def get_results(
     job_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)

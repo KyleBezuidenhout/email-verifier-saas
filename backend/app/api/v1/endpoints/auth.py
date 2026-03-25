@@ -21,7 +21,7 @@ security = HTTPBearer()
 
 
 @router.post("/register", response_model=RegisterPendingResponse, status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserRegister, db: Session = Depends(get_db)):
+def register(user_data: UserRegister, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.email == user_data.email).first()
 
     if existing_user:
@@ -75,7 +75,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(user_data: UserLogin, db: Session = Depends(get_db)):
+def login(user_data: UserLogin, db: Session = Depends(get_db)):
     # Find user
     user = db.query(User).filter(User.email == user_data.email).first()
     if not user:
@@ -145,7 +145,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 
 @router.put("/me", response_model=UserResponse)
-async def update_user_info(
+def update_user_info(
     user_update: UserUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -181,7 +181,7 @@ async def logout():
 
 
 @router.post("/regenerate-api-key", response_model=UserResponse)
-async def regenerate_api_key(
+def regenerate_api_key(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -207,7 +207,7 @@ async def regenerate_api_key(
 
 
 @router.post("/forgot-password")
-async def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """Generate a password reset token and email it to the user. Always returns 200 to avoid email enumeration."""
     user = db.query(User).filter(User.email == data.email).first()
 
@@ -222,7 +222,7 @@ async def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get
 
 
 @router.post("/reset-password")
-async def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
     """Validate the reset token and set a new password."""
     if len(data.new_password) < 6:
         raise HTTPException(
@@ -250,7 +250,7 @@ async def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_d
 
 
 @router.post("/verify-email", response_model=TokenResponse)
-async def verify_email(data: VerifyEmailRequest, db: Session = Depends(get_db)):
+def verify_email(data: VerifyEmailRequest, db: Session = Depends(get_db)):
     """Verify the user's email address using the token from the confirmation link."""
     user = db.query(User).filter(
         User.email_verification_token == data.token,
@@ -294,7 +294,7 @@ async def verify_email(data: VerifyEmailRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/resend-verification")
-async def resend_verification(data: ResendVerificationRequest, db: Session = Depends(get_db)):
+def resend_verification(data: ResendVerificationRequest, db: Session = Depends(get_db)):
     """Resend the verification email. Always returns 200 to avoid email enumeration."""
     user = db.query(User).filter(User.email == data.email).first()
 

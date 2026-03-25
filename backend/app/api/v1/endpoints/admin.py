@@ -10,7 +10,7 @@ Protected endpoints for admin dashboard:
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, text
+from sqlalchemy import func, desc, text, update
 from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID
@@ -49,7 +49,7 @@ GMT_PLUS_2 = ZoneInfo("Africa/Johannesburg")
 # ============================================
 
 @router.get("/clients")
-async def get_all_clients(
+def get_all_clients(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
     limit: int = Query(100, ge=1, le=500),
@@ -110,7 +110,7 @@ async def get_all_clients(
 
 
 @router.get("/clients/low-credits")
-async def get_low_credit_clients(
+def get_low_credit_clients(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
     threshold: int = Query(10, ge=0)
@@ -140,7 +140,7 @@ async def get_low_credit_clients(
 
 
 @router.get("/clients/{client_id}")
-async def get_client_detail(
+def get_client_detail(
     client_id: UUID,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin)
@@ -199,7 +199,7 @@ async def get_client_detail(
 
 
 @router.put("/clients/{client_id}/credits")
-async def update_client_credits(
+def update_client_credits(
     client_id: UUID,
     credits: int = Query(..., ge=0),
     db: Session = Depends(get_db),
@@ -227,7 +227,7 @@ async def update_client_credits(
 # ============================================
 
 @router.get("/jobs")
-async def get_all_jobs(
+def get_all_jobs(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
     limit: int = Query(100, ge=1, le=500),
@@ -310,7 +310,7 @@ async def get_all_jobs(
 
 
 @router.get("/jobs/{job_id}")
-async def get_job_detail(
+def get_job_detail(
     job_id: UUID,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin)
@@ -356,7 +356,7 @@ async def get_job_detail(
 
 
 @router.delete("/jobs/{job_id}", status_code=status.HTTP_200_OK)
-async def admin_delete_job(
+def admin_delete_job(
     job_id: UUID,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin)
@@ -397,7 +397,7 @@ async def admin_delete_job(
     except Exception as e:
         print(f"Warning: Could not notify workers via Redis: {e}")
     
-    # Delete the job (leads remain in database with null job_id reference)
+    db.execute(update(Lead).where(Lead.job_id == job_id).values(job_id=None))
     db.delete(job)
     db.commit()
     
@@ -412,7 +412,7 @@ async def admin_delete_job(
 # ============================================
 
 @router.get("/stats")
-async def get_platform_stats(
+def get_platform_stats(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
@@ -462,7 +462,7 @@ async def get_platform_stats(
 
 
 @router.get("/stats/enrichments")
-async def get_enrichment_stats(
+def get_enrichment_stats(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
     period: str = Query("week", regex="^(day|week|month|custom)$"),
@@ -537,7 +537,7 @@ async def get_enrichment_stats(
 # ============================================
 
 @router.get("/api-keys/usage")
-async def get_api_key_usage(
+def get_api_key_usage(
     admin: User = Depends(require_admin)
 ):
     """Get usage stats for all MailTester API keys."""
@@ -569,7 +569,7 @@ async def get_api_key_usage(
 
 
 @router.get("/api-keys/vayne-stats")
-async def get_vayne_stats(
+def get_vayne_stats(
     admin: User = Depends(require_admin)
 ):
     """Get per-key Vayne API credit and daily limit stats."""
@@ -608,7 +608,7 @@ async def get_vayne_stats(
 # ============================================
 
 @router.get("/errors")
-async def get_error_logs(
+def get_error_logs(
     admin: User = Depends(require_admin),
     date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format"),
     limit: int = Query(100, ge=1, le=1000),
@@ -631,7 +631,7 @@ async def get_error_logs(
 
 
 @router.get("/errors/summary")
-async def get_error_summary(
+def get_error_summary(
     admin: User = Depends(require_admin),
     date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format")
 ):
@@ -645,7 +645,7 @@ async def get_error_summary(
 # ============================================
 
 @router.get("/fairshare/status")
-async def get_fairshare_status(
+def get_fairshare_status(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
@@ -742,7 +742,7 @@ async def get_fairshare_status(
 
 
 @router.put("/clients/{client_id}/max-jobs")
-async def update_client_max_jobs(
+def update_client_max_jobs(
     client_id: UUID,
     max_jobs: int = Query(..., ge=1, le=50),
     db: Session = Depends(get_db),
@@ -845,7 +845,7 @@ async def update_client_max_jobs(
 # ============================================
 
 @router.post("/impersonate/{client_id}")
-async def impersonate_client(
+def impersonate_client(
     client_id: UUID,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
@@ -1156,7 +1156,7 @@ def _compute_historical_medians(db: Session, client_id: Optional[str]) -> dict:
 
 
 @router.get("/analytics")
-async def get_analytics(
+def get_analytics(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
     start_date: str = Query(..., description="ISO date string YYYY-MM-DD"),
