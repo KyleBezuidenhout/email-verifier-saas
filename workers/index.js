@@ -2260,6 +2260,7 @@ async function processJobFromQueue(jobId) {
     // Update job status to processing + set initial heartbeat
     await updateJobStatus(jobId, 'processing');
     await pgPool.query('UPDATE jobs SET last_heartbeat = NOW() WHERE id = $1', [jobId]);
+    await redisClient.del(`recovery:queued:${jobId}`).catch(() => {});
     
     // Standalone Postgres heartbeat (independent of fair-share, works in dedicated mode too)
     pgHeartbeatInterval = setInterval(async () => {
@@ -3095,6 +3096,13 @@ async function doRecovery(label, heartbeatThreshold = '2 minutes') {
 
   let recoveredCount = 0;
   for (const job of staleJobs.rows) {
+    const recoveryKey = `recovery:queued:${job.id}`;
+    const alreadyQueued = await redisClient.get(recoveryKey);
+    if (alreadyQueued) {
+      console.log(`[${label}] Skipping job ${job.id} — already queued by earlier recovery`);
+      continue;
+    }
+
     console.log(`[${label}] Re-queuing stale job ${job.id} ` +
       `(type: ${job.job_type}, progress: ${job.processed_leads}/${job.total_leads})`);
 
@@ -3107,6 +3115,7 @@ async function doRecovery(label, heartbeatThreshold = '2 minutes') {
       await unregisterFairshareJob(String(job.id), null);
 
       const pushResult = await redisClient.rPush(VERIFICATION_QUEUE, String(job.id));
+      await redisClient.set(recoveryKey, '1', { EX: 86400 });
       console.log(`[${label}] Pushed job ${job.id} to queue (queue length: ${pushResult})`);
       recoveredCount++;
     } catch (e) {
