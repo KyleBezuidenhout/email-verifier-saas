@@ -10,10 +10,11 @@ Protected endpoints for admin dashboard:
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, text
 from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID
+import json
 import logging
 from zoneinfo import ZoneInfo
 
@@ -24,12 +25,13 @@ from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
 from app.models.vayne_order import VayneOrder
+from app.models.queue_depth_snapshot import QueueDepthSnapshot
 from app.api.dependencies import require_admin
 from app.services.usage_tracker import get_usage_tracker
 from app.services.error_logger import get_error_logger
 
 from app.services.vayne_usage_tracker import get_vayne_usage_tracker
-from app.services.vayne_client import get_vayne_client
+from app.services.vayne_client import get_vayne_client, get_vayne_clients
 from app.core.config import settings
 from app.core.security import create_access_token
 
@@ -570,36 +572,35 @@ async def get_api_key_usage(
 async def get_vayne_stats(
     admin: User = Depends(require_admin)
 ):
-    """Get Vayne API account balance and usage statistics."""
-    try:
-        # Get usage tracker stats
-        usage_tracker = get_vayne_usage_tracker()
-        usage_stats = usage_tracker.get_daily_stats()
-        
-        # Get account balance from Vayne API
-        vayne_client = get_vayne_client()
-        credits_data = await vayne_client.get_credits()
-        
-        # Vayne API returns: credit_available, daily_limit_leads, daily_limit_accounts, enrichment_credits
-        return {
-            "available_credits": credits_data.get("credit_available", 0),
-            "leads_scraped_today": 0,  # Not provided by Vayne API, would need separate tracking
-            "daily_limit": credits_data.get("daily_limit_leads", 0),
-            "daily_limit_accounts": credits_data.get("daily_limit_accounts", 0),
-            "enrichment_credits": credits_data.get("enrichment_credits", 0),
-            "subscription_plan": credits_data.get("subscription_plan"),
-            "subscription_expires_at": credits_data.get("subscription_expires_at"),
-            "calls_today": usage_stats.get("calls_today", 0),
-            "date": usage_stats.get("date")
-        }
-    except Exception as e:
-        # Return error if Vayne API is unavailable
-        return {
-            "error": str(e),
-            "available_credits": 0,
-            "calls_today": usage_tracker.get_usage_today() if 'usage_tracker' in locals() else 0,
-            "daily_limit": 0
-        }
+    """Get per-key Vayne API credit and daily limit stats."""
+    clients = get_vayne_clients()
+    keys_data = []
+
+    for idx, client in enumerate(clients):
+        masked = f"...{client.api_key[-8:]}" if len(client.api_key) > 8 else "***"
+        try:
+            credits = client.get_credits()
+            keys_data.append({
+                "key_index": idx + 1,
+                "key_preview": masked,
+                "credit_available": credits.get("credit_available", 0),
+                "daily_limit_leads": credits.get("daily_limit_leads", 0),
+                "error": None,
+            })
+        except Exception as e:
+            keys_data.append({
+                "key_index": idx + 1,
+                "key_preview": masked,
+                "credit_available": 0,
+                "daily_limit_leads": 0,
+                "error": str(e),
+            })
+
+    return {
+        "keys": keys_data,
+        "total_credit_available": sum(k["credit_available"] for k in keys_data),
+        "total_daily_limit_leads": sum(k["daily_limit_leads"] for k in keys_data),
+    }
 
 
 # ============================================
@@ -871,4 +872,372 @@ async def impersonate_client(
             "company_name": client.company_name,
         },
     }
+
+
+# ============================================
+# ANALYTICS DASHBOARD ENDPOINT
+# ============================================
+
+ANALYTICS_CACHE_TTL = 3600       # 1 hour for time-series data
+MEDIAN_CACHE_TTL = 86400         # 24 hours for historical medians
+
+redis_cache = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+def _get_queue_depth_current(db: Session) -> dict:
+    """Read current queue depths from Redis + DB (point-in-time snapshot)."""
+    try:
+        active_count = redis_cache.hlen("fairshare:active_jobs") or 0
+
+        queued_count = redis_cache.llen("simple-email-verification-queue") or 0
+        catchall_queued = redis_cache.llen("catchall-verification-queue") or 0
+
+        vayne_queued = db.query(func.count(VayneOrder.id)).filter(
+            VayneOrder.status == "queued"
+        ).scalar() or 0
+
+        waiting_room = 0
+        try:
+            users = db.query(User.id).all()
+            for (uid,) in users:
+                wlen = redis_cache.llen(f"fairshare:waiting:{uid}") or 0
+                waiting_room += wlen
+        except Exception:
+            pass
+
+        return {
+            "active": active_count,
+            "queued": queued_count,
+            "waiting_room": waiting_room,
+            "vayne_queued": vayne_queued,
+            "catchall_queued": catchall_queued,
+        }
+    except Exception as e:
+        logging.warning(f"Failed to read queue depths from Redis: {e}")
+        return {"active": 0, "queued": 0, "waiting_room": 0, "vayne_queued": 0, "catchall_queued": 0}
+
+
+def _save_queue_snapshot(db: Session, depths: dict):
+    """Persist current queue depths for historical trending."""
+    try:
+        snap = QueueDepthSnapshot(
+            active_jobs=depths["active"],
+            queued_jobs=depths["queued"],
+            waiting_room_jobs=depths["waiting_room"],
+            vayne_queued=depths["vayne_queued"],
+            catchall_queued=depths["catchall_queued"],
+        )
+        db.add(snap)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.warning(f"Failed to save queue snapshot: {e}")
+
+
+def _compute_hit_rate(db: Session, start: datetime, end: datetime, client_id: Optional[str]) -> list:
+    """Graph A: valid_emails_found / total_leads by date and job_type."""
+    q = text("""
+        SELECT DATE(created_at) AS d,
+               job_type,
+               SUM(valid_emails_found)::float / NULLIF(SUM(total_leads), 0) * 100 AS hit_rate,
+               SUM(total_leads) AS total_leads,
+               SUM(valid_emails_found) AS valid_found
+        FROM jobs
+        WHERE status = 'completed'
+          AND created_at >= :start AND created_at <= :end
+          AND job_type IN ('enrichment', 'verification')
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+        GROUP BY d, job_type
+        ORDER BY d
+    """)
+    rows = db.execute(q, {"start": start, "end": end, "cid": client_id}).fetchall()
+
+    by_date = {}
+    for r in rows:
+        d = str(r[0])
+        jt = r[1] or "enrichment"
+        if d not in by_date:
+            by_date[d] = {"date": d}
+        by_date[d][jt] = round(r[2] or 0, 1)
+    return sorted(by_date.values(), key=lambda x: x["date"])
+
+
+def _compute_turnaround(db: Session, start: datetime, end: datetime, client_id: Optional[str]) -> list:
+    """Graph B: Median turnaround time in seconds by date and job_type."""
+    q = text("""
+        SELECT DATE(completed_at) AS d,
+               job_type,
+               PERCENTILE_CONT(0.5) WITHIN GROUP (
+                   ORDER BY EXTRACT(EPOCH FROM completed_at - created_at)
+               ) AS median_seconds
+        FROM jobs
+        WHERE status = 'completed'
+          AND completed_at IS NOT NULL
+          AND created_at >= :start AND created_at <= :end
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+        GROUP BY d, job_type
+        ORDER BY d
+    """)
+    rows = db.execute(q, {"start": start, "end": end, "cid": client_id}).fetchall()
+
+    by_date = {}
+    for r in rows:
+        d = str(r[0])
+        jt = r[1] or "enrichment"
+        if d not in by_date:
+            by_date[d] = {"date": d}
+        by_date[d][jt] = round(r[2] or 0, 0)
+
+    vayne_q = text("""
+        SELECT DATE(completed_at) AS d,
+               PERCENTILE_CONT(0.5) WITHIN GROUP (
+                   ORDER BY EXTRACT(EPOCH FROM completed_at - created_at)
+               ) AS median_seconds
+        FROM vayne_orders
+        WHERE status = 'completed'
+          AND completed_at IS NOT NULL
+          AND created_at >= :start AND created_at <= :end
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+        GROUP BY d
+        ORDER BY d
+    """)
+    vayne_rows = db.execute(vayne_q, {"start": start, "end": end, "cid": client_id}).fetchall()
+    for r in vayne_rows:
+        d = str(r[0])
+        if d not in by_date:
+            by_date[d] = {"date": d}
+        by_date[d]["sales_nav"] = round(r[1] or 0, 0)
+
+    return sorted(by_date.values(), key=lambda x: x["date"])
+
+
+def _compute_completion_rate(db: Session, start: datetime, end: datetime, client_id: Optional[str]) -> list:
+    """Graph D: completed / (completed + failed) as percentage by date and job_type."""
+    q = text("""
+        SELECT DATE(created_at) AS d,
+               job_type,
+               COUNT(*) FILTER (WHERE status = 'completed')::float /
+               NULLIF(COUNT(*) FILTER (WHERE status IN ('completed', 'failed')), 0) * 100 AS rate
+        FROM jobs
+        WHERE status IN ('completed', 'failed')
+          AND created_at >= :start AND created_at <= :end
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+        GROUP BY d, job_type
+        ORDER BY d
+    """)
+    rows = db.execute(q, {"start": start, "end": end, "cid": client_id}).fetchall()
+
+    by_date = {}
+    for r in rows:
+        d = str(r[0])
+        jt = r[1] or "enrichment"
+        if d not in by_date:
+            by_date[d] = {"date": d}
+        by_date[d][jt] = round(r[2] or 0, 1)
+
+    vayne_q = text("""
+        SELECT DATE(created_at) AS d,
+               COUNT(*) FILTER (WHERE status = 'completed')::float /
+               NULLIF(COUNT(*) FILTER (WHERE status IN ('completed', 'failed')), 0) * 100 AS rate
+        FROM vayne_orders
+        WHERE status IN ('completed', 'failed')
+          AND created_at >= :start AND created_at <= :end
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+        GROUP BY d
+        ORDER BY d
+    """)
+    vayne_rows = db.execute(vayne_q, {"start": start, "end": end, "cid": client_id}).fetchall()
+    for r in vayne_rows:
+        d = str(r[0])
+        if d not in by_date:
+            by_date[d] = {"date": d}
+        by_date[d]["sales_nav"] = round(r[1] or 0, 1)
+
+    return sorted(by_date.values(), key=lambda x: x["date"])
+
+
+def _compute_historical_medians(db: Session, client_id: Optional[str]) -> dict:
+    """All-time medians for each graph, cached for 24h."""
+    cache_key = f"analytics_median:{client_id or 'all'}"
+    cached = redis_cache.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    hit_q = text("""
+        SELECT job_type,
+               PERCENTILE_CONT(0.5) WITHIN GROUP (
+                   ORDER BY valid_emails_found::float / NULLIF(total_leads, 0) * 100
+               ) AS median_rate
+        FROM jobs
+        WHERE status = 'completed' AND total_leads > 0
+          AND job_type IN ('enrichment', 'verification')
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+        GROUP BY job_type
+    """)
+    hit_rows = db.execute(hit_q, {"cid": client_id}).fetchall()
+    hit_median = {r[0]: round(r[1] or 0, 1) for r in hit_rows}
+
+    turn_q = text("""
+        SELECT job_type,
+               PERCENTILE_CONT(0.5) WITHIN GROUP (
+                   ORDER BY EXTRACT(EPOCH FROM completed_at - created_at)
+               ) AS median_sec
+        FROM jobs
+        WHERE status = 'completed' AND completed_at IS NOT NULL
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+        GROUP BY job_type
+    """)
+    turn_rows = db.execute(turn_q, {"cid": client_id}).fetchall()
+    turn_median = {r[0]: round(r[1] or 0, 0) for r in turn_rows}
+
+    vayne_turn_q = text("""
+        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (
+                   ORDER BY EXTRACT(EPOCH FROM completed_at - created_at)
+               ) AS median_sec
+        FROM vayne_orders
+        WHERE status = 'completed' AND completed_at IS NOT NULL
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+    """)
+    vt_row = db.execute(vayne_turn_q, {"cid": client_id}).fetchone()
+    if vt_row and vt_row[0]:
+        turn_median["sales_nav"] = round(vt_row[0], 0)
+
+    comp_q = text("""
+        SELECT job_type,
+               COUNT(*) FILTER (WHERE status = 'completed')::float /
+               NULLIF(COUNT(*) FILTER (WHERE status IN ('completed', 'failed')), 0) * 100 AS median_rate
+        FROM jobs
+        WHERE status IN ('completed', 'failed')
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+        GROUP BY job_type
+    """)
+    comp_rows = db.execute(comp_q, {"cid": client_id}).fetchall()
+    comp_median = {r[0]: round(r[1] or 0, 1) for r in comp_rows}
+
+    vayne_comp_q = text("""
+        SELECT COUNT(*) FILTER (WHERE status = 'completed')::float /
+               NULLIF(COUNT(*) FILTER (WHERE status IN ('completed', 'failed')), 0) * 100 AS rate
+        FROM vayne_orders
+        WHERE status IN ('completed', 'failed')
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+    """)
+    vc_row = db.execute(vayne_comp_q, {"cid": client_id}).fetchone()
+    if vc_row and vc_row[0]:
+        comp_median["sales_nav"] = round(vc_row[0], 1)
+
+    queue_q = text("""
+        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY active_jobs) AS med_active,
+               PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY queued_jobs) AS med_queued,
+               PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY waiting_room_jobs) AS med_waiting,
+               PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY vayne_queued) AS med_vayne,
+               PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY catchall_queued) AS med_catchall
+        FROM queue_depth_snapshots
+    """)
+    qd_row = db.execute(queue_q).fetchone()
+    queue_median = {}
+    if qd_row and qd_row[0] is not None:
+        queue_median = {
+            "active": round(qd_row[0], 0),
+            "queued": round(qd_row[1] or 0, 0),
+            "waiting_room": round(qd_row[2] or 0, 0),
+            "vayne_queued": round(qd_row[3] or 0, 0),
+            "catchall_queued": round(qd_row[4] or 0, 0),
+        }
+
+    result = {
+        "hit_rate": hit_median,
+        "turnaround": turn_median,
+        "completion_rate": comp_median,
+        "queue_depth": queue_median,
+    }
+
+    redis_cache.setex(cache_key, MEDIAN_CACHE_TTL, json.dumps(result))
+    return result
+
+
+@router.get("/analytics")
+async def get_analytics(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    start_date: str = Query(..., description="ISO date string YYYY-MM-DD"),
+    end_date: str = Query(..., description="ISO date string YYYY-MM-DD"),
+    client_id: Optional[str] = Query(None, description="UUID of a specific client, or omit for all"),
+):
+    """
+    Consolidated analytics endpoint for the admin dashboard.
+    Returns time-series data for 4 graphs + historical medians.
+    Cached per filter combo for 1 hour. Queue depth snapshot saved on each cache miss.
+    """
+    cid = client_id if client_id and client_id != "all" else None
+    cache_key = f"analytics_cache:{cid or 'all'}:{start_date}:{end_date}"
+
+    cached = redis_cache.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    try:
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
+    hit_rate_series = _compute_hit_rate(db, start, end, cid)
+    turnaround_series = _compute_turnaround(db, start, end, cid)
+    completion_series = _compute_completion_rate(db, start, end, cid)
+
+    queue_current = _get_queue_depth_current(db)
+    _save_queue_snapshot(db, queue_current)
+
+    queue_hist_q = text("""
+        SELECT snapshot_at, active_jobs, queued_jobs, waiting_room_jobs,
+               vayne_queued, catchall_queued
+        FROM queue_depth_snapshots
+        WHERE snapshot_at >= :start AND snapshot_at <= :end
+        ORDER BY snapshot_at
+    """)
+    queue_rows = db.execute(queue_hist_q, {"start": start, "end": end}).fetchall()
+    queue_series = [
+        {
+            "snapshot_at": r[0].isoformat() if r[0] else "",
+            "active": r[1],
+            "queued": r[2],
+            "waiting_room": r[3],
+            "vayne_queued": r[4],
+            "catchall_queued": r[5],
+        }
+        for r in queue_rows
+    ]
+
+    medians = _compute_historical_medians(db, cid)
+
+    now = datetime.now(GMT_PLUS_2)
+    result = {
+        "cached_at": now.isoformat(),
+        "cache_ttl_seconds": ANALYTICS_CACHE_TTL,
+        "filters": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "client_id": cid or "all",
+        },
+        "hit_rate": {
+            "series": hit_rate_series,
+            "historical_median": medians.get("hit_rate", {}),
+        },
+        "turnaround": {
+            "series": turnaround_series,
+            "historical_median": medians.get("turnaround", {}),
+        },
+        "queue_depth": {
+            "current": queue_current,
+            "series": queue_series,
+            "historical_median": medians.get("queue_depth", {}),
+        },
+        "completion_rate": {
+            "series": completion_series,
+            "historical_median": medians.get("completion_rate", {}),
+        },
+    }
+
+    redis_cache.setex(cache_key, ANALYTICS_CACHE_TTL, json.dumps(result))
+    return result
 

@@ -282,6 +282,56 @@ export interface WebsiteScraperPreviewResponse {
   hit_rate_percentage: number;
 }
 
+// Analytics Dashboard
+export interface AnalyticsSeriesPoint {
+  date: string;
+  enrichment?: number;
+  verification?: number;
+  sales_nav?: number;
+}
+
+export interface QueueDepthPoint {
+  snapshot_at: string;
+  active: number;
+  queued: number;
+  waiting_room: number;
+  vayne_queued: number;
+  catchall_queued: number;
+}
+
+export interface AnalyticsResponse {
+  cached_at: string;
+  cache_ttl_seconds: number;
+  filters: {
+    start_date: string;
+    end_date: string;
+    client_id: string;
+  };
+  hit_rate: {
+    series: AnalyticsSeriesPoint[];
+    historical_median: Record<string, number>;
+  };
+  turnaround: {
+    series: AnalyticsSeriesPoint[];
+    historical_median: Record<string, number>;
+  };
+  queue_depth: {
+    current: {
+      active: number;
+      queued: number;
+      waiting_room: number;
+      vayne_queued: number;
+      catchall_queued: number;
+    };
+    series: QueueDepthPoint[];
+    historical_median: Record<string, number>;
+  };
+  completion_rate: {
+    series: AnalyticsSeriesPoint[];
+    historical_median: Record<string, number>;
+  };
+}
+
 // Single Email Enrichment API
 export interface EnrichRequest {
   first_name?: string;

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient } from "@/lib/api";
 import { Speedometer } from "@/components/dashboard/Speedometer";
+import { AnalyticsPanel } from "@/components/admin/AnalyticsPanel";
 
 // Types for admin data
 interface ClientData {
@@ -107,20 +108,12 @@ interface ErrorLog {
   email_attempted: string | null;
 }
 
-interface ChartData {
-  date: string;
-  leads_enriched: number;
-  valid_found: number;
-  catchall_found: number;
-  jobs_count: number;
-}
-
 export default function AdminConsolePage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   // State
-  const [activeTab, setActiveTab] = useState<"overview" | "clients" | "jobs" | "api-keys" | "errors">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "analytics" | "clients" | "jobs" | "api-keys" | "errors">("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -140,21 +133,19 @@ export default function AdminConsolePage() {
     updated_at: string | null;
   } | null>(null);
   const [vayneStats, setVayneStats] = useState<{
-    available_credits: number;
-    leads_scraped_today: number;
-    daily_limit: number;
-    daily_limit_accounts?: number;
-    enrichment_credits?: number;
-    subscription_plan?: string | null;
-    subscription_expires_at?: string | null;
-    calls_today: number;
-    date: string;
-    error?: string;
+    keys: Array<{
+      key_index: number;
+      key_preview: string;
+      credit_available: number;
+      daily_limit_leads: number;
+      error: string | null;
+    }>;
+    total_credit_available: number;
+    total_daily_limit_leads: number;
   } | null>(null);
   const [errors, setErrors] = useState<ErrorLog[]>([]);
   const [errorSummary, setErrorSummary] = useState<{ total_errors: number; by_type: Record<string, number> } | null>(null);
-  const [chartData, setChartData] = useState<ChartData[]>([]);
-  const [chartPeriod, setChartPeriod] = useState<"day" | "week" | "month">("week");
+  const chartPeriod = "week" as const;
 
   // Fair-share monitoring
   const [fairshareStatus, setFairshareStatus] = useState<FairshareStatus | null>(null);
@@ -202,7 +193,6 @@ export default function AdminConsolePage() {
       setClients(clientsRes.clients);
       setLowCreditClients(lowCreditRes.clients as ClientData[]);
       setJobs(jobsRes.jobs);
-      setChartData(enrichmentRes.chart_data);
       if (fairshareRes) setFairshareStatus(fairshareRes);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load admin data");
@@ -404,6 +394,7 @@ export default function AdminConsolePage() {
       <div className="flex gap-2 mb-8 border-b border-dashboard-border pb-4 overflow-x-auto">
         {[
           { id: "overview", label: "Overview" },
+          { id: "analytics", label: "Analytics" },
           { id: "clients", label: "Clients" },
           { id: "jobs", label: "All Jobs" },
           { id: "api-keys", label: "API Keys" },
@@ -661,6 +652,24 @@ export default function AdminConsolePage() {
             );
           })()}
 
+        </div>
+      )}
+
+      {/* Analytics Tab */}
+      {activeTab === "analytics" && (
+        <AnalyticsPanel
+          clients={clients.map((c) => ({
+            id: c.id,
+            email: c.email,
+            full_name: c.full_name,
+            company_name: c.company_name,
+          }))}
+        />
+      )}
+
+      {/* Clients Tab */}
+      {activeTab === "clients" && (
+        <div className="space-y-6">
           {/* Credit Assignment Section */}
           <div className="glass-card p-6">
             <h2 className="text-lg font-semibold text-dashboard-text mb-4">Update Client Credits</h2>
@@ -706,58 +715,11 @@ export default function AdminConsolePage() {
             )}
           </div>
 
-          {/* Chart Section */}
-          <div className="glass-card p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-dashboard-text">Enrichment Activity</h2>
-              <div className="flex gap-2">
-                {["day", "week", "month"].map((period) => (
-                  <button
-                    key={period}
-                    onClick={() => setChartPeriod(period as typeof chartPeriod)}
-                    className={`px-3 py-1 rounded text-sm ${
-                      chartPeriod === period
-                        ? "bg-dashboard-accent text-white"
-                        : "bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text"
-                    }`}
-                  >
-                    {period.charAt(0).toUpperCase() + period.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* Simple bar chart */}
-            <div className="h-[200px] flex items-end gap-1">
-              {chartData.length > 0 ? (
-                chartData.map((d, i) => {
-                  const maxVal = Math.max(...chartData.map((c) => c.leads_enriched), 1);
-                  const height = (d.leads_enriched / maxVal) * 100;
-                  return (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <div
-                        className="w-full bg-dashboard-accent/70 rounded-t hover:bg-dashboard-accent transition-all"
-                        style={{ height: `${Math.max(height, 2)}%` }}
-                        title={`${d.date}: ${d.leads_enriched} leads`}
-                      />
-                      <span className="text-[10px] text-dashboard-text-muted truncate max-w-full">
-                        {d.date.slice(5)}
-                      </span>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-dashboard-text-muted">
-                  No data for this period
-                </div>
-              )}
-            </div>
-          </div>
-
           {/* Low Credit Alerts */}
           {lowCreditClients.length > 0 && (
             <div className="glass-card bg-red-500/5 border-red-500/30 p-6">
               <h2 className="text-lg font-semibold text-red-400 mb-4">⚠️ Low Credit Clients ({lowCreditClients.length})</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {lowCreditClients.map((client) => (
                   <div key={client.id} className="glass-card-hover border-red-500/20 p-3">
                     <p className="font-medium text-dashboard-text truncate">{client.email}</p>
@@ -767,12 +729,8 @@ export default function AdminConsolePage() {
               </div>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Clients Tab */}
-      {activeTab === "clients" && (
-        <div className="glass-card overflow-hidden">
+          <div className="glass-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }} className="border-b border-dashboard-border">
@@ -856,6 +814,7 @@ export default function AdminConsolePage() {
               </tbody>
             </table>
           </div>
+        </div>
         </div>
       )}
 
@@ -1035,10 +994,7 @@ export default function AdminConsolePage() {
                 const hasActiveJobs = jobs.some(j => j.status === "processing");
                 // With multiple keys, distribute active status
                 // First key is primary, second is backup (both can be active if both have capacity)
-                const isKeyActive = hasActiveJobs && key.remaining > 0 && (
-                  index === 0 || // First key is always considered active when jobs running
-                  (index === 1 && apiKeyUsage[0]?.usage_percentage > 80) // Second key active if first is high usage
-                );
+                const isKeyActive = hasActiveJobs && key.remaining > 0;
                 
                 // Health status based on usage percentage
                 const healthStatus = key.usage_percentage > 90 ? 'critical' : 
@@ -1196,56 +1152,62 @@ export default function AdminConsolePage() {
             )}
           </div>
 
-          {/* Credits & Limits Display */}
-          {vayneStats && !vayneStats.error && (
-            <div className="glass-card p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-dashboard-text">Credits & Limits</h3>
-                {vayneStats?.subscription_plan && (
-                  <span className="text-xs text-dashboard-text-muted">
-                    Plan: {vayneStats.subscription_plan}
-                    {vayneStats.subscription_expires_at && (
-                      <span className="ml-2">Expires: {new Date(vayneStats.subscription_expires_at).toLocaleDateString()}</span>
-                    )}
-                  </span>
-                )}
+          {/* Vayne Per-Key Stats */}
+          {vayneStats && vayneStats.keys?.length > 0 && (
+            <>
+              <h3 className="text-lg font-semibold text-dashboard-text">Vayne Scraper Keys</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {vayneStats.keys.map((key) => {
+                  const hasError = !!key.error;
+                  return (
+                    <div
+                      key={key.key_index}
+                      className={`glass-card p-6 transition-all ${hasError ? 'border-red-500/40' : 'border-dashboard-accent/30'}`}
+                    >
+                      <div className="flex items-center gap-2 mb-4">
+                        <span className="font-mono text-dashboard-text">{key.key_preview}</span>
+                        {hasError ? (
+                          <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full">ERROR</span>
+                        ) : (
+                          <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">OK</span>
+                        )}
+                        <span className="text-xs text-dashboard-text-muted ml-auto">Key {key.key_index}</span>
+                      </div>
+
+                      {hasError ? (
+                        <p className="text-sm text-red-400 break-words">{key.error}</p>
+                      ) : (
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-xs text-dashboard-text-muted mb-1">Credits Available</p>
+                            <p className="text-2xl font-bold text-dashboard-accent">{key.credit_available.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-dashboard-text-muted mb-1">Daily Lead Limit</p>
+                            <p className="text-2xl font-bold text-dashboard-text">{key.daily_limit_leads.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <div className="space-y-3">
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-dashboard-text-muted">Available Credits</span>
-                    <span className="font-medium text-dashboard-text">{vayneStats?.available_credits?.toLocaleString() || 0}</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-dashboard-text-muted">Leads Scraped Today</span>
-                    <span className="font-medium text-dashboard-text">
-                      {vayneStats?.leads_scraped_today?.toLocaleString() || 0} / {vayneStats?.daily_limit?.toLocaleString() || 0}
+
+              {vayneStats.keys.length > 1 && (
+                <div className="glass-card bg-dashboard-accent/10 border-dashboard-accent/20 p-4">
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-dashboard-text-muted">Totals across {vayneStats.keys.length} keys:</span>
+                    <span className="text-dashboard-text font-medium">
+                      {vayneStats.total_credit_available.toLocaleString()} credits
+                    </span>
+                    <span className="text-dashboard-text-muted">|</span>
+                    <span className="text-dashboard-text font-medium">
+                      {vayneStats.total_daily_limit_leads.toLocaleString()} daily leads
                     </span>
                   </div>
-                  <div className="w-full bg-dashboard-card rounded-full h-2">
-                    {(() => {
-                      const usagePercentage = vayneStats && vayneStats.daily_limit > 0 
-                        ? (vayneStats.leads_scraped_today / vayneStats.daily_limit) * 100 
-                        : 0;
-                      const progressColor = usagePercentage < 50 ? "bg-green-500" : usagePercentage < 80 ? "bg-yellow-500" : "bg-red-500";
-                      return (
-                        <div
-                          className={`h-2 rounded-full transition-all ${progressColor}`}
-                          style={{ width: `${Math.min(usagePercentage, 100)}%` }}
-                        ></div>
-                      );
-                    })()}
-                  </div>
                 </div>
-                {vayneStats?.subscription_plan && (
-                  <button className="w-full mt-3 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors text-sm font-medium">
-                    Upgrade Plan
-                  </button>
-                )}
-              </div>
-            </div>
+              )}
+            </>
           )}
         </div>
       )}

@@ -24,6 +24,7 @@ import {
   WebsiteScraperPreviewResponse,
   EnrichRequest,
   EnrichResponse,
+  AnalyticsResponse,
 } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
@@ -555,16 +556,15 @@ class ApiClient {
   }
 
   async getAdminVayneStats(): Promise<{
-    available_credits: number;
-    leads_scraped_today: number;
-    daily_limit: number;
-    daily_limit_accounts?: number;
-    enrichment_credits?: number;
-    subscription_plan?: string | null;
-    subscription_expires_at?: string | null;
-    calls_today: number;
-    date: string;
-    error?: string;
+    keys: Array<{
+      key_index: number;
+      key_preview: string;
+      credit_available: number;
+      daily_limit_leads: number;
+      error: string | null;
+    }>;
+    total_credit_available: number;
+    total_daily_limit_leads: number;
   }> {
     return this.request("/api/v1/admin/api-keys/vayne-stats");
   }
@@ -648,6 +648,16 @@ class ApiClient {
     let url = `/api/v1/admin/errors?limit=${limit}&offset=${offset}`;
     if (date) url += `&date=${date}`;
     return this.request(url);
+  }
+
+  // ============================================
+  // ANALYTICS DASHBOARD
+  // ============================================
+
+  async getAdminAnalytics(startDate: string, endDate: string, clientId?: string): Promise<AnalyticsResponse> {
+    const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
+    if (clientId && clientId !== "all") params.set("client_id", clientId);
+    return this.request(`/api/v1/admin/analytics?${params}`);
   }
 
   // ============================================
