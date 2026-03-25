@@ -10,7 +10,7 @@ import uuid
 import unicodedata
 from datetime import datetime
 
-from app.db.session import get_db
+from app.db.session import get_db, SessionLocal
 from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
@@ -698,8 +698,86 @@ async def upload_verify_file(
             detail=f"Missing required column: email (mapped to '{email_col}')"
         )
     
-    # Remap CSV rows to standard column names and capture extra columns
-    # Standard columns that are mapped to specific fields
+    # Threshold for deferring lead creation to worker (avoids DB parameter limits + HTTP timeouts)
+    DEFER_THRESHOLD = 10000
+
+    # ---- LARGE UPLOAD FAST PATH ----
+    # For large files, skip the expensive per-row parsing loop entirely.
+    # Just count valid emails, check credits, create the job, and hand off to the worker.
+    if len(rows) >= DEFER_THRESHOLD:
+        leads_count = sum(1 for row in rows if row.get(email_col, '').strip())
+
+        if leads_count == 0:
+            detail_msg = "No valid rows with email addresses found in CSV."
+            if duplicate_headers:
+                detail_msg += f" WARNING: Your CSV has duplicate column headers ({', '.join(duplicate_headers)}). This causes data to be read incorrectly. Please remove duplicate columns and re-upload."
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=detail_msg
+            )
+
+        is_admin = current_user.email == ADMIN_EMAIL or getattr(current_user, 'is_admin', False)
+        if not is_admin and current_user.credits < leads_count:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {leads_count} credits. Please top up your account."
+            )
+
+        print(f"Large verification upload ({leads_count} emails in {len(rows)} rows), deferring to worker")
+
+        job = Job(
+            user_id=current_user.id,
+            status="pending",
+            job_type="verification",
+            original_filename=file.filename,
+            job_name=job_name.strip() if job_name else None,
+            total_leads=leads_count,
+            processed_leads=0,
+            valid_emails_found=0,
+            catchall_emails_found=0,
+            cost_in_credits=0,
+            column_first_name=column_first_name,
+            column_last_name=column_last_name,
+            column_email=column_email,
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+
+        input_file_path = f"jobs/{job.id}/input/{file.filename}"
+        try:
+            s3_client.put_object(
+                Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+                Key=input_file_path,
+                Body=contents
+            )
+            job.input_file_path = input_file_path
+            db.commit()
+        except Exception as e:
+            db.delete(job)
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to upload file: {str(e)}"
+            )
+
+        try:
+            job_id_str = str(job.id)
+            enrichment_queue = get_enrichment_queue_for_user(db, current_user.id)
+            redis_client.rpush(enrichment_queue, job_id_str)
+            queue_length = redis_client.llen(enrichment_queue)
+            print(f"QUEUED large verification job {job.id} to enrichment queue '{enrichment_queue}' (queue length: {queue_length})")
+        except Exception as e:
+            print(f"Failed to queue verification job {job.id}: {e}")
+            import traceback
+            traceback.print_exc()
+
+        return JobUploadResponse(
+            job_id=job.id,
+            message="File uploaded successfully. Verification started."
+        )
+
+    # ---- SMALL UPLOAD (< 10K rows): Full processing with lead creation ----
     mapped_cols = {email_col, first_name_col, last_name_col}
     
     remapped_rows = []
@@ -744,12 +822,7 @@ async def upload_verify_file(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {leads_count} credits. Please top up your account."
         )
-    
-    # Threshold for deferring lead creation to worker (avoids DB parameter limits + HTTP timeouts)
-    DEFER_THRESHOLD = 10000
 
-    # Create job with job_type="verification"
-    # For large uploads, store column mappings so the worker can re-parse the CSV
     job = Job(
         user_id=current_user.id,
         status="pending",
@@ -787,62 +860,45 @@ async def upload_verify_file(
             detail=f"Failed to upload file: {str(e)}"
         )
     
-    if leads_count >= DEFER_THRESHOLD:
-        # ---- LARGE UPLOAD: Defer lead creation to enrichment worker ----
-        # Worker will download CSV from R2, parse emails, create leads, then queue for verification.
-        # This avoids massive SQL INSERT statements and HTTP timeouts.
-        print(f"Large verification upload ({leads_count} rows >= {DEFER_THRESHOLD}), deferring lead creation to worker")
-        try:
-            job_id_str = str(job.id)
-            enrichment_queue = get_enrichment_queue_for_user(db, current_user.id)
-            redis_client.rpush(enrichment_queue, job_id_str)
-            queue_length = redis_client.llen(enrichment_queue)
-            print(f"QUEUED large verification job {job.id} to enrichment queue '{enrichment_queue}' (queue length: {queue_length})")
-        except Exception as e:
-            print(f"Failed to queue verification job {job.id}: {e}")
-            import traceback
-            traceback.print_exc()
-    else:
-        # ---- SMALL UPLOAD: Create leads synchronously (fast, immediate) ----
-        leads_to_create = []
-        for row in remapped_rows:
-            fn = row.get('first_name', '').title()
-            ln = row.get('last_name', '').title()
-            dom = row.get('domain', '')
-            lead = Lead(
-                job_id=job.id,
-                user_id=current_user.id,
-                first_name=fn,
-                last_name=ln,
-                domain=dom,
-                email=row['email'],
-                verification_status='pending',
-                is_final_result=False,
-                extra_data=row.get('extra_data', {}),
-                enrichment_key=f"{fn.lower()}_{ln.lower()}_{dom.lower()}" if fn and ln and dom else None,
-            )
-            leads_to_create.append(lead)
-        
-        # Bulk insert leads
-        db.bulk_save_objects(leads_to_create)
-        db.commit()
-        
-        # Queue job for verification - route through waiting room if client at capacity
-        try:
-            job_id_str = str(job.id)
-            queue_name = get_verification_queue_for_user(db, current_user.id)
-            routed = route_job_to_queue_or_waiting_room(
-                redis_client, db, current_user.id, job_id_str, queue_name
-            )
-            if routed:
-                queue_length = redis_client.llen(queue_name)
-                print(f"QUEUED verification job {job.id} to '{queue_name}' (queue length: {queue_length})")
-            else:
-                print(f"Verification job {job.id} placed in waiting room for user {current_user.id}")
-        except Exception as e:
-            print(f"Failed to queue verification job {job.id}: {e}")
-            import traceback
-            traceback.print_exc()
+    leads_to_create = []
+    for row in remapped_rows:
+        fn = row.get('first_name', '').title()
+        ln = row.get('last_name', '').title()
+        dom = row.get('domain', '')
+        lead = Lead(
+            job_id=job.id,
+            user_id=current_user.id,
+            first_name=fn,
+            last_name=ln,
+            domain=dom,
+            email=row['email'],
+            verification_status='pending',
+            is_final_result=False,
+            extra_data=row.get('extra_data', {}),
+            enrichment_key=f"{fn.lower()}_{ln.lower()}_{dom.lower()}" if fn and ln and dom else None,
+        )
+        leads_to_create.append(lead)
+    
+    # Bulk insert leads
+    db.bulk_save_objects(leads_to_create)
+    db.commit()
+    
+    # Queue job for verification - route through waiting room if client at capacity
+    try:
+        job_id_str = str(job.id)
+        queue_name = get_verification_queue_for_user(db, current_user.id)
+        routed = route_job_to_queue_or_waiting_room(
+            redis_client, db, current_user.id, job_id_str, queue_name
+        )
+        if routed:
+            queue_length = redis_client.llen(queue_name)
+            print(f"QUEUED verification job {job.id} to '{queue_name}' (queue length: {queue_length})")
+        else:
+            print(f"Verification job {job.id} placed in waiting room for user {current_user.id}")
+    except Exception as e:
+        print(f"Failed to queue verification job {job.id}: {e}")
+        import traceback
+        traceback.print_exc()
     
     return JobUploadResponse(
         job_id=job.id,
@@ -969,30 +1025,36 @@ async def get_job_progress(
             detail="Token required"
         )
     
+    # Release the request-scoped DB connection before long-lived streaming begins.
+    # generate_progress() opens its own short-lived sessions per poll iteration.
+    db.close()
+
     async def generate_progress():
         while True:
-            # Get fresh job data from database
-            fresh_job = db.query(Job).filter(Job.id == job_id).first()
-            if not fresh_job:
-                break
+            poll_db = SessionLocal()
+            try:
+                fresh_job = poll_db.query(Job).filter(Job.id == job_uuid).first()
+                if not fresh_job:
+                    break
+                
+                progress_data = JobProgressResponse(
+                    job_id=fresh_job.id,
+                    processed_leads=fresh_job.processed_leads,
+                    total_leads=fresh_job.total_leads,
+                    valid_emails_found=fresh_job.valid_emails_found,
+                    catchall_emails_found=fresh_job.catchall_emails_found,
+                    status=fresh_job.status,
+                    progress_percentage=(fresh_job.processed_leads / fresh_job.total_leads * 100) if fresh_job.total_leads > 0 else 0
+                )
+                
+                yield f"data: {progress_data.model_dump_json()}\n\n"
+                
+                if fresh_job.status in ['completed', 'failed']:
+                    break
+            finally:
+                poll_db.close()
             
-            progress_data = JobProgressResponse(
-                job_id=fresh_job.id,
-                processed_leads=fresh_job.processed_leads,
-                total_leads=fresh_job.total_leads,
-                valid_emails_found=fresh_job.valid_emails_found,
-                catchall_emails_found=fresh_job.catchall_emails_found,
-                status=fresh_job.status,
-                progress_percentage=(fresh_job.processed_leads / fresh_job.total_leads * 100) if fresh_job.total_leads > 0 else 0
-            )
-            
-            yield f"data: {progress_data.model_dump_json()}\n\n"
-            
-            # Stop if job is completed or failed
-            if fresh_job.status in ['completed', 'failed']:
-                break
-            
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
     
     return StreamingResponse(
         generate_progress(),
