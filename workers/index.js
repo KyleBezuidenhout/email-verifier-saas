@@ -3100,7 +3100,7 @@ async function doRecovery(label, heartbeatThreshold = '2 minutes') {
 
     try {
       await pgPool.query(
-        `UPDATE jobs SET status = 'pending', last_heartbeat = NULL, completed_at = NULL WHERE id = $1`,
+        `UPDATE jobs SET last_heartbeat = NULL, completed_at = NULL WHERE id = $1`,
         [job.id]
       );
 
