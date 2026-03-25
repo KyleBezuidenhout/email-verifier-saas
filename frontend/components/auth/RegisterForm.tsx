@@ -144,12 +144,12 @@ export function RegisterForm() {
         </label>
         <input
           id="company_website"
-          type="url"
+          type="text"
           required
           value={formData.company_website}
           onChange={(e) => setFormData({ ...formData, company_website: e.target.value })}
           className="glass-input w-full"
-          placeholder="https://yourcompany.com"
+          placeholder="yourcompany.com"
         />
       </div>
 

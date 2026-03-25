@@ -270,7 +270,7 @@ class ApiClient {
     return this.request<User>("/api/v1/auth/me");
   }
 
-  async updateUser(data: { catchall_verifier_api_key?: string }): Promise<User> {
+  async updateUser(data: { catchall_verifier_api_key?: string; email_notifications_enabled?: boolean }): Promise<User> {
     return this.request<User>("/api/v1/auth/me", {
       method: "PUT",
       body: JSON.stringify(data),

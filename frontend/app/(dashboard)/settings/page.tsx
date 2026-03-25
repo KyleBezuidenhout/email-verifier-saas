@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { apiClient } from "@/lib/api";
@@ -11,6 +11,35 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
   const [regenerating, setRegenerating] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
+  const [updatingNotifications, setUpdatingNotifications] = useState(false);
+
+  // Auto-dismiss message after 5 seconds
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(""), 5000);
+    return () => clearTimeout(timer);
+  }, [message]);
+
+  // Default to true if undefined (enabled by default)
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(
+    user?.email_notifications_enabled ?? true
+  );
+
+  const handleToggleNotifications = async () => {
+    const newValue = !emailNotificationsEnabled;
+    setUpdatingNotifications(true);
+    setMessage("");
+    try {
+      await apiClient.updateUser({ email_notifications_enabled: newValue });
+      await refreshUser();
+      setEmailNotificationsEnabled(newValue);
+      setMessage(newValue ? "Email notifications enabled." : "Email notifications disabled.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to update notification preferences");
+    } finally {
+      setUpdatingNotifications(false);
+    }
+  };
 
   const handleLogout = async () => {
     setLoading(true);
@@ -86,6 +115,33 @@ export default function SettingsPage() {
               </label>
               <p className="mt-1 text-sm text-dashboard-text">{user?.credits || 0}</p>
             </div>
+          </div>
+        </div>
+
+        <div className="border-t border-dashboard-border pt-6">
+          <h2 className="text-lg font-medium text-dashboard-text mb-4">Email Notifications</h2>
+          <div className="flex items-center justify-between">
+            <div className="flex-1 pr-4">
+              <p className="text-sm text-dashboard-text font-medium">Job completion emails</p>
+              <p className="text-sm text-dashboard-text-muted mt-1">
+                Receive an email notification when your job finishes processing.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleNotifications}
+              disabled={updatingNotifications}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-dashboard-dark disabled:opacity-50 ${
+                emailNotificationsEnabled ? "bg-primary" : "bg-gray-600"
+              }`}
+              aria-pressed={emailNotificationsEnabled}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                  emailNotificationsEnabled ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
           </div>
         </div>
 

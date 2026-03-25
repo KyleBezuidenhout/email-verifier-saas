@@ -320,6 +320,44 @@ async def wait_for_active_order_completion(db, active_order):
         await asyncio.sleep(ACTIVE_CHECK_INTERVAL)
 
 
+def normalize_sales_nav_url(url: str) -> str:
+    """
+    Normalize Sales Navigator URL by adding https://www. prefix if missing.
+    Handles various URL formats:
+    - linkedin.com/sales/search/... -> https://www.linkedin.com/sales/search/...
+    - www.linkedin.com/sales/search/... -> https://www.linkedin.com/sales/search/...
+    - http://linkedin.com/... -> https://www.linkedin.com/...
+    """
+    url = url.strip()
+    if not url:
+        return url
+    
+    # If already starts with https://www.linkedin.com, return as-is
+    if url.startswith("https://www.linkedin.com"):
+        return url
+    
+    # If starts with http://, upgrade to https://www.
+    if url.startswith("http://"):
+        url = url.replace("http://", "https://www.", 1)
+        return url
+    
+    # If starts with https:// but missing www., add it
+    if url.startswith("https://") and not url.startswith("https://www."):
+        url = url.replace("https://", "https://www.", 1)
+        return url
+    
+    # If starts with www., add https:// prefix
+    if url.startswith("www."):
+        return f"https://{url}"
+    
+    # If starts with linkedin.com directly, add full prefix
+    if url.startswith("linkedin.com"):
+        return f"https://www.{url}"
+    
+    # Return as-is if none of the above match
+    return url
+
+
 async def process_queued_order(order_row):
     """
     Process a queued order with full validation:
@@ -340,6 +378,11 @@ async def process_queued_order(order_row):
 
     try:
         log(f"Processing queued order {order_id}", "info")
+        
+        # Normalize the Sales Navigator URL
+        normalized_url = normalize_sales_nav_url(order_row.sales_nav_url)
+        if normalized_url != order_row.sales_nav_url:
+            log(f"Normalized URL: {order_row.sales_nav_url} -> {normalized_url}", "info")
 
         from app.services.vayne_client import get_vayne_clients
         from app.core.config import ADMIN_EMAIL
@@ -397,6 +440,8 @@ async def process_queued_order(order_row):
         # -----------------------------------------------------------------
         selected_client = None
         estimated_leads = 0
+        cookie_rejected_count = 0
+        daily_limit_exhausted_count = 0
 
         for idx, client in enumerate(vayne_clients):
             try:
@@ -406,6 +451,7 @@ async def process_queued_order(order_row):
 
                 if daily_remaining <= 0:
                     log(f"Key {idx}: no daily capacity remaining, skipping", "info")
+                    daily_limit_exhausted_count += 1
                     continue
 
                 # Push user cookie on this key
@@ -414,11 +460,12 @@ async def process_queued_order(order_row):
                     log(f"LinkedIn cookie pushed on key {idx}", "success")
                 except Exception as cookie_err:
                     log(f"Cookie push failed on key {idx}: {cookie_err}", "error")
+                    cookie_rejected_count += 1
                     continue
 
                 # Validate URL on this key to get estimated_leads
                 try:
-                    url_check = client.validate_url(order_row.sales_nav_url)
+                    url_check = client.validate_url(normalized_url)
                     est = url_check.get("total") or 0
                     url_type = url_check.get("type")
 
@@ -431,6 +478,7 @@ async def process_queued_order(order_row):
 
                     if est > daily_remaining:
                         log(f"Key {idx}: estimated {est} leads exceeds daily remaining {daily_remaining}, trying next key", "info")
+                        daily_limit_exhausted_count += 1
                         continue
 
                     estimated_leads = est
@@ -441,6 +489,7 @@ async def process_queued_order(order_row):
                     error_str = str(url_err).lower()
                     if "unauthorized" in error_str or "invalid" in error_str or "expired" in error_str:
                         log(f"Key {idx}: cookie auth rejected during URL validation, trying next key", "info")
+                        cookie_rejected_count += 1
                         continue
                     mark_order_failed(
                         db, order_id,
@@ -454,10 +503,19 @@ async def process_queued_order(order_row):
                 continue
 
         if not selected_client:
-            mark_order_failed(
-                db, order_id,
-                "All scraping accounts have reached their daily limit. Please try again tomorrow."
-            )
+            # Determine the actual failure reason
+            if cookie_rejected_count > 0 and cookie_rejected_count >= daily_limit_exhausted_count:
+                # Cookie was rejected by at least one key - this is likely an invalid cookie
+                mark_order_failed(
+                    db, order_id,
+                    "Your LinkedIn session cookie was rejected. Please provide a valid li_at cookie and try again."
+                )
+            else:
+                # All keys hit daily limits
+                mark_order_failed(
+                    db, order_id,
+                    "All scraping accounts have reached their daily limit. Please try again tomorrow."
+                )
             return False
 
         # Store estimated_leads on the order
@@ -515,7 +573,7 @@ async def process_queued_order(order_row):
             unique_name = f"{base_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
             vayne_response = selected_client.create_order(
-                url=order_row.sales_nav_url,
+                url=normalized_url,
                 name=unique_name,
                 limit=None,
                 email_enrichment=False,

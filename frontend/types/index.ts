@@ -9,6 +9,7 @@ export interface User {
   is_active: boolean;
   is_admin?: boolean;
   email_verified?: boolean;
+  email_notifications_enabled?: boolean;
   created_at: string;
 }
 

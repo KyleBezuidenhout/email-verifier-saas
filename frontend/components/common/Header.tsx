@@ -89,13 +89,6 @@ export function Header() {
           </button>
           {showMenu && (
             <div className="absolute right-0 mt-1 w-36 bg-dashboard-card border border-dashboard-border rounded-lg py-1 z-50 shadow-lg">
-              <Link
-                href="/settings"
-                className="block px-3 py-1.5 text-sm text-dashboard-text hover:bg-dashboard-surface-alt transition-colors"
-                onClick={() => setShowMenu(false)}
-              >
-                Settings
-              </Link>
               <button
                 onClick={() => {
                   handleLogout();

@@ -36,7 +36,7 @@ export default function SalesNavScraperPage() {
   
   // Loading state
   const [initialLoading, setInitialLoading] = useState(true);
-  
+
   // FAQ state
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
@@ -207,18 +207,12 @@ export default function SalesNavScraperPage() {
       return;
     }
     
-    if (!jobName.trim()) {
-      setError("Please enter a name for your scraping job");
-      setShowErrorModal(true);
-      return;
-    }
-    
     setCreatingOrder(true);
     try {
       const orderData: VayneOrderCreate = {
         sales_nav_url: salesNavUrl,
         linkedin_cookie: linkedinCookie.trim() || "",
-        targeting: jobName.trim(),
+        targeting: jobName.trim() || "Billion Verifier Job ID",
       };
       
       const response = await apiClient.createVayneOrder(orderData);
@@ -227,7 +221,7 @@ export default function SalesNavScraperPage() {
       const newOrder: VayneOrder = {
         id: response.order_id,
         status: "queued", // Orders start as queued until processed by queue worker
-        targeting: jobName.trim(),
+        targeting: jobName.trim() || "Billion Verifier Job ID",
         created_at: new Date().toISOString(),
         leads_found: 0,
         progress_percentage: 0,
@@ -506,14 +500,13 @@ export default function SalesNavScraperPage() {
       {/* Job Name Input */}
       <div className="glass-card p-6 mb-6">
         <label className="block text-sm font-medium text-dashboard-text mb-2">
-          Job Name <span className="text-red-500">*</span>
+          Job Name
         </label>
         <input
           type="text"
           value={jobName}
           onChange={(e) => setJobName(e.target.value)}
           placeholder="Enter a name for this scraping job (e.g., 'Q4 Sales Outreach')"
-          required
           className="apple-input w-full py-3"
         />
         <p className="mt-2 text-xs text-dashboard-text-muted">
@@ -522,14 +515,14 @@ export default function SalesNavScraperPage() {
       </div>
 
       {/* LinkedIn Cookie Input Card */}
-      <div className="glass-card p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="glass-card px-6 py-3 mb-6">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             {linkedinCookie.trim() ? (
               <>
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 <div>
-                  <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie Ready</p>
+                  <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie Ready <span className="text-red-500">*</span></p>
                   <p className="text-xs text-dashboard-text-muted">Custom cookie entered</p>
                 </div>
               </>
@@ -537,8 +530,7 @@ export default function SalesNavScraperPage() {
               <>
                 <div className="w-3 h-3 rounded-full bg-blue-500"></div>
                 <div>
-                  <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie (Optional)</p>
-                  <p className="text-xs text-dashboard-text-muted">Default session will be used if not provided</p>
+                  <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie <span className="text-red-500">*</span></p>
                 </div>
               </>
             )}
@@ -559,11 +551,12 @@ export default function SalesNavScraperPage() {
           <div className="relative glass-card p-6 shadow-2xl max-w-md w-full mx-4" style={{ background: 'rgba(13, 15, 18, 0.9)' }}>
             <h3 className="text-xl font-semibold text-dashboard-text mb-4">LinkedIn Authentication</h3>
             <p className="text-sm text-dashboard-text-muted mb-4">
-              Optionally enter your LinkedIn session cookie (<code className="bg-dashboard-card px-1 py-0.5 rounded">li_at</code>) for authentication.
-              <strong className="block mt-2">If left empty, the default session will be used.</strong>
+              Enter your LinkedIn session cookie (<code className="bg-dashboard-card px-1 py-0.5 rounded">li_at</code>) for authentication.
             </p>
             <p className="text-xs text-dashboard-text-muted mb-4">
-              <strong>How to get your cookie:</strong> Open browser developer tools (F12), go to Application/Storage → Cookies → linkedin.com, copy the "li_at" value.
+              <strong>How to get your cookie:</strong>
+              <br /><br />
+              Open browser developer tools (F12), go to Application/Storage → Cookies → linkedin.com, copy the "li_at" cookie value.
             </p>
             <input
               type="text"
@@ -598,7 +591,7 @@ export default function SalesNavScraperPage() {
       {/* Sales Navigator URL Input */}
       <div className="glass-card p-6 mb-6">
         <label className="block text-sm font-medium text-dashboard-text mb-2">
-          Sales Navigator URL
+          Sales Navigator URL <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
@@ -637,7 +630,7 @@ export default function SalesNavScraperPage() {
       <div className="flex gap-3 mb-6">
         <button
           onClick={handleStartScraping}
-          disabled={!isUrlFormatValid || !jobName.trim() || creatingOrder}
+          disabled={!isUrlFormatValid || creatingOrder}
           className="flex-1 px-6 py-3 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
         >
           {creatingOrder ? (
@@ -804,19 +797,17 @@ export default function SalesNavScraperPage() {
           {[
             {
               q: "How do I get my LinkedIn session cookie?",
-              a: "Open your browser's developer tools (F12), go to the Application/Storage tab, find Cookies under your LinkedIn domain, and copy the 'li_at' cookie value.",
-            },
-            {
-              q: "What is a qualified lead?",
-              a: "A qualified lead meets specific criteria such as having a valid email, matching your target company size, or other filters you've configured.",
-            },
-            {
-              q: "How long does scraping take?",
-              a: "Scraping time depends on the number of leads. Small searches (under 100 leads) typically complete in a few minutes, while larger searches may take 30 minutes or more.",
-            },
-            {
-              q: "What's the difference between Simple and Advanced export?",
-              a: "Simple export includes basic fields (name, email, company). Advanced export includes all available profile data such as job title, location, company details, and more.",
+              a: (
+                <>
+                  <strong>For Mac:</strong>
+                  <br />
+                  Press Cmd+Option+J (Chrome) or Cmd+Option+C (Safari) to open developer tools, go to the Application/Storage tab, find Cookies under linkedin.com, and copy the &#39;li_at&#39; cookie value.
+                  <br /><br />
+                  <strong>For Windows:</strong>
+                  <br />
+                  Press F12 or Ctrl+Shift+J (Chrome), go to the Application/Storage tab, find Cookies under linkedin.com, and copy the &#39;li_at&#39; cookie value.
+                </>
+              ),
             },
             {
               q: "Can I scrape multiple URLs?",
