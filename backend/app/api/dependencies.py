@@ -29,52 +29,60 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
+    resolved_user = None
+
     # Try API key authentication first (for integrations like Clay.com)
     if x_api_key:
         try:
-            # Validate UUID format
             api_key_uuid = uuid.UUID(x_api_key)
             user = db.query(User).filter(User.api_key == api_key_uuid).first()
             if user and user.is_active:
-                return user
+                resolved_user = user
             else:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid API key or account inactive"
                 )
         except (ValueError, TypeError):
-            # Invalid UUID format
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid API key format"
             )
-    
+
     # Fall back to JWT Bearer token (for web UI)
-    if credentials:
+    if resolved_user is None and credentials:
         token = credentials.credentials
         payload = decode_token(token)
-        
+
         if payload is None:
             raise credentials_exception
-        
+
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
-        
+
         user = db.query(User).filter(User.id == user_id).first()
         if user is None:
             raise credentials_exception
-        
+
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User account is inactive"
             )
-        
-        return user
-    
-    # No authentication provided
-    raise credentials_exception
+
+        resolved_user = user
+
+    if resolved_user is None:
+        raise credentials_exception
+
+    if not getattr(resolved_user, 'email_verified', True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email address not verified"
+        )
+
+    return resolved_user
 
 
 async def require_admin(

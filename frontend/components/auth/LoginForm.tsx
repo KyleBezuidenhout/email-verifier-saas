@@ -5,10 +5,12 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { Eye, EyeOff } from "lucide-react";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -57,15 +59,26 @@ export function LoginForm() {
         <label htmlFor="password" className="block text-sm font-medium text-white mb-2">
           Password
         </label>
-        <input
-          id="password"
-          type="password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="glass-input w-full"
-          placeholder="••••••••"
-        />
+        <div className="relative">
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="glass-input w-full pr-10"
+            placeholder="••••••••"
+            autoComplete="current-password"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:ring-offset-2 focus:ring-offset-black"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center justify-between">

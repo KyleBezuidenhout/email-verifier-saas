@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { apiClient } from "@/lib/api";
@@ -9,15 +9,8 @@ export default function SettingsPage() {
   const { user, logout, refreshUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [catchallApiKey, setCatchallApiKey] = useState("");
-  const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
-
-  useEffect(() => {
-    if (user?.catchall_verifier_api_key) {
-      setCatchallApiKey(user.catchall_verifier_api_key);
-    }
-  }, [user]);
+  const [sendingReset, setSendingReset] = useState(false);
 
   const handleLogout = async () => {
     setLoading(true);
@@ -30,20 +23,17 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveCatchallKey = async () => {
-    setSaving(true);
+  const handleSendPasswordReset = async () => {
+    if (!user?.email) return;
+    setSendingReset(true);
     setMessage("");
     try {
-      await apiClient.updateUser({
-        catchall_verifier_api_key: catchallApiKey || undefined,
-      });
-      // Refresh user data in context
-      await refreshUser();
-      setMessage("Catchall verifier API key saved successfully!");
+      await apiClient.forgotPassword(user.email);
+      setMessage("Please check your inbox.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to save API key");
+      setMessage(error instanceof Error ? error.message : "Failed to send reset email");
     } finally {
-      setSaving(false);
+      setSendingReset(false);
     }
   };
 
@@ -100,6 +90,22 @@ export default function SettingsPage() {
         </div>
 
         <div className="border-t border-dashboard-border pt-6">
+          <h2 className="text-lg font-medium text-dashboard-text mb-4">Reset password</h2>
+          <p className="text-sm text-dashboard-text-muted mb-4">
+            Click the button below, and we&apos;ll send you an email to change your password.
+          </p>
+          <button
+            type="button"
+            onClick={handleSendPasswordReset}
+            disabled={sendingReset || !user?.email}
+            className="btn-primary disabled:opacity-50 flex items-center space-x-2"
+          >
+            {sendingReset && <LoadingSpinner size="sm" />}
+            <span>Reset Password</span>
+          </button>
+        </div>
+
+        <div className="border-t border-dashboard-border pt-6">
           <h2 className="text-lg font-medium text-dashboard-text mb-4">API Key</h2>
           <div className="space-y-4">
             <div>
@@ -139,40 +145,6 @@ export default function SettingsPage() {
         </div>
 
         <div className="border-t border-dashboard-border pt-6">
-          <h2 className="text-lg font-medium text-dashboard-text mb-4">
-            Catchall Verifier API Key (Optional)
-          </h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-dashboard-text-muted mb-2">
-                Catchall Verifier API Key
-              </label>
-              <input
-                type="password"
-                value={catchallApiKey}
-                onChange={(e) => setCatchallApiKey(e.target.value)}
-                placeholder="Enter your catchall verifier API key (optional)"
-                className="apple-input w-full"
-              />
-              <p className="mt-1 text-sm text-dashboard-text-muted">
-                Add your catchall verifier API key to verify catchall emails from your enrichment runs.
-              </p>
-            </div>
-            <button
-              onClick={handleSaveCatchallKey}
-              disabled={saving}
-              className="btn-primary disabled:opacity-50 flex items-center space-x-2"
-            >
-              {saving && <LoadingSpinner size="sm" />}
-              <span>Save Catchall API Key</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="border-t border-dashboard-border pt-6">
-          <h2 className="text-lg font-medium text-red-400 mb-4">
-            Danger Zone
-          </h2>
           <button
             onClick={handleLogout}
             disabled={loading}

@@ -215,6 +215,7 @@ async def startup_tasks():
         from migrate_add_last_heartbeat import migrate as migrate_last_heartbeat
         from migrate_add_onboarding_fields import run_migration as migrate_onboarding_fields
         from migrate_add_password_reset import run_migration as migrate_password_reset
+        from migrate_add_email_verification import run_migration as migrate_email_verification
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -237,6 +238,7 @@ async def startup_tasks():
         migrate_last_heartbeat()  # Add last_heartbeat column for crash recovery stale detection
         migrate_onboarding_fields()
         migrate_password_reset()
+        migrate_email_verification()
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)

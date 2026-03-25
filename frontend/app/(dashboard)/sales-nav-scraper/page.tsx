@@ -16,7 +16,6 @@ export default function SalesNavScraperPage() {
   
   // Daily usage state
   const [dailyUsage, setDailyUsage] = useState<VayneDailyUsage | null>(null);
-  const [showDailyLimitInfo, setShowDailyLimitInfo] = useState(false);
   
   // URL state (regex-only validation, no API call)
   const [salesNavUrl, setSalesNavUrl] = useState("");
@@ -386,31 +385,40 @@ export default function SalesNavScraperPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-dashboard-text">Sales Nav Scraper</h1>
         <p className="mt-2 text-dashboard-text-muted">
-          Import and enrich leads from Sales Navigator
+          Scrape Leads From Sales Navigator
         </p>
       </div>
 
       {/* Daily Scraping Limit */}
       {dailyUsage && (
-        <div className="glass-card p-4 mb-6">
+        <div className="glass-card p-4 mb-6 relative z-30">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-dashboard-text">Daily Scraping Limit</span>
-              <div className="relative">
+              <div className="relative inline-flex group">
                 <button
-                  onClick={() => setShowDailyLimitInfo(!showDailyLimitInfo)}
-                  className="text-dashboard-text-muted hover:text-dashboard-text transition-colors"
+                  type="button"
+                  className="text-dashboard-text-muted hover:text-dashboard-text transition-colors cursor-help"
+                  aria-label="Daily scraping limit information"
+                  aria-describedby="daily-scrape-limit-tooltip"
+                  tabIndex={0}
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </button>
-                {showDailyLimitInfo && (
-                  <div className="absolute left-0 top-full mt-2 z-50 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-lg py-2 px-3 w-72 shadow-xl">
-                    <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 rotate-45"></div>
-                    <p>Scraping more than 15,000 profiles per day may violate LinkedIn&apos;s terms of service and could result in your account being restricted or banned. This limit resets every 24 hours.</p>
+                <div
+                  id="daily-scrape-limit-tooltip"
+                  role="tooltip"
+                  className="absolute left-0 top-full z-[100] w-72 pt-2 opacity-0 invisible translate-y-0.5 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 transition-[opacity,transform] duration-150 ease-out pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto"
+                >
+                  <div className="rounded-lg border border-zinc-600 bg-zinc-950 text-zinc-100 text-xs py-2.5 px-3 shadow-2xl">
+                    <div className="absolute left-3 -top-1.5 w-2.5 h-2.5 rotate-45 border-l border-t border-zinc-600 bg-zinc-950" aria-hidden />
+                    <p className="relative">
+                      Scraping is limited to 15,000 profiles per day to reduce the risk of LinkedIn restricting, banning, or suspending your account.
+                    </p>
                   </div>
-                )}
+                </div>
               </div>
             </div>
             <span className="text-sm text-dashboard-text-muted">
@@ -436,8 +444,7 @@ export default function SalesNavScraperPage() {
         </div>
       )}
 
-      {/* Notice about charges */}
-      <div className="mb-6 glass-card bg-yellow-500/10 border-yellow-500/30 p-4">
+      <div className="mb-6 glass-card bg-yellow-500/10 border-yellow-500/30 p-4 relative z-0">
         <div className="flex items-start gap-3">
           <svg className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />

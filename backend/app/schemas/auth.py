@@ -60,6 +60,7 @@ class UserResponse(BaseModel):
     catchall_verifier_api_key: Optional[str] = None
     is_active: bool
     is_admin: bool = False
+    email_verified: bool = True
     created_at: str
 
     class Config:
@@ -86,4 +87,17 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse
+
+
+class RegisterPendingResponse(BaseModel):
+    message: str
+    email: str
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
 

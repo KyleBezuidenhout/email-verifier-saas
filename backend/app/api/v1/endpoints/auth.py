@@ -11,26 +11,43 @@ from app.core.config import settings
 from app.schemas.auth import (
     UserRegister, UserLogin, TokenResponse, UserResponse, UserUpdate,
     ForgotPasswordRequest, ResetPasswordRequest,
+    RegisterPendingResponse, VerifyEmailRequest, ResendVerificationRequest,
 )
 from app.api.dependencies import get_current_user
-from app.services.email_service import send_password_reset_email
+from app.services.email_service import send_password_reset_email, send_verification_email
 
 router = APIRouter()
 security = HTTPBearer()
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=RegisterPendingResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserRegister, db: Session = Depends(get_db)):
-    # Check if user already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
+
     if existing_user:
+        if not getattr(existing_user, 'email_verified', True):
+            token = secrets.token_urlsafe(48)
+            existing_user.email_verification_token = token
+            existing_user.email_verification_expires = datetime.utcnow() + timedelta(hours=48)
+            existing_user.hashed_password = get_password_hash(user_data.password)
+            existing_user.full_name = user_data.full_name
+            existing_user.company_name = user_data.company_name
+            existing_user.company_website = user_data.company_website
+            existing_user.referral_source = user_data.referral_source
+            existing_user.daily_cold_emails = user_data.daily_cold_emails
+            db.commit()
+            send_verification_email(existing_user.email, token)
+            return RegisterPendingResponse(
+                message="A verification link has been sent to your email address.",
+                email=existing_user.email,
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
-    # Create new user
+
     hashed_password = get_password_hash(user_data.password)
+    token = secrets.token_urlsafe(48)
     new_user = User(
         email=user_data.email,
         hashed_password=hashed_password,
@@ -40,33 +57,20 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
         referral_source=user_data.referral_source,
         daily_cold_emails=user_data.daily_cold_emails,
         credits=100,
+        email_verified=False,
+        email_verification_token=token,
+        email_verification_expires=datetime.utcnow() + timedelta(hours=48),
     )
-    
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
-    # Create access token
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": str(new_user.id)}, expires_delta=access_token_expires
-    )
-    
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        user=UserResponse(
-            id=new_user.id,
-            email=new_user.email,
-            full_name=new_user.full_name,
-            company_name=new_user.company_name,
-            credits=new_user.credits,
-            api_key=new_user.api_key,
-            catchall_verifier_api_key=new_user.catchall_verifier_api_key,
-            is_active=new_user.is_active,
-            is_admin=False,
-            created_at=new_user.created_at.isoformat(),
-        )
+
+    send_verification_email(new_user.email, token)
+
+    return RegisterPendingResponse(
+        message="A verification link has been sent to your email address.",
+        email=new_user.email,
     )
 
 
@@ -92,13 +96,18 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive"
         )
-    
-    # Create access token
+
+    if not getattr(user, 'email_verified', True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please confirm your email address before signing in."
+        )
+
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": str(user.id)}, expires_delta=access_token_expires
     )
-    
+
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
@@ -112,6 +121,7 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
             catchall_verifier_api_key=user.catchall_verifier_api_key,
             is_active=user.is_active,
             is_admin=getattr(user, 'is_admin', False),
+            email_verified=getattr(user, 'email_verified', True),
             created_at=user.created_at.isoformat(),
         )
     )
@@ -129,6 +139,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         catchall_verifier_api_key=current_user.catchall_verifier_api_key,
         is_active=current_user.is_active,
         is_admin=getattr(current_user, 'is_admin', False),
+        email_verified=getattr(current_user, 'email_verified', True),
         created_at=current_user.created_at.isoformat(),
     )
 
@@ -157,6 +168,7 @@ async def update_user_info(
         catchall_verifier_api_key=current_user.catchall_verifier_api_key,
         is_active=current_user.is_active,
         is_admin=getattr(current_user, 'is_admin', False),
+        email_verified=getattr(current_user, 'email_verified', True),
         created_at=current_user.created_at.isoformat(),
     )
 
@@ -189,6 +201,7 @@ async def regenerate_api_key(
         catchall_verifier_api_key=current_user.catchall_verifier_api_key,
         is_active=current_user.is_active,
         is_admin=getattr(current_user, 'is_admin', False),
+        email_verified=getattr(current_user, 'email_verified', True),
         created_at=current_user.created_at.isoformat(),
     )
 
@@ -234,3 +247,62 @@ async def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_d
     db.commit()
 
     return {"message": "Password has been reset successfully. You can now sign in."}
+
+
+@router.post("/verify-email", response_model=TokenResponse)
+async def verify_email(data: VerifyEmailRequest, db: Session = Depends(get_db)):
+    """Verify the user's email address using the token from the confirmation link."""
+    user = db.query(User).filter(
+        User.email_verification_token == data.token,
+        User.email_verification_expires > datetime.utcnow(),
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification link. Please request a new one.",
+        )
+
+    user.email_verified = True
+    user.email_verification_token = None
+    user.email_verification_expires = None
+    db.commit()
+    db.refresh(user)
+
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": str(user.id)}, expires_delta=access_token_expires
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserResponse(
+            id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            company_name=user.company_name,
+            credits=user.credits,
+            api_key=user.api_key,
+            catchall_verifier_api_key=user.catchall_verifier_api_key,
+            is_active=user.is_active,
+            is_admin=getattr(user, 'is_admin', False),
+            email_verified=True,
+            created_at=user.created_at.isoformat(),
+        )
+    )
+
+
+@router.post("/resend-verification")
+async def resend_verification(data: ResendVerificationRequest, db: Session = Depends(get_db)):
+    """Resend the verification email. Always returns 200 to avoid email enumeration."""
+    user = db.query(User).filter(User.email == data.email).first()
+
+    if user and not getattr(user, 'email_verified', True):
+        token = secrets.token_urlsafe(48)
+        user.email_verification_token = token
+        user.email_verification_expires = datetime.utcnow() + timedelta(hours=48)
+        db.commit()
+        send_verification_email(user.email, token)
+
+    return {"message": "If an account with that email exists and is not yet verified, a new verification link has been sent."}

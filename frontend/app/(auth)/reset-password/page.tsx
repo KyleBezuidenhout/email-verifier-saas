@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiClient } from "@/lib/api";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { Eye, EyeOff } from "lucide-react";
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
@@ -13,6 +14,8 @@ function ResetPasswordForm() {
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -84,30 +87,52 @@ function ResetPasswordForm() {
         <label htmlFor="password" className="block text-sm font-medium text-white mb-2">
           New Password
         </label>
-        <input
-          id="password"
-          type="password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="glass-input w-full"
-          placeholder="••••••••"
-        />
+        <div className="relative">
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="glass-input w-full pr-10"
+            placeholder="••••••••"
+            autoComplete="new-password"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:ring-offset-2 focus:ring-offset-black"
+            aria-label={showPassword ? "Hide new password" : "Show new password"}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
+          </button>
+        </div>
       </div>
 
       <div>
         <label htmlFor="confirmPassword" className="block text-sm font-medium text-white mb-2">
           Confirm New Password
         </label>
-        <input
-          id="confirmPassword"
-          type="password"
-          required
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          className="glass-input w-full"
-          placeholder="••••••••"
-        />
+        <div className="relative">
+          <input
+            id="confirmPassword"
+            type={showConfirmPassword ? "text" : "password"}
+            required
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            className="glass-input w-full pr-10"
+            placeholder="••••••••"
+            autoComplete="new-password"
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword((v) => !v)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:ring-offset-2 focus:ring-offset-black"
+            aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+          >
+            {showConfirmPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
+          </button>
+        </div>
       </div>
 
       <button

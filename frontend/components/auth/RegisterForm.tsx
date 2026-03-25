@@ -92,7 +92,7 @@ export function RegisterForm() {
         company_website: formData.company_website,
         referral_source: formData.referral_source,
       });
-      router.push("/sales-nav-scraper");
+      router.push("/check-email?email=" + encodeURIComponent(formData.email));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -155,7 +155,7 @@ export function RegisterForm() {
 
       <div>
         <label htmlFor="referral_source" className="block text-sm font-medium text-white mb-2">
-          Who referred you? <span className="text-gray-500">(Want to give credit where credit is due)</span>
+          How Did You Hear About Us?
         </label>
         <input
           id="referral_source"

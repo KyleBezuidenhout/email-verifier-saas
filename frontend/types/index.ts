@@ -8,6 +8,7 @@ export interface User {
   catchall_verifier_api_key?: string;
   is_active: boolean;
   is_admin?: boolean;
+  email_verified?: boolean;
   created_at: string;
 }
 
@@ -70,6 +71,11 @@ export interface AuthResponse {
   access_token: string;
   token_type: string;
   user: User;
+}
+
+export interface RegisterPendingResponse {
+  message: string;
+  email: string;
 }
 
 export interface JobProgress {

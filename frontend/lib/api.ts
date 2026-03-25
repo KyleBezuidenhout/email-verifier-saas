@@ -2,6 +2,7 @@ import {
   LoginRequest, 
   RegisterRequest, 
   AuthResponse, 
+  RegisterPendingResponse,
   User, 
   Job, 
   Lead, 
@@ -68,7 +69,7 @@ class ApiClient {
           
           // Only redirect to login once (prevents multiple redirects from parallel requests)
           const currentPath = window.location.pathname;
-          if (currentPath !== "/" && currentPath !== "/login" && currentPath !== "/register" && !isRedirectingToLogin) {
+          if (currentPath !== "/" && currentPath !== "/login" && currentPath !== "/register" && currentPath !== "/check-email" && currentPath !== "/verify-email" && currentPath !== "/forgot-password" && currentPath !== "/reset-password" && !isRedirectingToLogin) {
             isRedirectingToLogin = true;
             // Small delay to allow any pending requests to complete
             setTimeout(() => {
@@ -169,7 +170,7 @@ class ApiClient {
       if (typeof window !== "undefined") {
         document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
         const currentPath = window.location.pathname;
-        if (currentPath !== "/" && currentPath !== "/login" && currentPath !== "/register") {
+        if (currentPath !== "/" && currentPath !== "/login" && currentPath !== "/register" && currentPath !== "/check-email" && currentPath !== "/verify-email" && currentPath !== "/forgot-password" && currentPath !== "/reset-password") {
           window.location.href = "/login";
         }
       }
@@ -199,10 +200,18 @@ class ApiClient {
 
   // Auth endpoints
   async login(data: LoginRequest): Promise<AuthResponse> {
-    const response = await this.request<AuthResponse>("/api/v1/auth/login", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+    let response: AuthResponse;
+    try {
+      response = await this.request<AuthResponse>("/api/v1/auth/login", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === "Session expired") {
+        throw new Error("Incorrect email or password");
+      }
+      throw err;
+    }
     if (response.access_token) {
       // If rememberMe is true, set cookie for 10 days (864000 seconds), otherwise 7 days (604800 seconds)
       const maxAge = data.rememberMe ? 864000 : 604800;
@@ -211,16 +220,29 @@ class ApiClient {
     return response;
   }
 
-  async register(data: RegisterRequest): Promise<AuthResponse> {
-    const response = await this.request<AuthResponse>("/api/v1/auth/register", {
+  async register(data: RegisterRequest): Promise<RegisterPendingResponse> {
+    return this.request<RegisterPendingResponse>("/api/v1/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
     });
+  }
+
+  async verifyEmail(token: string): Promise<AuthResponse> {
+    const response = await this.request<AuthResponse>("/api/v1/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
     if (response.access_token) {
-      // Set cookie for 7 days (604800 seconds) - same as login without rememberMe
       document.cookie = `token=${response.access_token}; path=/; max-age=604800; SameSite=Lax`;
     }
     return response;
+  }
+
+  async resendVerification(email: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>("/api/v1/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
   }
 
   async forgotPassword(email: string): Promise<{ message: string }> {
