@@ -94,6 +94,120 @@ async function sendJobCompletionEmail(userEmail, jobType, jobId, results) {
   }
 }
 
+/**
+ * Send job failure notification email via Gmail
+ * @param {string} userEmail - Recipient email
+ * @param {string} jobType - 'verification', 'enrichment', etc.
+ * @param {string} jobId - Job UUID
+ * @param {string} failureReason - Human-readable failure reason
+ */
+async function sendJobFailureEmail(userEmail, jobType, jobId, failureReason) {
+  const transporter = getGmailTransporter();
+  if (!transporter) {
+    console.log('Gmail credentials not configured - skipping failure email');
+    return false;
+  }
+
+  const jobTypeDisplay = jobType === 'enrichment' ? 'Enrichment' : 'Verification';
+  const subject = `Your ${jobTypeDisplay} job failed`;
+
+  const htmlContent = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h2 style="margin: 0; font-size: 22px;">Job Failed</h2>
+      </div>
+      <div style="background: #f8fafc; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
+        <p style="color: #475569; font-size: 16px; margin-top: 0;">
+          Unfortunately, your <strong>${jobTypeDisplay.toLowerCase()}</strong> job could not be completed.
+        </p>
+        <div style="background: #fef2f2; padding: 16px 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #fecaca;">
+          <p style="margin: 0; color: #991b1b; font-size: 14px;"><strong>Reason:</strong> ${failureReason}</p>
+        </div>
+        <p style="color: #475569; font-size: 14px;">
+          You can retry the job from your dashboard. If the problem persists, please contact support.
+        </p>
+        <a href="${APP_URL}"
+           style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px;
+                  font-weight: 600; font-size: 15px;">
+          Go to Dashboard
+        </a>
+        <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; margin-bottom: 0;">
+          Job ID: ${jobId.substring(0, 8)}...
+        </p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: `"Billion Verifier" <${GMAIL_USER}>`,
+      to: userEmail,
+      subject,
+      html: htmlContent,
+    });
+    console.log(`Sent ${jobType} failure email to ${userEmail}`);
+    return true;
+  } catch (error) {
+    console.error(`Failed to send failure email: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Send daily limit admin alert (deduped per day via Redis)
+ * @param {string} service - Service name (e.g. "MailTester")
+ * @param {string} detail - Detail message
+ */
+async function sendDailyLimitAdminEmail(service, detail) {
+  const today = new Date().toISOString().slice(0, 10);
+  const dedupKey = `admin:daily_limit_alert:${service.replace(/\s+/g, '_').toLowerCase()}:${today}`;
+
+  try {
+    const already = await redisClient.get(dedupKey);
+    if (already) return false;
+    await redisClient.set(dedupKey, '1', { EX: 86400 });
+  } catch (e) {
+    // Redis error — still try to send
+  }
+
+  const transporter = getGmailTransporter();
+  if (!transporter) return false;
+
+  const htmlContent = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h2 style="margin: 0; font-size: 22px;">Daily Limit Reached</h2>
+      </div>
+      <div style="background: #f8fafc; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
+        <p style="color: #475569; font-size: 16px; margin-top: 0;">
+          <strong>${service}</strong> has exhausted its daily capacity.
+        </p>
+        <div style="background: #fffbeb; padding: 16px 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #fde68a;">
+          <p style="margin: 0; color: #92400e; font-size: 14px;">${detail}</p>
+        </div>
+        <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; margin-bottom: 0;">
+          Timestamp: ${new Date().toISOString()}
+        </p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: `"Billion Verifier" <${GMAIL_USER}>`,
+      to: ADMIN_EMAIL,
+      subject: `[BillionVerifier] Daily limit reached: ${service}`,
+      html: htmlContent,
+    });
+    console.log(`Sent daily limit admin alert for ${service}`);
+    return true;
+  } catch (error) {
+    console.error(`Failed to send daily limit admin email: ${error.message}`);
+    return false;
+  }
+}
+
 // ==============================================
 // WORKER MODE CONFIGURATION
 // ==============================================
@@ -387,6 +501,12 @@ async function getNextKeyForJob(jobId) {
     }
   }
   
+  // All allocated keys exhausted or unhealthy — alert admin
+  sendDailyLimitAdminEmail(
+    'MailTester (Verification Worker - Fair Share)',
+    `All allocated MailTester key(s) for this job have no healthy capacity remaining. Falling back to round-robin.`
+  ).catch(() => {});
+
   const fallback = myKeys[jobRoundRobinIndex % myKeys.length];
   jobRoundRobinIndex = (jobRoundRobinIndex + 1) % myKeys.length;
   return fallback;
@@ -1270,7 +1390,12 @@ async function getNextKeyLocal() {
     }
   }
   
-  // Fallback to fastest key even if "unhealthy"
+  // All keys exhausted or unhealthy — alert admin
+  sendDailyLimitAdminEmail(
+    'MailTester (Verification Worker)',
+    `All ${MAILTESTER_API_KEYS.length} MailTester key(s) have no healthy capacity remaining. Falling back to fastest key.`
+  ).catch(() => {});
+
   return MAILTESTER_API_KEYS_BY_SPEED[0];
 }
 
@@ -2682,6 +2807,12 @@ async function processJobFromQueue(jobId) {
       clearInterval(pgHeartbeatInterval);
       await unregisterFairshareJob(jobId, heartbeatInterval);
       await promoteFromWaitingRoom(jobData.user_id);
+      try {
+        const failUserRes = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
+        if (failUserRes.rows[0]?.email) {
+          await sendJobFailureEmail(failUserRes.rows[0].email, jobData.job_type || 'enrichment', jobId, 'Job has no input file. Please re-upload your data and try again.');
+        }
+      } catch (emailErr) { console.error(`Failed to send failure email: ${emailErr.message}`); }
       return { status: 'failed', message: 'Job has no input file path' };
     }
     
@@ -3051,6 +3182,21 @@ async function processJobFromQueue(jobId) {
       console.log(`Marked job ${jobId} as failed`);
     } catch (updateError) {
       console.error(`Failed to update job ${jobId} status to failed:`, updateError);
+    }
+
+    // Send failure email to the client
+    try {
+      const failUserRes = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
+      if (failUserRes.rows[0]?.email) {
+        await sendJobFailureEmail(
+          failUserRes.rows[0].email,
+          jobData.job_type || 'verification',
+          jobId,
+          error.message || 'An unexpected error occurred while processing your job. Please try again.'
+        );
+      }
+    } catch (emailErr) {
+      console.error(`Failed to send failure email: ${emailErr.message}`);
     }
     
     throw error;

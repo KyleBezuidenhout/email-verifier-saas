@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 GMAIL_USER = os.getenv("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
 APP_URL = os.getenv("FRONTEND_URL", os.getenv("APP_URL", "https://www.billionverifier.io"))
+SUPPORT_RECIPIENT = os.getenv("SUPPORT_RECIPIENT", "ben@superwave.io")
 
 
 def send_password_reset_email(to_email: str, reset_token: str) -> bool:
@@ -124,4 +125,77 @@ def send_verification_email(to_email: str, verification_token: str) -> bool:
         return True
     except Exception as e:
         logger.error(f"Failed to send verification email to {to_email}: {e}")
+        return False
+
+
+def send_support_email(
+    user_email: str,
+    user_name: str,
+    category: str,
+    subject: str,
+    message: str,
+) -> bool:
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logger.warning("Gmail credentials not configured — cannot send support email")
+        return False
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+            .container {{ max-width: 560px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
+            h1 {{ color: #ffffff; font-size: 22px; margin: 0 0 24px; }}
+            .meta {{ margin-bottom: 24px; }}
+            .meta-row {{ display: flex; margin-bottom: 8px; }}
+            .meta-label {{ color: #666; font-size: 13px; min-width: 90px; }}
+            .meta-value {{ color: #ccc; font-size: 13px; }}
+            .message-box {{ padding: 20px; background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; }}
+            .message-box p {{ color: #ddd; font-size: 14px; line-height: 1.7; margin: 0; white-space: pre-wrap; }}
+            .badge {{ display: inline-block; padding: 3px 10px; background-color: #0099FF22; color: #0099FF; border-radius: 4px; font-size: 12px; font-weight: 600; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>New Support Request</h1>
+            <div class="meta">
+                <div class="meta-row">
+                    <span class="meta-label">From:</span>
+                    <span class="meta-value">{user_name} &lt;{user_email}&gt;</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">Category:</span>
+                    <span class="meta-value"><span class="badge">{category}</span></span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">Subject:</span>
+                    <span class="meta-value">{subject}</span>
+                </div>
+            </div>
+            <div class="message-box">
+                <p>{message}</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"[Support] {category}: {subject}"
+        msg["From"] = f'"Billion Verifier Support" <{GMAIL_USER}>'
+        msg["To"] = SUPPORT_RECIPIENT
+        msg["Reply-To"] = user_email
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, SUPPORT_RECIPIENT, msg.as_string())
+
+        logger.info(f"Support email sent from {user_email} — subject: {subject}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send support email from {user_email}: {e}")
         return False

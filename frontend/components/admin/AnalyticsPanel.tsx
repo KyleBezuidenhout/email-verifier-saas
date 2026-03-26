@@ -233,6 +233,7 @@ export function AnalyticsPanel({ clients }: Props) {
                 <Legend iconSize={8} wrapperStyle={{ fontSize: "11px", color: "#6B7280" }} />
                 <Line
                   type="monotone"
+                  connectNulls
                   dataKey="enrichment"
                   name="Enrichment"
                   stroke={COLORS.enrichment}
@@ -242,6 +243,7 @@ export function AnalyticsPanel({ clients }: Props) {
                 />
                 <Line
                   type="monotone"
+                  connectNulls
                   dataKey="verification"
                   name="Verification"
                   stroke={COLORS.verification}
@@ -291,9 +293,9 @@ export function AnalyticsPanel({ clients }: Props) {
                   labelFormatter={formatDateShort}
                 />
                 <Legend iconSize={8} wrapperStyle={{ fontSize: "11px", color: "#6B7280" }} />
-                <Line type="monotone" dataKey="enrichment" name="Enrichment" stroke={COLORS.enrichment} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                <Line type="monotone" dataKey="verification" name="Verification" stroke={COLORS.verification} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                <Line type="monotone" dataKey="sales_nav" name="Sales Nav" stroke={COLORS.sales_nav} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                <Line type="monotone" connectNulls dataKey="enrichment" name="Enrichment" stroke={COLORS.enrichment} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                <Line type="monotone" connectNulls dataKey="verification" name="Verification" stroke={COLORS.verification} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                <Line type="monotone" connectNulls dataKey="sales_nav" name="Sales Nav" stroke={COLORS.sales_nav} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
                 {turnaroundMedians.enrichment != null && (
                   <ReferenceLine
                     y={turnaroundMedians.enrichment}
@@ -351,9 +353,9 @@ export function AnalyticsPanel({ clients }: Props) {
                       }}
                     />
                     <Legend iconSize={8} wrapperStyle={{ fontSize: "11px", color: "#6B7280" }} />
-                    <Area type="monotone" dataKey="active" name="Active" stroke={COLORS.active} fill={COLORS.active} fillOpacity={0.1} strokeWidth={2} dot={false} />
-                    <Area type="monotone" dataKey="queued" name="Queued" stroke={COLORS.queued} fill={COLORS.queued} fillOpacity={0.08} strokeWidth={2} dot={false} />
-                    <Area type="monotone" dataKey="waiting_room" name="Waiting" stroke={COLORS.waiting_room} fill={COLORS.waiting_room} fillOpacity={0.06} strokeWidth={1.5} dot={false} />
+                    <Area type="monotone" connectNulls dataKey="active" name="Active" stroke={COLORS.active} fill={COLORS.active} fillOpacity={0.1} strokeWidth={2} dot={false} />
+                    <Area type="monotone" connectNulls dataKey="queued" name="Queued" stroke={COLORS.queued} fill={COLORS.queued} fillOpacity={0.08} strokeWidth={2} dot={false} />
+                    <Area type="monotone" connectNulls dataKey="waiting_room" name="Waiting" stroke={COLORS.waiting_room} fill={COLORS.waiting_room} fillOpacity={0.06} strokeWidth={1.5} dot={false} />
                     {queueMedians.active != null && (
                       <ReferenceLine y={queueMedians.active} stroke={COLORS.active} strokeDasharray="6 4" strokeOpacity={0.3} />
                     )}
@@ -388,9 +390,9 @@ export function AnalyticsPanel({ clients }: Props) {
                   labelFormatter={formatDateShort}
                 />
                 <Legend iconSize={8} wrapperStyle={{ fontSize: "11px", color: "#6B7280" }} />
-                <Line type="monotone" dataKey="enrichment" name="Enrichment" stroke={COLORS.enrichment} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                <Line type="monotone" dataKey="verification" name="Verification" stroke={COLORS.verification} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                <Line type="monotone" dataKey="sales_nav" name="Sales Nav" stroke={COLORS.sales_nav} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                <Line type="monotone" connectNulls dataKey="enrichment" name="Enrichment" stroke={COLORS.enrichment} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                <Line type="monotone" connectNulls dataKey="verification" name="Verification" stroke={COLORS.verification} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                <Line type="monotone" connectNulls dataKey="sales_nav" name="Sales Nav" stroke={COLORS.sales_nav} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
                 {completionMedians.enrichment != null && (
                   <ReferenceLine
                     y={completionMedians.enrichment}
@@ -444,6 +446,7 @@ export function AnalyticsPanel({ clients }: Props) {
                 />
                 <Area
                   type="monotone"
+                  connectNulls
                   dataKey="cache_hit_rate"
                   name="Hit Rate"
                   stroke={COLORS.cache_hit}

@@ -18,6 +18,10 @@ from app.services.mailtester_client import MailTesterClient
 from app.services.mailtester_rate_limiter import MailTesterRateLimiter
 from app.services.permutation import generate_email_permutations, normalize_domain
 
+import redis as sync_redis
+import time as _time
+from app.core.config import settings as _settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -248,6 +252,7 @@ async def _enrich_inner(
     api_key = await rate_limiter.get_best_key()
     if not api_key:
         logger.error("No MailTester keys with remaining capacity")
+        _notify_admin_mailtester_exhausted()
         result.status = "not_found"
         return result
 
@@ -288,3 +293,27 @@ async def _enrich_inner(
     result.email = ""
     await _insert_lead(db, user_id, first_name, last_name, domain, enrichment_key, result, loop)
     return result
+
+
+def _notify_admin_mailtester_exhausted():
+    """Send a deduped daily admin alert when all MailTester keys are exhausted."""
+    try:
+        r = sync_redis.from_url(_settings.REDIS_URL, decode_responses=True)
+        today = _time.strftime("%Y-%m-%d")
+        key = f"mailtester:daily_limit_alert:enrichment:{today}"
+        if r.get(key):
+            return
+        r.set(key, "1", ex=86400)
+
+        import sys, os
+        workers_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'workers')
+        if workers_path not in sys.path:
+            sys.path.insert(0, os.path.abspath(workers_path))
+        from email_utils import send_admin_daily_limit_email
+        send_admin_daily_limit_email(
+            service="MailTester (Enrichment API)",
+            detail="All MailTester API keys have exhausted their daily capacity. "
+                   "Real-time enrichment requests will return not_found until limits reset."
+        )
+    except Exception:
+        logger.exception("Failed to send MailTester daily limit admin alert")

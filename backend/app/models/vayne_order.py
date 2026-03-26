@@ -26,6 +26,8 @@ class VayneOrder(Base):
     file_url = Column(Text)  # URL to CSV file (set by n8n when order completes)
     targeting = Column(String(255))  # Job name/description
     failure_reason = Column(Text, nullable=True)  # Human-readable reason when status='failed'
+    api_key_slot = Column(Integer, nullable=True)  # Which Vayne API key slot processed this order
+    last_heartbeat = Column(DateTime(timezone=True), nullable=True)  # Worker liveness tracking for crash recovery
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     completed_at = Column(DateTime(timezone=True))
 

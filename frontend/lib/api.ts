@@ -1047,6 +1047,21 @@ class ApiClient {
   // ENRICHMENT API (Single Email Enrichment)
   // ============================================
 
+  // ============================================
+  // SUPPORT
+  // ============================================
+
+  async submitSupportTicket(data: {
+    category: "question" | "bug" | "feature_request" | "billing" | "other";
+    subject: string;
+    message: string;
+  }): Promise<{ message: string }> {
+    return this.request("/api/v1/support/submit", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
   async enrichSingle(params: EnrichRequest, apiKey: string): Promise<EnrichResponse> {
     const url = `${this.baseUrl}/api/v1/enrich`;
     const response = await fetch(url, {

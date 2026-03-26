@@ -1,5 +1,6 @@
 import time
 import httpx
+import redis as sync_redis
 from typing import Optional, Dict, Any, List
 from app.core.config import settings
 
@@ -104,3 +105,35 @@ def get_vayne_client() -> VayneClient:
     if not keys:
         raise ValueError("No Vayne API keys configured")
     return VayneClient(keys[0])
+
+
+# ---------------------------------------------------------------------------
+# Slot health tracking (Redis-based, modeled on MailTester health tracking)
+# ---------------------------------------------------------------------------
+
+_VAYNE_HEALTH_PREFIX = "vayne:slot:health"
+_VAYNE_DAILY_ALERT_PREFIX = "vayne:daily_limit_alert"
+
+
+def _get_redis() -> sync_redis.Redis:
+    return sync_redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+def mark_slot_unhealthy(slot_idx: int, ttl: int = 300) -> None:
+    """Mark a Vayne slot as unhealthy for `ttl` seconds (default 5 min)."""
+    _get_redis().set(f"{_VAYNE_HEALTH_PREFIX}:unhealthy:{slot_idx}", "1", ex=ttl)
+
+
+def is_slot_healthy(slot_idx: int) -> bool:
+    return not _get_redis().get(f"{_VAYNE_HEALTH_PREFIX}:unhealthy:{slot_idx}")
+
+
+def should_send_daily_limit_alert() -> bool:
+    """Return True if we haven't sent a Vayne daily limit admin alert today."""
+    r = _get_redis()
+    today = time.strftime("%Y-%m-%d")
+    key = f"{_VAYNE_DAILY_ALERT_PREFIX}:{today}"
+    if r.get(key):
+        return False
+    r.set(key, "1", ex=86400)
+    return True

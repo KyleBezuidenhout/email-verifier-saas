@@ -34,6 +34,7 @@ from app.core.config import settings
 from app.models.job import Job
 from app.models.lead import Lead
 from app.models.user import User
+from email_utils import send_job_failure_email, send_admin_credit_exhaustion_email
 
 logging.basicConfig(
     level=logging.INFO,
@@ -271,11 +272,30 @@ async def process_job(job_id: str):
 
     except Exception as e:
         logger.exception("Catchall job %s failed: %s", job_id, e)
+        error_str = str(e).lower()
         try:
             job = db.query(Job).filter(Job.id == job_id).first()
             if job:
                 job.status = "failed"
                 db.commit()
+
+                # Send failure email to the client
+                user = db.query(User).filter(User.id == job.user_id).first()
+                if user:
+                    send_job_failure_email(
+                        user_email=user.email,
+                        job_type="Catchall Verification",
+                        job_name=f"Job {job_id[:8]}",
+                        failure_reason=str(e),
+                        job_id=job_id,
+                    )
+
+                # Alert admin if it looks like OmniVerifier ran out of credits
+                if any(kw in error_str for kw in ("credit", "balance", "insufficient", "quota", "payment", "limit")):
+                    send_admin_credit_exhaustion_email(
+                        service="OmniVerifier (Catchall Verification)",
+                        detail=f"Catchall job {job_id[:8]} failed with a possible credit/balance error: {e}"
+                    )
         except Exception:
             db.rollback()
     finally:
@@ -375,6 +395,16 @@ def cleanup_zombie_jobs():
                     job.status = "failed"
                     db.commit()
                     logger.info("Marked zombie job %s as failed", jid)
+
+                    user = db.query(User).filter(User.id == job.user_id).first()
+                    if user:
+                        send_job_failure_email(
+                            user_email=user.email,
+                            job_type="Catchall Verification",
+                            job_name=f"Job {jid[:8]}",
+                            failure_reason="The verification job was interrupted and could not be recovered. Please retry.",
+                            job_id=jid,
+                        )
             finally:
                 db.close()
 

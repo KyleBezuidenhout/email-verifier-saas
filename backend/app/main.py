@@ -10,7 +10,7 @@ import logging
 from time import time
 
 from app.core.config import settings
-from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne, vayne_direct, payments, local_scraper, website_scraper, webhooks, enrich
+from app.api.v1.endpoints import auth, jobs, results, test, admin, vayne, vayne_direct, payments, local_scraper, website_scraper, webhooks, enrich, support
 
 # Configure logging
 logging.basicConfig(
@@ -182,6 +182,8 @@ app.include_router(website_scraper.router, prefix="/api/v1/website-scraper", tag
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 # Enrichment API - single email enrichment for integrations (Clay, etc.)
 app.include_router(enrich.router, prefix="/api/v1", tags=["enrich"])
+# Support ticket submission
+app.include_router(support.router, prefix="/api/v1/support", tags=["support"])
 
 
 # Run migrations and log routes on startup
@@ -220,6 +222,7 @@ async def startup_tasks():
         from migrate_add_vayne_orders_index import run_migration as migrate_vayne_orders_index
         from migrate_add_missing_indexes import run_migration as migrate_missing_indexes
         from migrate_add_cache_hit_tracking import run_migration as migrate_cache_hit_tracking
+        from migrate_add_vayne_slot_columns import run_migration as migrate_vayne_slot_columns
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -247,6 +250,7 @@ async def startup_tasks():
         migrate_vayne_orders_index()
         migrate_missing_indexes()
         migrate_cache_hit_tracking()
+        migrate_vayne_slot_columns()  # Add api_key_slot + last_heartbeat to vayne_orders for concurrent slot processing
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
