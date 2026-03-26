@@ -219,6 +219,7 @@ async def startup_tasks():
         from migrate_add_queue_depth_snapshots import run_migration as migrate_queue_depth_snapshots
         from migrate_add_vayne_orders_index import run_migration as migrate_vayne_orders_index
         from migrate_add_missing_indexes import run_migration as migrate_missing_indexes
+        from migrate_add_cache_hit_tracking import run_migration as migrate_cache_hit_tracking
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -245,6 +246,7 @@ async def startup_tasks():
         migrate_queue_depth_snapshots()
         migrate_vayne_orders_index()
         migrate_missing_indexes()
+        migrate_cache_hit_tracking()
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)

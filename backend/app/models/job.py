@@ -33,3 +33,5 @@ class Job(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     completed_at = Column(DateTime(timezone=True))
     last_heartbeat = Column(DateTime(timezone=True), nullable=True)
+    cache_hits = Column(Integer, default=0)
+    cache_lookups = Column(Integer, default=0)

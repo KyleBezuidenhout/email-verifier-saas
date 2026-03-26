@@ -15,7 +15,7 @@ import {
   Area,
 } from "recharts";
 import { apiClient } from "@/lib/api";
-import { AnalyticsResponse } from "@/types";
+import { AnalyticsResponse, CacheHitRatePoint } from "@/types";
 import { AnalyticsDatePicker, DateRange } from "./AnalyticsDatePicker";
 import { ClientSelector } from "./ClientSelector";
 
@@ -40,6 +40,7 @@ const COLORS = {
   catchall_queued: "#AF52DE",
   vayne_queued: "#34C759",
   median: "#6B7280",
+  cache_hit: "#5AC8FA",
 };
 
 function formatSeconds(s: number): string {
@@ -176,6 +177,7 @@ export function AnalyticsPanel({ clients }: Props) {
   const turnaroundMedians = data?.turnaround.historical_median ?? {};
   const completionMedians = data?.completion_rate.historical_median ?? {};
   const queueMedians = data?.queue_depth.historical_median ?? {};
+  const cacheHitMedian = data?.cache_hit_rate?.historical_median ?? 0;
 
   return (
     <div className="space-y-6">
@@ -399,6 +401,68 @@ export function AnalyticsPanel({ clients }: Props) {
                   />
                 )}
               </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            !loading && <EmptyState />
+          )}
+        </ChartCard>
+
+        {/* Graph E: Enrichment Cache Hit Rate */}
+        <ChartCard
+          title="Enrichment Cache Hit Rate"
+          subtitle="% of leads resolved from cache vs. full verification"
+          loading={loading}
+        >
+          {data && data.cache_hit_rate?.series.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={data.cache_hit_rate.series} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                <CartesianGrid {...gridStyle} />
+                <XAxis dataKey="date" {...axisStyle} tickFormatter={formatDateShort} />
+                <YAxis {...axisStyle} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                <Tooltip
+                  {...tooltipStyle}
+                  formatter={(value: unknown, name: unknown) => {
+                    if (name === "cache_hit_rate") return [`${Number(value ?? 0).toFixed(1)}%`, "Hit Rate"];
+                    return [value, String(name)];
+                  }}
+                  labelFormatter={formatDateShort}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const point = payload[0]?.payload as CacheHitRatePoint | undefined;
+                    return (
+                      <div style={tooltipStyle.contentStyle}>
+                        <p style={tooltipStyle.labelStyle}>{formatDateShort(label)}</p>
+                        <p style={{ ...tooltipStyle.itemStyle, color: COLORS.cache_hit }}>
+                          Hit Rate: {point?.cache_hit_rate?.toFixed(1) ?? 0}%
+                        </p>
+                        <p style={tooltipStyle.itemStyle}>
+                          {point?.hits ?? 0} hits / {point?.lookups ?? 0} lookups
+                        </p>
+                      </div>
+                    );
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="cache_hit_rate"
+                  name="Hit Rate"
+                  stroke={COLORS.cache_hit}
+                  fill={COLORS.cache_hit}
+                  fillOpacity={0.1}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 0 }}
+                />
+                {cacheHitMedian > 0 && (
+                  <ReferenceLine
+                    y={cacheHitMedian}
+                    stroke={COLORS.cache_hit}
+                    strokeDasharray="6 4"
+                    strokeOpacity={0.35}
+                    label={{ value: `Avg ${cacheHitMedian}%`, position: "right", fontSize: 10, fill: COLORS.median }}
+                  />
+                )}
+              </AreaChart>
             </ResponsiveContainer>
           ) : (
             !loading && <EmptyState />

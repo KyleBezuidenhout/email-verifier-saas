@@ -290,6 +290,13 @@ export interface AnalyticsSeriesPoint {
   sales_nav?: number;
 }
 
+export interface CacheHitRatePoint {
+  date: string;
+  cache_hit_rate: number;
+  hits: number;
+  lookups: number;
+}
+
 export interface QueueDepthPoint {
   snapshot_at: string;
   active: number;
@@ -329,6 +336,10 @@ export interface AnalyticsResponse {
   completion_rate: {
     series: AnalyticsSeriesPoint[];
     historical_median: Record<string, number>;
+  };
+  cache_hit_rate: {
+    series: CacheHitRatePoint[];
+    historical_median: number;
   };
 }
 

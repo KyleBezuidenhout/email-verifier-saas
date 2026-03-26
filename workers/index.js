@@ -1568,6 +1568,18 @@ async function updateJobStatus(jobId, status, updates = {}) {
     paramIndex++;
   }
   
+  if (updates.cache_hits !== undefined) {
+    setClause.push(`cache_hits = $${paramIndex}`);
+    values.push(updates.cache_hits);
+    paramIndex++;
+  }
+  
+  if (updates.cache_lookups !== undefined) {
+    setClause.push(`cache_lookups = $${paramIndex}`);
+    values.push(updates.cache_lookups);
+    paramIndex++;
+  }
+  
   values.push(jobId);
   
   await pgPool.query(
@@ -2935,6 +2947,8 @@ async function processJobFromQueue(jobId) {
       catchall_emails_found: catchallCount,
       cost_in_credits: costInCredits,
       completed_at: new Date(),
+      cache_hits: cacheMap.size,
+      cache_lookups: allPeople.length,
     });
     
     // Deduct credits (skip for admin, ensure credits never go below 0)

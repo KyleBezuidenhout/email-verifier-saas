@@ -1056,6 +1056,30 @@ def _compute_completion_rate(db: Session, start: datetime, end: datetime, client
     return sorted(by_date.values(), key=lambda x: x["date"])
 
 
+def _compute_cache_hit_rate(db: Session, start: datetime, end: datetime, client_id: Optional[str]) -> list:
+    """Graph E: enrichment cache hit rate (cache_hits / cache_lookups) by date."""
+    q = text("""
+        SELECT DATE(completed_at) AS d,
+               SUM(cache_hits)::float / NULLIF(SUM(cache_lookups), 0) * 100 AS hit_rate,
+               SUM(cache_hits) AS total_hits,
+               SUM(cache_lookups) AS total_lookups
+        FROM jobs
+        WHERE status = 'completed'
+          AND job_type = 'enrichment'
+          AND cache_lookups > 0
+          AND completed_at >= :start AND completed_at <= :end
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+        GROUP BY d
+        ORDER BY d
+    """)
+    rows = db.execute(q, {"start": start, "end": end, "cid": client_id}).fetchall()
+
+    return [
+        {"date": str(r[0]), "cache_hit_rate": round(r[1] or 0, 1), "hits": int(r[2] or 0), "lookups": int(r[3] or 0)}
+        for r in rows
+    ]
+
+
 def _compute_historical_medians(db: Session, client_id: Optional[str]) -> dict:
     """All-time medians for each graph, cached for 24h."""
     cache_key = f"analytics_median:{client_id or 'all'}"
@@ -1144,11 +1168,23 @@ def _compute_historical_medians(db: Session, client_id: Optional[str]) -> dict:
             "catchall_queued": round(qd_row[4] or 0, 0),
         }
 
+    cache_hit_q = text("""
+        SELECT SUM(cache_hits)::float / NULLIF(SUM(cache_lookups), 0) * 100
+        FROM jobs
+        WHERE status = 'completed'
+          AND job_type = 'enrichment'
+          AND cache_lookups > 0
+          AND (:cid IS NULL OR user_id = CAST(:cid AS UUID))
+    """)
+    chr_row = db.execute(cache_hit_q, {"cid": client_id}).fetchone()
+    cache_hit_median = round(chr_row[0], 1) if chr_row and chr_row[0] else 0
+
     result = {
         "hit_rate": hit_median,
         "turnaround": turn_median,
         "completion_rate": comp_median,
         "queue_depth": queue_median,
+        "cache_hit_rate": cache_hit_median,
     }
 
     redis_cache.setex(cache_key, MEDIAN_CACHE_TTL, json.dumps(result))
@@ -1184,6 +1220,7 @@ def get_analytics(
     hit_rate_series = _compute_hit_rate(db, start, end, cid)
     turnaround_series = _compute_turnaround(db, start, end, cid)
     completion_series = _compute_completion_rate(db, start, end, cid)
+    cache_hit_rate_series = _compute_cache_hit_rate(db, start, end, cid)
 
     queue_current = _get_queue_depth_current(db)
     _save_queue_snapshot(db, queue_current)
@@ -1235,6 +1272,10 @@ def get_analytics(
         "completion_rate": {
             "series": completion_series,
             "historical_median": medians.get("completion_rate", {}),
+        },
+        "cache_hit_rate": {
+            "series": cache_hit_rate_series,
+            "historical_median": medians.get("cache_hit_rate", 0),
         },
     }
 
