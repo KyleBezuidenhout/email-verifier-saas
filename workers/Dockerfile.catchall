@@ -9,8 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend app directory (needed for imports)
 COPY backend/app ./app
 
-# Copy catchall worker script
+# Copy catchall worker script + shared utilities
 COPY workers/catchall_worker.py .
+COPY workers/email_utils.py .
 
 # Run the catchall worker
 CMD ["python3", "catchall_worker.py"]
