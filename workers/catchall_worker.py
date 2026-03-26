@@ -28,7 +28,9 @@ import redis
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+workers_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(workers_dir, '..', 'backend'))
+sys.path.insert(0, workers_dir)
 
 from app.core.config import settings
 from app.models.job import Job

@@ -33,8 +33,10 @@ from uuid import UUID
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-backend_path = os.path.join(os.path.dirname(__file__), '..', 'backend')
+workers_dir = os.path.dirname(os.path.abspath(__file__))
+backend_path = os.path.join(workers_dir, '..', 'backend')
 sys.path.insert(0, backend_path)
+sys.path.insert(0, workers_dir)
 
 print(f"Python path: {sys.path}", flush=True)
 print(f"Backend path: {backend_path}", flush=True)
