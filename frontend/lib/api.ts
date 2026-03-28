@@ -25,12 +25,29 @@ import {
   EnrichRequest,
   EnrichResponse,
   AnalyticsResponse,
+  OAuthAuthorizeResponse,
+  ForgotPasswordResponse,
 } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
 
 // Flag to prevent multiple redirects
 let isRedirectingToLogin = false;
+
+export class ApiError extends Error {
+  status: number;
+  detail: string;
+  body: Record<string, unknown>;
+
+  constructor(status: number, body: Record<string, unknown>) {
+    const detail = (body.detail as string) || "An error occurred";
+    super(detail);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+    this.body = body;
+  }
+}
 
 class ApiClient {
   private baseUrl: string;
@@ -75,7 +92,7 @@ class ApiClient {
           
           // Only redirect to login once (prevents multiple redirects from parallel requests)
           const currentPath = window.location.pathname;
-          if (currentPath !== "/" && currentPath !== "/login" && currentPath !== "/register" && currentPath !== "/check-email" && currentPath !== "/verify-email" && currentPath !== "/forgot-password" && currentPath !== "/reset-password" && !isRedirectingToLogin) {
+          if (currentPath !== "/" && currentPath !== "/login" && currentPath !== "/register" && currentPath !== "/check-email" && currentPath !== "/verify-email" && currentPath !== "/forgot-password" && currentPath !== "/reset-password" && !currentPath.startsWith("/auth/callback") && currentPath !== "/onboarding" && !isRedirectingToLogin) {
             isRedirectingToLogin = true;
             // Small delay to allow any pending requests to complete
             setTimeout(() => {
@@ -91,10 +108,10 @@ class ApiClient {
       }
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({
+        const errorBody = await response.json().catch(() => ({
           detail: response.statusText,
         }));
-        throw new Error(error.detail || "An error occurred");
+        throw new ApiError(response.status, errorBody);
       }
 
       // Handle 204 No Content (DELETE endpoints return no body)
@@ -256,13 +273,6 @@ class ApiClient {
     });
   }
 
-  async forgotPassword(email: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>("/api/v1/auth/forgot-password", {
-      method: "POST",
-      body: JSON.stringify({ email }),
-    });
-  }
-
   async resetPassword(token: string, new_password: string): Promise<{ message: string }> {
     return this.request<{ message: string }>("/api/v1/auth/reset-password", {
       method: "POST",
@@ -281,7 +291,7 @@ class ApiClient {
     return this.request<User>("/api/v1/auth/me");
   }
 
-  async updateUser(data: { catchall_verifier_api_key?: string; email_notifications_enabled?: boolean }): Promise<User> {
+  async updateUser(data: { catchall_verifier_api_key?: string; email_notifications_enabled?: boolean; company_website?: string; referral_source?: string }): Promise<User> {
     return this.request<User>("/api/v1/auth/me", {
       method: "PUT",
       body: JSON.stringify(data),
@@ -291,6 +301,29 @@ class ApiClient {
   async regenerateApiKey(): Promise<User> {
     return this.request<User>("/api/v1/auth/regenerate-api-key", {
       method: "POST",
+    });
+  }
+
+  // OAuth endpoints
+  async getOAuthUrl(provider: "google" | "microsoft"): Promise<OAuthAuthorizeResponse> {
+    return this.request<OAuthAuthorizeResponse>(`/api/v1/auth/oauth/${provider}/authorize`);
+  }
+
+  async oauthCallback(provider: string, code: string, state: string): Promise<AuthResponse> {
+    const response = await this.request<AuthResponse>(`/api/v1/auth/oauth/${provider}/callback`, {
+      method: "POST",
+      body: JSON.stringify({ code, state }),
+    });
+    if (response.access_token) {
+      document.cookie = `token=${response.access_token}; path=/; max-age=864000; SameSite=Lax`;
+    }
+    return response;
+  }
+
+  async forgotPassword(email: string): Promise<ForgotPasswordResponse> {
+    return this.request<ForgotPasswordResponse>("/api/v1/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
     });
   }
 

@@ -5,6 +5,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { OAuthButtons, OAuthDivider } from "@/components/auth/OAuthButtons";
+import { ApiError } from "@/lib/api";
 
 // Personal email domains that are blocked (except gmail.com which is allowed)
 const BLOCKED_EMAIL_DOMAINS = [
@@ -94,14 +96,21 @@ export function RegisterForm() {
       });
       router.push("/check-email?email=" + encodeURIComponent(formData.email));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      if (err instanceof ApiError && err.status === 409) {
+        setError(err.detail);
+      } else {
+        setError(err instanceof Error ? err.message : "Registration failed");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="space-y-6">
+      <OAuthButtons />
+      <OAuthDivider />
+      <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
           {error}
@@ -238,5 +247,6 @@ export function RegisterForm() {
         </Link>
       </p>
     </form>
+    </div>
   );
 }

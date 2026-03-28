@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { Eye, EyeOff } from "lucide-react";
+import { OAuthButtons, OAuthDivider } from "@/components/auth/OAuthButtons";
+import { ApiError } from "@/lib/api";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -16,6 +18,10 @@ export function LoginForm() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const oauthError = searchParams.get("error");
+  const oauthMethod = searchParams.get("method");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,17 +32,28 @@ export function LoginForm() {
       await login({ email, password, rememberMe });
       router.push("/sales-nav-scraper");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid email or password");
+      if (err instanceof ApiError && err.status === 409) {
+        setError(err.detail);
+      } else {
+        setError(err instanceof Error ? err.message : "Invalid email or password");
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const displayError = error || (oauthError === "email_exists" && oauthMethod
+    ? `An account with this email already exists${oauthMethod !== "email" ? ` via ${oauthMethod.charAt(0).toUpperCase() + oauthMethod.slice(1)} Sign-In` : ""}. Please sign in with your existing method.`
+    : oauthError === "failed" ? "OAuth sign-in failed. Please try again." : "");
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error && (
+    <div className="space-y-6">
+      <OAuthButtons />
+      <OAuthDivider />
+      <form onSubmit={handleSubmit} className="space-y-6">
+      {displayError && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
-          {error}
+          {displayError}
         </div>
       )}
 
@@ -119,5 +136,6 @@ export function LoginForm() {
         </Link>
       </p>
     </form>
+    </div>
   );
 }

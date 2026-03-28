@@ -55,12 +55,14 @@ class UserResponse(BaseModel):
     email: str
     full_name: Optional[str] = None
     company_name: Optional[str] = None
+    company_website: Optional[str] = None
     credits: int
     api_key: UUID
     catchall_verifier_api_key: Optional[str] = None
     is_active: bool
     is_admin: bool = False
     email_verified: bool = True
+    oauth_provider: Optional[str] = None
     created_at: str
 
     class Config:
@@ -69,6 +71,8 @@ class UserResponse(BaseModel):
 
 class UserUpdate(BaseModel):
     catchall_verifier_api_key: Optional[str] = None
+    company_website: Optional[str] = None
+    referral_source: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -100,4 +104,19 @@ class VerifyEmailRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+
+class OAuthAuthorizeResponse(BaseModel):
+    auth_url: str
+    state: str
+
+
+class OAuthCallbackRequest(BaseModel):
+    code: str
+    state: str
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    oauth_provider: Optional[str] = None
 

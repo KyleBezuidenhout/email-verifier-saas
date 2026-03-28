@@ -3,6 +3,7 @@ export interface User {
   email: string;
   full_name?: string;
   company_name?: string;
+  company_website?: string;
   credits: number;
   api_key: string;
   catchall_verifier_api_key?: string;
@@ -10,7 +11,18 @@ export interface User {
   is_admin?: boolean;
   email_verified?: boolean;
   email_notifications_enabled?: boolean;
+  oauth_provider?: string;
   created_at: string;
+}
+
+export interface OAuthAuthorizeResponse {
+  auth_url: string;
+  state: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+  oauth_provider?: string;
 }
 
 export interface Job {

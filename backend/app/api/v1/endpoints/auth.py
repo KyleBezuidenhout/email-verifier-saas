@@ -12,6 +12,7 @@ from app.schemas.auth import (
     UserRegister, UserLogin, TokenResponse, UserResponse, UserUpdate,
     ForgotPasswordRequest, ResetPasswordRequest,
     RegisterPendingResponse, VerifyEmailRequest, ResendVerificationRequest,
+    ForgotPasswordResponse,
 )
 from app.api.dependencies import get_current_user
 from app.services.email_service import send_password_reset_email, send_verification_email
@@ -20,11 +21,36 @@ router = APIRouter()
 security = HTTPBearer()
 
 
+def _build_user_response(user: User, **overrides) -> UserResponse:
+    data = dict(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        company_name=user.company_name,
+        company_website=user.company_website,
+        credits=user.credits,
+        api_key=user.api_key,
+        catchall_verifier_api_key=user.catchall_verifier_api_key,
+        is_active=user.is_active,
+        is_admin=getattr(user, 'is_admin', False),
+        email_verified=getattr(user, 'email_verified', True),
+        oauth_provider=getattr(user, 'oauth_provider', None),
+        created_at=user.created_at.isoformat(),
+    )
+    data.update(overrides)
+    return UserResponse(**data)
+
+
 @router.post("/register", response_model=RegisterPendingResponse, status_code=status.HTTP_201_CREATED)
 def register(user_data: UserRegister, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.email == user_data.email).first()
 
     if existing_user:
+        if getattr(existing_user, 'oauth_provider', None):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"This email is already registered via {existing_user.oauth_provider.title()} Sign-In. Please sign in with {existing_user.oauth_provider.title()} instead.",
+            )
         if not getattr(existing_user, 'email_verified', True):
             token = secrets.token_urlsafe(48)
             existing_user.email_verification_token = token
@@ -84,7 +110,13 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
             detail="Incorrect email or password"
         )
     
-    # Verify password
+    if not user.hashed_password:
+        provider = getattr(user, 'oauth_provider', 'OAuth') or 'OAuth'
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This account uses {provider.title()} Sign-In. Please use the {provider.title()} button to sign in.",
+        )
+
     if not verify_password(user_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -111,37 +143,13 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        user=UserResponse(
-            id=user.id,
-            email=user.email,
-            full_name=user.full_name,
-            company_name=user.company_name,
-            credits=user.credits,
-            api_key=user.api_key,
-            catchall_verifier_api_key=user.catchall_verifier_api_key,
-            is_active=user.is_active,
-            is_admin=getattr(user, 'is_admin', False),
-            email_verified=getattr(user, 'email_verified', True),
-            created_at=user.created_at.isoformat(),
-        )
+        user=_build_user_response(user),
     )
 
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
-    return UserResponse(
-        id=current_user.id,
-        email=current_user.email,
-        full_name=current_user.full_name,
-        company_name=current_user.company_name,
-        credits=current_user.credits,
-        api_key=current_user.api_key,
-        catchall_verifier_api_key=current_user.catchall_verifier_api_key,
-        is_active=current_user.is_active,
-        is_admin=getattr(current_user, 'is_admin', False),
-        email_verified=getattr(current_user, 'email_verified', True),
-        created_at=current_user.created_at.isoformat(),
-    )
+    return _build_user_response(current_user)
 
 
 @router.put("/me", response_model=UserResponse)
@@ -150,27 +158,18 @@ def update_user_info(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update user information (currently only catchall_verifier_api_key)."""
-    # Update catchall verifier API key if provided
+    """Update user information."""
     if user_update.catchall_verifier_api_key is not None:
         current_user.catchall_verifier_api_key = user_update.catchall_verifier_api_key
-    
+    if user_update.company_website is not None:
+        current_user.company_website = user_update.company_website
+    if user_update.referral_source is not None:
+        current_user.referral_source = user_update.referral_source
+
     db.commit()
     db.refresh(current_user)
-    
-    return UserResponse(
-        id=current_user.id,
-        email=current_user.email,
-        full_name=current_user.full_name,
-        company_name=current_user.company_name,
-        credits=current_user.credits,
-        api_key=current_user.api_key,
-        catchall_verifier_api_key=current_user.catchall_verifier_api_key,
-        is_active=current_user.is_active,
-        is_admin=getattr(current_user, 'is_admin', False),
-        email_verified=getattr(current_user, 'email_verified', True),
-        created_at=current_user.created_at.isoformat(),
-    )
+
+    return _build_user_response(current_user)
 
 
 @router.post("/logout")
@@ -190,20 +189,8 @@ def regenerate_api_key(
     current_user.api_key = uuid.uuid4()
     db.commit()
     db.refresh(current_user)
-    
-    return UserResponse(
-        id=current_user.id,
-        email=current_user.email,
-        full_name=current_user.full_name,
-        company_name=current_user.company_name,
-        credits=current_user.credits,
-        api_key=current_user.api_key,
-        catchall_verifier_api_key=current_user.catchall_verifier_api_key,
-        is_active=current_user.is_active,
-        is_admin=getattr(current_user, 'is_admin', False),
-        email_verified=getattr(current_user, 'email_verified', True),
-        created_at=current_user.created_at.isoformat(),
-    )
+
+    return _build_user_response(current_user)
 
 
 @router.post("/forgot-password")
@@ -212,13 +199,21 @@ def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
 
     if user:
+        if getattr(user, 'oauth_provider', None) and not user.hashed_password:
+            return ForgotPasswordResponse(
+                message="If an account with that email exists, a password reset link has been sent.",
+                oauth_provider=user.oauth_provider,
+            )
+
         token = secrets.token_urlsafe(48)
         user.password_reset_token = token
         user.password_reset_expires = datetime.utcnow() + timedelta(hours=24)
         db.commit()
         send_password_reset_email(user.email, token)
 
-    return {"message": "If an account with that email exists, a password reset link has been sent."}
+    return ForgotPasswordResponse(
+        message="If an account with that email exists, a password reset link has been sent.",
+    )
 
 
 @router.post("/reset-password")
@@ -239,6 +234,12 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset link. Please request a new one.",
+        )
+
+    if getattr(user, 'oauth_provider', None) and not user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"This account uses {user.oauth_provider.title()} Sign-In and has no password to reset.",
         )
 
     user.hashed_password = get_password_hash(data.new_password)
@@ -277,19 +278,7 @@ def verify_email(data: VerifyEmailRequest, db: Session = Depends(get_db)):
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        user=UserResponse(
-            id=user.id,
-            email=user.email,
-            full_name=user.full_name,
-            company_name=user.company_name,
-            credits=user.credits,
-            api_key=user.api_key,
-            catchall_verifier_api_key=user.catchall_verifier_api_key,
-            is_active=user.is_active,
-            is_admin=getattr(user, 'is_admin', False),
-            email_verified=True,
-            created_at=user.created_at.isoformat(),
-        )
+        user=_build_user_response(user, email_verified=True),
     )
 
 

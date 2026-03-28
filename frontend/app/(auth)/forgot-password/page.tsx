@@ -9,16 +9,22 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [oauthProvider, setOauthProvider] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setOauthProvider(null);
     setLoading(true);
 
     try {
-      await apiClient.forgotPassword(email);
-      setSent(true);
+      const response = await apiClient.forgotPassword(email);
+      if (response.oauth_provider) {
+        setOauthProvider(response.oauth_provider);
+      } else {
+        setSent(true);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -48,7 +54,25 @@ export default function ForgotPasswordPage() {
           </p>
         </div>
         <div className="glass-surface py-8 px-6">
-          {sent ? (
+          {oauthProvider ? (
+            <div className="text-center space-y-4">
+              <div className="w-12 h-12 mx-auto bg-blue-500/10 border border-blue-500/20 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-white font-medium">No password needed</p>
+              <p className="text-sm text-gray-400">
+                This account uses <span className="text-white font-medium">{oauthProvider.charAt(0).toUpperCase() + oauthProvider.slice(1)} Sign-In</span>. You don&apos;t have a password to reset — just use the <span className="text-white font-medium">&quot;Continue with {oauthProvider.charAt(0).toUpperCase() + oauthProvider.slice(1)}&quot;</span> button on the sign-in page.
+              </p>
+              <Link
+                href="/login"
+                className="inline-block mt-4 text-sm text-[#0099FF] hover:text-[#0099FF]/80 font-medium"
+              >
+                Back to sign in
+              </Link>
+            </div>
+          ) : sent ? (
             <div className="text-center space-y-4">
               <div className="w-12 h-12 mx-auto bg-green-500/10 border border-green-500/20 rounded-full flex items-center justify-center">
                 <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

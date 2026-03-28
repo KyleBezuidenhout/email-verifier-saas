@@ -75,6 +75,13 @@ class Settings(BaseSettings):
     ENRICH_API_ACQUIRE_TIMEOUT_SECONDS: float = 30.0
     ENRICH_API_REQUEST_TIMEOUT_SECONDS: float = 45.0
 
+    # OAuth (Google + Microsoft)
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    MICROSOFT_CLIENT_ID: str = ""
+    MICROSOFT_CLIENT_SECRET: str = ""
+    MICROSOFT_TENANT_ID: str = "organizations"
+
     # App
     APP_NAME: str = "Email Verifier SaaS"
     DEBUG: bool = False

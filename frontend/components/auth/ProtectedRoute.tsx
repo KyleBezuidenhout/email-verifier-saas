@@ -12,6 +12,8 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
+    } else if (!loading && user && user.oauth_provider && !user.company_website) {
+      router.push("/onboarding");
     }
   }, [user, loading, router]);
 
@@ -24,6 +26,10 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
+    return null;
+  }
+
+  if (user.oauth_provider && !user.company_website) {
     return null;
   }
 
