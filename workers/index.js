@@ -381,7 +381,7 @@ function getKeyConfig(apiKey) {
 }
 
 // Error threshold for marking key unhealthy
-const ERROR_THRESHOLD = 5; // errors per minute before marking unhealthy
+const ERROR_THRESHOLD = 15; // errors per minute before marking unhealthy
 
 // ==============================================
 // PERFORMANCE TUNING CONSTANTS
@@ -501,11 +501,24 @@ async function getNextKeyForJob(jobId) {
     }
   }
   
-  // All allocated keys exhausted or unhealthy — alert admin
-  sendDailyLimitAdminEmail(
-    'MailTester (Verification Worker - Fair Share)',
-    `All allocated MailTester key(s) for this job have no healthy capacity remaining. Falling back to round-robin.`
-  ).catch(() => {});
+  // Check if this is an actual daily limit exhaustion (all keys at 0 remaining)
+  // vs just transient health failures — only email on true daily limit exhaustion
+  let allDailyExhausted = true;
+  for (const key of myKeys) {
+    const remaining = await getCachedKeyRemaining(key);
+    if (remaining > 0) {
+      allDailyExhausted = false;
+      break;
+    }
+  }
+  if (allDailyExhausted) {
+    sendDailyLimitAdminEmail(
+      'MailTester (Verification Worker - Fair Share)',
+      `All allocated MailTester key(s) for this job have exhausted their daily capacity (0 remaining).`
+    ).catch(() => {});
+  } else {
+    console.log(`⚠️ All allocated keys unhealthy for job ${jobId} — falling back to round-robin (not a daily limit issue)`);
+  }
 
   const fallback = myKeys[jobRoundRobinIndex % myKeys.length];
   jobRoundRobinIndex = (jobRoundRobinIndex + 1) % myKeys.length;
@@ -1390,11 +1403,23 @@ async function getNextKeyLocal() {
     }
   }
   
-  // All keys exhausted or unhealthy — alert admin
-  sendDailyLimitAdminEmail(
-    'MailTester (Verification Worker)',
-    `All ${MAILTESTER_API_KEYS.length} MailTester key(s) have no healthy capacity remaining. Falling back to fastest key.`
-  ).catch(() => {});
+  // Check if this is an actual daily limit exhaustion vs transient health failures
+  let allDailyExhausted = true;
+  for (const key of MAILTESTER_API_KEYS) {
+    const remaining = await getCachedKeyRemaining(key);
+    if (remaining > 0) {
+      allDailyExhausted = false;
+      break;
+    }
+  }
+  if (allDailyExhausted) {
+    sendDailyLimitAdminEmail(
+      'MailTester (Verification Worker)',
+      `All ${MAILTESTER_API_KEYS.length} MailTester key(s) have exhausted their daily capacity (0 remaining).`
+    ).catch(() => {});
+  } else {
+    console.log(`⚠️ All keys unhealthy — falling back to fastest key (not a daily limit issue)`);
+  }
 
   return MAILTESTER_API_KEYS_BY_SPEED[0];
 }
@@ -1542,7 +1567,7 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null, jobId = nu
       provider,
     };
   } catch (error) {
-    await trackApiUsage(apiKey);
+    // Don't track usage for failed requests — the API didn't process them
     
     // Check if this is an HTTP-level timeout (axios timeout or network timeout)
     const isHttpTimeout = 
@@ -1560,9 +1585,14 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null, jobId = nu
     // Non-timeout errors: track key error and retry
     await trackKeyError(apiKey);
     
+    // Log 403 response body for debugging
+    if (error.response?.status === 403) {
+      console.error(`🔒 403 Forbidden for key ...${apiKey.slice(-4)}: ${JSON.stringify(error.response?.data || 'no body')}`);
+    }
+    
     // Rate limits and network errors trigger retry with fallback
-    const errorReason = error.response?.status === 429 
-      ? 'Rate limited (429)'
+    const errorReason = error.response?.status === 429 || error.response?.status === 403
+      ? `Rate limited (${error.response.status})`
       : error.code === 'ECONNRESET'
       ? `Network error (${error.code})`
       : `HTTP error: ${error.message}`;
