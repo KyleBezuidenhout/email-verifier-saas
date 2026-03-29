@@ -15,32 +15,20 @@ function GoogleIcon() {
   );
 }
 
-function MicrosoftIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
-      <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
-      <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
-      <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
-      <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
-    </svg>
-  );
-}
-
 export function OAuthButtons() {
-  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleOAuth = async (provider: "google" | "microsoft") => {
+  const handleGoogleOAuth = async () => {
     setError("");
-    setLoadingProvider(provider);
+    setLoading(true);
 
     try {
-      const { auth_url, state } = await apiClient.getOAuthUrl(provider);
-      sessionStorage.setItem("oauth_state", state);
+      const { auth_url } = await apiClient.getOAuthUrl("google");
       window.location.href = auth_url;
     } catch {
-      setError(`Failed to connect to ${provider === "google" ? "Google" : "Microsoft"}. Please try again.`);
-      setLoadingProvider(null);
+      setError("Failed to connect to Google. Please try again.");
+      setLoading(false);
     }
   };
 
@@ -54,32 +42,16 @@ export function OAuthButtons() {
 
       <button
         type="button"
-        onClick={() => handleOAuth("google")}
-        disabled={loadingProvider !== null}
+        onClick={handleGoogleOAuth}
+        disabled={loading}
         className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-lg border border-white/10 bg-white/5 text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed transition-all"
       >
-        {loadingProvider === "google" ? (
+        {loading ? (
           <LoadingSpinner size="sm" />
         ) : (
           <>
             <GoogleIcon />
             <span className="text-sm font-medium">Continue with Google</span>
-          </>
-        )}
-      </button>
-
-      <button
-        type="button"
-        onClick={() => handleOAuth("microsoft")}
-        disabled={loadingProvider !== null}
-        className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-lg border border-white/10 bg-white/5 text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-      >
-        {loadingProvider === "microsoft" ? (
-          <LoadingSpinner size="sm" />
-        ) : (
-          <>
-            <MicrosoftIcon />
-            <span className="text-sm font-medium">Continue with Microsoft</span>
           </>
         )}
       </button>

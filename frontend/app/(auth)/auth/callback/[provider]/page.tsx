@@ -20,18 +20,21 @@ export default function OAuthCallbackPage() {
     if (exchanged.current) return;
     exchanged.current = true;
 
+    const errorParam = searchParams.get("error");
+    const errorDesc = searchParams.get("error_description");
+    if (errorParam) {
+      if (errorParam === "access_denied") {
+        setError("Sign-in was cancelled. Please try again.");
+      } else {
+        setError(errorDesc ? decodeURIComponent(errorDesc.replace(/\+/g, " ")) : "Authentication was denied by the provider.");
+      }
+      return;
+    }
+
     if (!code || !stateParam) {
       setError("Missing authorization code. Please try signing in again.");
       return;
     }
-
-    const savedState = sessionStorage.getItem("oauth_state");
-    if (!savedState || savedState !== stateParam) {
-      setError("Invalid session state. Please try signing in again.");
-      return;
-    }
-
-    sessionStorage.removeItem("oauth_state");
 
     (async () => {
       try {
