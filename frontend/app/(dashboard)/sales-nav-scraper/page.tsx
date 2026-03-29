@@ -35,9 +35,6 @@ export default function SalesNavScraperPage() {
   const [showDailyLimitModal, setShowDailyLimitModal] = useState(false);
   const [resettingDailyLimit, setResettingDailyLimit] = useState(false);
 
-  // Delete confirmation state
-  const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   
   // Loading state
   const [initialLoading, setInitialLoading] = useState(true);
@@ -48,7 +45,6 @@ export default function SalesNavScraperPage() {
   // Scrape history state - all orders from DB
   const [scrapeHistoryOrders, setScrapeHistoryOrders] = useState<VayneOrder[]>([]);
   const [loadingScrapeHistory, setLoadingScrapeHistory] = useState(false);
-  const [deleteConfirmOrderId, setDeleteConfirmOrderId] = useState<string | null>(null);
   const [downloadingOrderId, setDownloadingOrderId] = useState<string | null>(null);
 
   // Load credits
@@ -277,49 +273,6 @@ export default function SalesNavScraperPage() {
 
 
 
-  const handleDeleteClick = (orderId: string) => {
-    setOrderToDelete(orderId);
-    setShowDeleteModal(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!orderToDelete) return;
-    
-    try {
-      await apiClient.deleteVayneOrder(orderToDelete);
-      
-      // Remove from local state
-      setScrapeHistoryOrders((prev: VayneOrder[]) => prev.filter((o: VayneOrder) => o.id !== orderToDelete));
-      
-      setShowDeleteModal(false);
-      setOrderToDelete(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete order");
-      setShowErrorModal(true);
-      setShowDeleteModal(false);
-      setOrderToDelete(null);
-    }
-  };
-
-  const handleCancelDelete = () => {
-    setShowDeleteModal(false);
-    setOrderToDelete(null);
-  };
-
-
-
-  // Prevent body scroll when delete modal is open
-  useEffect(() => {
-    if (showDeleteModal) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [showDeleteModal]);
-
   const handleResetDailyLimit = async () => {
     setResettingDailyLimit(true);
     try {
@@ -357,24 +310,6 @@ export default function SalesNavScraperPage() {
     setLinkedinCookie("");
   };
 
-
-  const handleDeleteOrder = async (orderId: string) => {
-    if (deleteConfirmOrderId === orderId) {
-      // Confirm delete
-      try {
-        await apiClient.deleteVayneOrder(orderId);
-        setScrapeHistoryOrders((prev: VayneOrder[]) => prev.filter((o: VayneOrder) => o.id !== orderId));
-        setDeleteConfirmOrderId(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to delete order");
-        setShowErrorModal(true);
-        setDeleteConfirmOrderId(null);
-      }
-    } else {
-      // First click - show confirm
-      setDeleteConfirmOrderId(orderId);
-    }
-  };
 
   const handleDownloadCSV = async (orderId: string) => {
     setDownloadingOrderId(orderId);
@@ -488,64 +423,11 @@ export default function SalesNavScraperPage() {
         </div>
       )}
 
-      <div className="mb-6 glass-card bg-yellow-500/10 border-yellow-500/30 p-4 relative z-0">
-        <div className="flex items-start gap-3">
-          <svg className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <p className="text-sm text-yellow-400">
-            <strong>Important:</strong> Once scraping has started, you will still be charged for all leads scraped even if you cancel or delete the order from your order history.
-          </p>
-        </div>
-      </div>
-
       <ErrorModal
         isOpen={showErrorModal}
         message={error}
         onClose={() => setShowErrorModal(false)}
       />
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={handleCancelDelete}
-        >
-          <div 
-            className="glass-card p-6 max-w-md w-full mx-4"
-            style={{ background: 'rgba(13, 15, 18, 0.9)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold text-dashboard-text mb-4">Delete Order</h3>
-            <p className="text-sm text-dashboard-text-muted mb-6">
-              Are you sure you want to delete this order from your order history? 
-              <strong className="text-dashboard-text block mt-2">
-                You will still be charged for all leads scraped, even if you delete the order.
-              </strong>
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCancelDelete();
-                }}
-                className="flex-1 px-4 py-2 glass-card text-dashboard-text hover:bg-dashboard-card transition-colors text-sm font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleConfirmDelete();
-                }}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
-              >
-                Delete Order
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Reset Daily Limit Modal (from Reset button) */}
       {showResetModal && (
@@ -564,7 +446,7 @@ export default function SalesNavScraperPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-dashboard-text">Reset Daily Scraping Limit</h3>
+              <h3 className="text-lg font-semibold text-red-500">Warning</h3>
             </div>
             <p className="text-sm text-dashboard-text-muted mb-3">
               Scraping more than 15,000 profiles per day using a single Sales Navigator account puts your LinkedIn account at risk of suspension or permanent ban.
@@ -608,7 +490,7 @@ export default function SalesNavScraperPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-dashboard-text">Daily Scraping Limit Reached</h3>
+              <h3 className="text-lg font-semibold text-red-500">Warning</h3>
             </div>
             <p className="text-sm text-dashboard-text-muted mb-3">
               You&apos;ve hit your daily scraping limit. Scraping more than 15,000 profiles per day using a single Sales Navigator account puts your LinkedIn account at risk of suspension or permanent ban.
@@ -901,21 +783,6 @@ export default function SalesNavScraperPage() {
                             className="px-3 py-1.5 bg-dashboard-accent text-white text-xs rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50"
                           >
                             {downloadingOrderId === order.id ? "Downloading..." : "Download CSV"}
-                          </button>
-                        )}
-                        {deleteConfirmOrderId === order.id ? (
-                          <button
-                            onClick={() => handleDeleteOrder(order.id)}
-                            className="text-red-400 hover:text-red-300 transition-colors text-xs"
-                          >
-                            Confirm Delete
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleDeleteOrder(order.id)}
-                            className="text-dashboard-text-muted hover:text-red-400 transition-colors text-xs"
-                          >
-                            Delete
                           </button>
                         )}
                       </div>
