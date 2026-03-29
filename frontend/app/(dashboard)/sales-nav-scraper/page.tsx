@@ -30,6 +30,11 @@ export default function SalesNavScraperPage() {
   const [error, setError] = useState("");
   const [showErrorModal, setShowErrorModal] = useState(false);
   
+  // Daily limit reset modal state
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [showDailyLimitModal, setShowDailyLimitModal] = useState(false);
+  const [resettingDailyLimit, setResettingDailyLimit] = useState(false);
+
   // Delete confirmation state
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -206,6 +211,11 @@ export default function SalesNavScraperPage() {
       setShowErrorModal(true);
       return;
     }
+
+    if (dailyUsage && dailyUsage.remaining <= 0) {
+      setShowDailyLimitModal(true);
+      return;
+    }
     
     setCreatingOrder(true);
     try {
@@ -309,6 +319,37 @@ export default function SalesNavScraperPage() {
       document.body.style.overflow = 'unset';
     };
   }, [showDeleteModal]);
+
+  const handleResetDailyLimit = async () => {
+    setResettingDailyLimit(true);
+    try {
+      await apiClient.resetVayneDailyUsage();
+      await loadDailyUsage();
+      setShowResetModal(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reset daily limit");
+      setShowErrorModal(true);
+      setShowResetModal(false);
+    } finally {
+      setResettingDailyLimit(false);
+    }
+  };
+
+  const handleContinueScraping = async () => {
+    setResettingDailyLimit(true);
+    try {
+      await apiClient.resetVayneDailyUsage();
+      await loadDailyUsage();
+      setShowDailyLimitModal(false);
+      setResettingDailyLimit(false);
+      handleStartScraping();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reset daily limit");
+      setShowErrorModal(true);
+      setShowDailyLimitModal(false);
+      setResettingDailyLimit(false);
+    }
+  };
 
   const handleClearForm = () => {
     setJobName("");
@@ -415,9 +456,18 @@ export default function SalesNavScraperPage() {
                 </div>
               </div>
             </div>
-            <span className="text-sm text-dashboard-text-muted">
-              {dailyUsage.used.toLocaleString()} / {dailyUsage.limit.toLocaleString()} profiles
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-dashboard-text-muted">
+                {dailyUsage.used.toLocaleString()} / {dailyUsage.limit.toLocaleString()} profiles
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowResetModal(true)}
+                className="text-xs font-medium text-dashboard-accent hover:text-dashboard-accent/80 transition-colors px-2 py-1 rounded border border-dashboard-accent/30 hover:border-dashboard-accent/60"
+              >
+                Reset
+              </button>
+            </div>
           </div>
           <div className="w-full bg-dashboard-card rounded-full h-2.5 overflow-hidden">
             <div
@@ -491,6 +541,94 @@ export default function SalesNavScraperPage() {
                 className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
               >
                 Delete Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Daily Limit Modal (from Reset button) */}
+      {showResetModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setShowResetModal(false)}
+        >
+          <div
+            className="glass-card p-6 max-w-md w-full mx-4"
+            style={{ background: 'rgba(13, 15, 18, 0.95)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-yellow-500/10">
+                <svg className="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-dashboard-text">Reset Daily Scraping Limit</h3>
+            </div>
+            <p className="text-sm text-dashboard-text-muted mb-3">
+              Scraping more than 15,000 profiles per day using a single Sales Navigator account puts your LinkedIn account at risk of suspension or permanent ban.
+            </p>
+            <p className="text-sm text-dashboard-text-muted mb-6">
+              Only reset your daily limit if you plan to use a Sales Navigator cookie and URL from a different Sales Navigator account.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowResetModal(false)}
+                className="flex-1 px-4 py-2 glass-card text-dashboard-text hover:bg-dashboard-card transition-colors text-sm font-medium"
+              >
+                Close
+              </button>
+              <button
+                onClick={handleResetDailyLimit}
+                disabled={resettingDailyLimit}
+                className="flex-1 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {resettingDailyLimit ? "Resetting..." : "Reset Daily Scraping Limit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Limit Reached Modal (auto-triggered when trying to scrape at limit) */}
+      {showDailyLimitModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setShowDailyLimitModal(false)}
+        >
+          <div
+            className="glass-card p-6 max-w-md w-full mx-4"
+            style={{ background: 'rgba(13, 15, 18, 0.95)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-red-500/10">
+                <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-dashboard-text">Daily Scraping Limit Reached</h3>
+            </div>
+            <p className="text-sm text-dashboard-text-muted mb-3">
+              You&apos;ve hit your daily scraping limit. Scraping more than 15,000 profiles per day using a single Sales Navigator account puts your LinkedIn account at risk of suspension or permanent ban.
+            </p>
+            <p className="text-sm text-dashboard-text-muted mb-6">
+              Only continue if you plan to use a Sales Navigator cookie and URL from a different Sales Navigator account.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDailyLimitModal(false)}
+                className="flex-1 px-4 py-2 glass-card text-dashboard-text hover:bg-dashboard-card transition-colors text-sm font-medium"
+              >
+                Close
+              </button>
+              <button
+                onClick={handleContinueScraping}
+                disabled={resettingDailyLimit}
+                className="flex-1 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {resettingDailyLimit ? "Resetting..." : "Continue Scraping"}
               </button>
             </div>
           </div>

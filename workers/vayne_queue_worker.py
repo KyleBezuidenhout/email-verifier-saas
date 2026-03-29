@@ -61,7 +61,7 @@ except ImportError as e:
         print(f"Backend directory exists: {os.listdir(backend_path)}", flush=True)
     raise
 
-from email_utils import send_job_failure_email, send_admin_daily_limit_email
+from email_utils import send_job_failure_email, send_admin_daily_limit_email, send_daily_limit_reached_email
 
 engine = create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
@@ -89,6 +89,28 @@ def log(message: str, level: str = "info"):
 # ---------------------------------------------------------------------------
 # Email helpers
 # ---------------------------------------------------------------------------
+
+def _generate_reset_token(user_id: str) -> str:
+    """Generate a signed JWT for the daily-limit reset email link (24h expiry)."""
+    from jose import jwt as _jwt
+    from datetime import timedelta
+    payload = {
+        "sub": user_id,
+        "purpose": "reset_daily_limit",
+        "exp": datetime.utcnow() + timedelta(hours=24),
+    }
+    return _jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
+
+def _send_daily_limit_user_email(db, user_id, user_email: str, job_name: str, estimated_leads: int):
+    """Send the daily-limit-reached email to the user with a reset link."""
+    try:
+        token = _generate_reset_token(str(user_id))
+        reset_url = f"{APP_URL}/reset-daily-limit?token={token}"
+        send_daily_limit_reached_email(user_email, job_name, estimated_leads, reset_url)
+    except Exception as e:
+        log(f"Failed to send daily limit email to {user_email}: {e}", "error")
+
 
 def send_scraping_completion_email(user_email: str, order_id: str, results: dict, targeting: str = None) -> bool:
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
@@ -348,6 +370,49 @@ def normalize_sales_nav_url(url: str) -> str:
 # Slot selection — pick free slot with most Vayne daily capacity remaining
 # ---------------------------------------------------------------------------
 
+_LOW_CAPACITY_THRESHOLD = 10_000
+
+
+def _should_send_low_capacity_alert() -> bool:
+    """Return True if we haven't sent a low-capacity admin alert today."""
+    import redis as _redis
+    r = _redis.from_url(settings.REDIS_URL, decode_responses=True)
+    today = time.strftime("%Y-%m-%d")
+    key = f"vayne:low_capacity_alert:{today}"
+    if r.get(key):
+        return False
+    r.set(key, "1", ex=86400)
+    return True
+
+
+def _check_all_slots_low_capacity(vayne_clients: List[VayneClient]) -> None:
+    """If every Vayne API key has < 10k daily leads remaining, alert admin once per day."""
+    all_low = True
+    capacities = []
+    for idx, client in enumerate(vayne_clients):
+        try:
+            credits_info = client.get_credits()
+            remaining = credits_info.get("daily_limit_leads", 0)
+            capacities.append(remaining)
+            if remaining >= _LOW_CAPACITY_THRESHOLD:
+                all_low = False
+                break
+        except Exception:
+            capacities.append(0)
+
+    if all_low and capacities and _should_send_low_capacity_alert():
+        detail_parts = [f"Slot {i}: {c:,} leads remaining" for i, c in enumerate(capacities)]
+        send_admin_daily_limit_email(
+            service="Vayne Sales Nav Scraper (Low Capacity)",
+            detail=(
+                f"All {len(vayne_clients)} Vayne API key account(s) have less than "
+                f"{_LOW_CAPACITY_THRESHOLD:,} daily leads remaining.\n\n"
+                + "\n".join(detail_parts)
+            ),
+        )
+        log(f"Sent low-capacity admin alert: {capacities}", "info")
+
+
 def select_best_available_slot(
     vayne_clients: List[VayneClient],
     busy_slots: Set[int],
@@ -408,11 +473,12 @@ async def process_queued_order(order_row, slot_idx: int, client: VayneClient) ->
 
         # --- Step 0: Per-client daily limit check (atomic with FOR UPDATE) ---
         user_result = db.execute(
-            text("SELECT email FROM users WHERE id = :user_id FOR UPDATE"),
+            text("SELECT email, vayne_daily_usage_reset_at FROM users WHERE id = :user_id FOR UPDATE"),
             {"user_id": str(order_row.user_id)}
         )
         user_row = user_result.fetchone()
         is_admin = user_row and user_row.email == ADMIN_EMAIL
+        user_reset_at = user_row.vayne_daily_usage_reset_at if user_row else None
 
         if not is_admin:
             daily_limit = settings.VAYNE_PER_CLIENT_DAILY_LIMIT
@@ -421,8 +487,11 @@ async def process_queued_order(order_row, slot_idx: int, client: VayneClient) ->
                 FROM vayne_orders
                 WHERE user_id = :uid
                 AND status != 'failed'
-                AND created_at >= NOW() - INTERVAL '24 hours'
-            """), {"uid": str(order_row.user_id)})
+                AND created_at >= GREATEST(
+                    NOW() - INTERVAL '24 hours',
+                    COALESCE(:reset_at, '1970-01-01'::timestamptz)
+                )
+            """), {"uid": str(order_row.user_id), "reset_at": user_reset_at})
             daily_used = int(usage_result.fetchone().used)
             if daily_used >= daily_limit:
                 db.commit()  # release FOR UPDATE lock
@@ -430,6 +499,9 @@ async def process_queued_order(order_row, slot_idx: int, client: VayneClient) ->
                     db, order_id,
                     f"Daily scraping limit reached. You can scrape up to {daily_limit:,} profiles per day. Please try again later."
                 )
+                job_name = getattr(order_row, 'targeting', None) or f"Order {str(order_id)[:8]}"
+                est = getattr(order_row, 'estimated_leads', None) or 0
+                _send_daily_limit_user_email(db, order_row.user_id, user_row.email, job_name, est)
                 send_admin_daily_limit_email(
                     service="Vayne Sales Nav Scraper (Per-Client Limit)",
                     detail=f"User {order_row.user_id} ({user_row.email}) reached their daily limit of {daily_limit:,} leads."
@@ -502,15 +574,20 @@ async def process_queued_order(order_row, slot_idx: int, client: VayneClient) ->
                     SELECT COALESCE(SUM(estimated_leads), 0) as used
                     FROM vayne_orders
                     WHERE user_id = :uid AND status != 'failed'
-                    AND created_at >= NOW() - INTERVAL '24 hours'
-                """), {"uid": str(order_row.user_id)})
+                    AND created_at >= GREATEST(
+                        NOW() - INTERVAL '24 hours',
+                        COALESCE(:reset_at, '1970-01-01'::timestamptz)
+                    )
+                """), {"uid": str(order_row.user_id), "reset_at": user_reset_at})
                 daily_used = int(usage_result.fetchone().used)
                 if daily_used + estimated_leads > settings.VAYNE_PER_CLIENT_DAILY_LIMIT:
                     db2.commit()
+                    job_name = getattr(order_row, 'targeting', None) or f"Order {str(order_id)[:8]}"
                     mark_order_failed(
                         db, order_id,
                         f"Daily scraping limit reached. This job requires ~{estimated_leads:,} leads but you only have {settings.VAYNE_PER_CLIENT_DAILY_LIMIT - daily_used:,} remaining today."
                     )
+                    _send_daily_limit_user_email(db, order_row.user_id, user_row.email, job_name, estimated_leads)
                     return "failed"
 
             db2.execute(text(
@@ -743,7 +820,7 @@ async def main():
                         log(f"[Slot {slot_idx}] Task error: {task_err}", "error")
                     del active_tasks[slot_idx]
 
-            # Periodic stuck order check
+            # Periodic stuck order check + low-capacity alert
             now = time.time()
             if now - last_stuck_check > STUCK_CHECK_INTERVAL_MINUTES * 60:
                 db = SessionLocal()
@@ -751,6 +828,10 @@ async def main():
                     fail_stuck_vayne_orders(db)
                 finally:
                     db.close()
+                try:
+                    _check_all_slots_low_capacity(vayne_clients)
+                except Exception as cap_err:
+                    log(f"Low-capacity check error: {cap_err}", "error")
                 last_stuck_check = now
 
             # Determine which slots are busy

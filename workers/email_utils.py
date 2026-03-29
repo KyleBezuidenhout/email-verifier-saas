@@ -122,6 +122,62 @@ def send_admin_daily_limit_email(service: str, detail: str) -> bool:
     return _send_html_email(ADMIN_EMAIL, subject, html)
 
 
+def send_daily_limit_reached_email(
+    user_email: str,
+    job_name: str,
+    estimated_leads: int,
+    reset_url: str,
+) -> bool:
+    """Notify a client that their queued job was cancelled due to daily limit, with a reset link."""
+    subject = "BillionVerifier - Daily Scraping Limit Reached"
+
+    leads_str = f"{estimated_leads:,}" if estimated_leads else "unknown"
+
+    html = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h2 style="margin: 0; font-size: 22px;">Daily Scraping Limit Reached</h2>
+      </div>
+      <div style="background: #f8fafc; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
+        <p style="color: #475569; font-size: 16px; margin-top: 0;">
+          Your recent <strong>{job_name}</strong> Sales Navigator scraping of
+          <strong>{leads_str}</strong> profiles was cancelled to protect your LinkedIn
+          account from bans or suspension, as you've reached your daily limit of
+          15,000 profiles scraped.
+        </p>
+
+        <p style="color: #475569; font-size: 15px;">
+          Please try again tomorrow once your daily limit resets, or, if you have a
+          second Sales Nav account that you'd like to use, feel free to reset your
+          daily limit:
+        </p>
+
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="{reset_url}"
+             style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px;
+                    font-weight: 600; font-size: 15px;">
+            Reset Daily Scraping Limit
+          </a>
+        </div>
+
+        <div style="background: #fffbeb; padding: 16px 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #fde68a;">
+          <p style="margin: 0; color: #92400e; font-size: 13px;">
+            <strong>Warning:</strong> Scraping more than 15,000 profiles per day using a single
+            Sales Navigator account puts your LinkedIn account at risk of suspension or permanent ban.
+          </p>
+        </div>
+
+        <p style="color: #94a3b8; font-size: 12px; margin-top: 24px; margin-bottom: 0;">
+          This reset link expires in 24 hours.
+        </p>
+      </div>
+    </div>
+    """
+
+    return _send_html_email(user_email, subject, html)
+
+
 def send_admin_credit_exhaustion_email(service: str, detail: str) -> bool:
     """Notify admin that a third-party service has run out of credits."""
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")

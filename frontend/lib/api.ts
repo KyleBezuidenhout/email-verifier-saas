@@ -726,6 +726,17 @@ class ApiClient {
     return this.request("/api/v1/vayne/daily-usage");
   }
 
+  async resetVayneDailyUsage(): Promise<{ success: boolean; message: string }> {
+    return this.request("/api/v1/vayne/daily-usage/reset", { method: "POST" });
+  }
+
+  async resetVayneDailyUsageWithToken(token: string): Promise<{ success: boolean; message: string }> {
+    return this.request("/api/v1/vayne/daily-usage/reset-with-token", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  }
+
   async checkVayneUrl(sales_nav_url: string): Promise<VayneUrlCheck> {
     return this.request("/api/v1/vayne/url-check", {
       method: "POST",

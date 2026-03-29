@@ -5,10 +5,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
 from datetime import datetime
+from pydantic import BaseModel
 import httpx
 import redis
 import boto3
 import logging
+from jose import jwt, JWTError
 from uuid import UUID
 
 from app.db.session import get_db
@@ -155,17 +157,28 @@ def get_daily_usage(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get the current user's scraping usage in the last 24 hours."""
+    """Get the current user's scraping usage in the last 24 hours, respecting manual resets."""
     from app.core.config import settings as app_settings
+    from datetime import timedelta
+
+    reset_row = db.execute(
+        text("SELECT vayne_daily_usage_reset_at FROM users WHERE id = :uid"),
+        {"uid": str(current_user.id)},
+    ).fetchone()
+    reset_at = reset_row.vayne_daily_usage_reset_at if reset_row else None
+
     result = db.execute(
         text("""
             SELECT COALESCE(SUM(estimated_leads), 0) as used
             FROM vayne_orders
             WHERE user_id = :uid
             AND status != 'failed'
-            AND created_at >= NOW() - INTERVAL '24 hours'
+            AND created_at >= GREATEST(
+                NOW() - INTERVAL '24 hours',
+                COALESCE(:reset_at, '1970-01-01'::timestamptz)
+            )
         """),
-        {"uid": str(current_user.id)}
+        {"uid": str(current_user.id), "reset_at": reset_at},
     )
     row = result.fetchone()
     used = int(row.used) if row else 0
@@ -177,14 +190,16 @@ def get_daily_usage(
             FROM vayne_orders
             WHERE user_id = :uid
             AND status != 'failed'
-            AND created_at >= NOW() - INTERVAL '24 hours'
+            AND created_at >= GREATEST(
+                NOW() - INTERVAL '24 hours',
+                COALESCE(:reset_at, '1970-01-01'::timestamptz)
+            )
         """),
-        {"uid": str(current_user.id)}
+        {"uid": str(current_user.id), "reset_at": reset_at},
     )
     oldest_row = oldest_result.fetchone()
     resets_at = None
     if oldest_row and oldest_row.oldest:
-        from datetime import timedelta
         resets_at = (oldest_row.oldest + timedelta(hours=24)).isoformat()
 
     return {
@@ -193,6 +208,56 @@ def get_daily_usage(
         "remaining": max(0, limit - used),
         "resets_at": resets_at,
     }
+
+
+@router.post("/daily-usage/reset")
+def reset_daily_usage(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Reset the current user's daily scraping limit by setting a reset timestamp."""
+    db.execute(
+        text("UPDATE users SET vayne_daily_usage_reset_at = NOW() WHERE id = :uid"),
+        {"uid": str(current_user.id)},
+    )
+    db.commit()
+    logger.info(f"User {current_user.id} reset their daily scraping limit")
+    return {"success": True, "message": "Daily scraping limit has been reset."}
+
+
+class ResetWithTokenRequest(BaseModel):
+    token: str
+
+
+@router.post("/daily-usage/reset-with-token")
+def reset_daily_usage_with_token(
+    payload: ResetWithTokenRequest,
+    db: Session = Depends(get_db),
+):
+    """Reset daily scraping limit using a signed token (from email link, no auth required)."""
+    try:
+        decoded = jwt.decode(payload.token, settings.SECRET_KEY, algorithms=["HS256"])
+    except JWTError as e:
+        detail = "This reset link has expired. Please request a new one." if "expired" in str(e).lower() else "Invalid reset link."
+        raise HTTPException(status_code=400, detail=detail)
+
+    if decoded.get("purpose") != "reset_daily_limit":
+        raise HTTPException(status_code=400, detail="Invalid reset link.")
+
+    user_id = decoded.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid reset link.")
+
+    result = db.execute(
+        text("UPDATE users SET vayne_daily_usage_reset_at = NOW() WHERE id = :uid RETURNING id"),
+        {"uid": user_id},
+    )
+    if not result.fetchone():
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    db.commit()
+    logger.info(f"User {user_id} reset their daily scraping limit via email token")
+    return {"success": True, "message": "Your daily scraping limit has been reset successfully."}
 
 
 @router.post("/validate-url", response_model=UrlValidationResponse)
