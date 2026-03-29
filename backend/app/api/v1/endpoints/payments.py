@@ -9,6 +9,7 @@ from pydantic import BaseModel
 import logging
 
 from app.core.config import settings
+from app.core.plans import get_credit_price
 from app.db.session import get_db
 from app.models.user import User
 from app.api.v1.endpoints.auth import get_current_user
@@ -29,8 +30,8 @@ def _is_session_processed(session_id: str) -> bool:
     was_set = _redis_dedup.set(f"stripe:processed:{session_id}", "1", nx=True, ex=86400)
     return not was_set
 
-# Credit pricing
-CREDIT_PRICE = 0.004  # $0.004 per credit
+# Legacy fallback — overridden per-user by plan-based pricing
+CREDIT_PRICE_FALLBACK = 0.004
 
 
 class CreateCheckoutRequest(BaseModel):
@@ -48,21 +49,26 @@ def create_checkout_session(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Create a Stripe Checkout Session for credit top-up.
-    
-    - amount_dollars: The dollar amount to charge ($10-$500)
-    - Credits calculated at $0.004 per credit (250 credits per dollar)
-    """
-    # Validate amount
+    """Create a Stripe Checkout Session for credit top-up. Credits calculated using the user's plan rate."""
     if payload.amount_dollars < 10 or payload.amount_dollars > 500:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Amount must be between $10 and $500"
         )
-    
-    # Calculate credits
-    credits_to_add = int(payload.amount_dollars / CREDIT_PRICE)
+
+    user_plan = getattr(current_user, 'plan', 'trial') or 'trial'
+    try:
+        plan_credit_price = float(get_credit_price(
+            user_plan,
+            custom_price=getattr(current_user, 'custom_credit_price', None),
+        ))
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your custom plan credit price has not been configured yet. Please contact support.",
+        )
+
+    credits_to_add = round(payload.amount_dollars / plan_credit_price)
     
     try:
         # Create Stripe Checkout Session
@@ -94,7 +100,9 @@ def create_checkout_session(
                 "user_id": str(current_user.id),
                 "credits_to_add": str(credits_to_add),
                 "amount_dollars": str(payload.amount_dollars),
-                "credits_added": "false",  # Track if credits have been added
+                "credit_price_used": str(plan_credit_price),
+                "plan_at_purchase": user_plan,
+                "credits_added": "false",
             },
         )
         
@@ -165,7 +173,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             logger.error(f"Missing metadata in checkout session: {session_id}")
             return {"status": "error", "message": "Missing metadata"}
         
-        credits_to_add = int(credits_to_add)
+        credits_to_add = round(float(credits_to_add))
         
         # Find user and add credits
         user = db.query(User).filter(User.id == user_id).first()
@@ -214,8 +222,8 @@ def verify_checkout_session(
                 detail="Session does not belong to this user"
             )
         
-        credits_to_add = int(session.metadata.get("credits_to_add", 0))
-        amount_dollars = int(session.metadata.get("amount_dollars", 0))
+        credits_to_add = round(float(session.metadata.get("credits_to_add", 0)))
+        amount_dollars = round(float(session.metadata.get("amount_dollars", 0)))
         credits_added_this_request = False
         
         if session.payment_status == "paid" and not _is_session_processed(session_id):

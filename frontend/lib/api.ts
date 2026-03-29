@@ -669,6 +669,26 @@ class ApiClient {
     });
   }
 
+  async updateClientPlan(clientId: string, plan: string): Promise<{
+    client_id: string;
+    old_plan: string;
+    new_plan: string;
+  }> {
+    return this.request(`/api/v1/admin/clients/${clientId}/plan?plan=${encodeURIComponent(plan)}`, {
+      method: "PUT",
+    });
+  }
+
+  async updateClientCustomCreditPrice(clientId: string, price: number): Promise<{
+    client_id: string;
+    custom_credit_price: number;
+    plan: string;
+  }> {
+    return this.request(`/api/v1/admin/clients/${clientId}/custom-credit-price?price=${price}`, {
+      method: "PUT",
+    });
+  }
+
   async getAdminErrors(date?: string, limit = 100, offset = 0): Promise<{
     errors: Array<{
       timestamp: string;

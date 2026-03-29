@@ -31,6 +31,7 @@ from sqlalchemy.orm import sessionmaker
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from app.core.config import settings, ADMIN_EMAIL
+from app.core.plans import get_enrichment_cost, is_enrichment_free
 from app.models.job import Job
 from app.models.lead import Lead
 from app.models.user import User
@@ -618,15 +619,18 @@ def process_enrichment_job(job_id: str) -> bool:
             db.commit()
             return False
         
-        # Check credits (skip for admin)
         leads_count = len(remapped_rows)
         is_admin = user.email == ADMIN_EMAIL or getattr(user, 'is_admin', False)
-        
-        if not is_admin and user.credits < leads_count:
-            logger.warning(f"Insufficient credits for user {user.id} to process job {job_id} (needs {leads_count}, has {user.credits})")
-            job.status = "failed"
-            db.commit()
-            return False
+        job_plan = getattr(job, 'plan_at_creation', None) or getattr(user, 'plan', 'trial') or 'trial'
+
+        if not is_admin and not is_enrichment_free(job_plan):
+            enrichment_cost = get_enrichment_cost(job_plan)
+            required = float(leads_count * enrichment_cost)
+            if float(user.credits) < required:
+                logger.warning(f"Insufficient credits for user {user.id} to process job {job_id} (needs {required:.1f}, has {float(user.credits):.1f})")
+                job.status = "failed"
+                db.commit()
+                return False
         
         # Create ONE lead per person (permutations generated on-the-fly during verification)
         # This keeps storage lean versus pre-generating/storing permutation rows.

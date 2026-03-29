@@ -34,6 +34,7 @@ from app.services.vayne_usage_tracker import get_vayne_usage_tracker
 from app.services.vayne_client import get_vayne_client, get_vayne_clients
 from app.core.config import settings
 from app.core.security import create_access_token
+from app.core.plans import PLAN_NAMES, is_valid_plan
 
 router = APIRouter()
 
@@ -86,7 +87,9 @@ def get_all_clients(
             "email": client.email,
             "full_name": client.full_name,
             "company_name": client.company_name,
-            "credits": client.credits,
+            "credits": float(client.credits) if client.credits is not None else 0,
+            "plan": getattr(client, 'plan', 'trial') or 'trial',
+            "custom_credit_price": float(client.custom_credit_price) if getattr(client, 'custom_credit_price', None) else None,
             "max_concurrent_jobs": getattr(client, 'max_concurrent_jobs', 3),
             "is_active": client.is_active,
             "is_admin": getattr(client, 'is_admin', False),
@@ -168,7 +171,9 @@ def get_client_detail(
             "email": client.email,
             "full_name": client.full_name,
             "company_name": client.company_name,
-            "credits": client.credits,
+            "credits": float(client.credits) if client.credits is not None else 0,
+            "plan": getattr(client, 'plan', 'trial') or 'trial',
+            "custom_credit_price": float(client.custom_credit_price) if getattr(client, 'custom_credit_price', None) else None,
             "is_active": client.is_active,
             "is_admin": getattr(client, 'is_admin', False),
             "api_key": str(client.api_key),
@@ -219,6 +224,64 @@ def update_client_credits(
         "old_credits": old_credits,
         "new_credits": credits,
         "message": f"Credits updated from {old_credits} to {credits}"
+    }
+
+
+@router.put("/clients/{client_id}/plan")
+def update_client_plan(
+    client_id: UUID,
+    plan: str = Query(...),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Update a client's billing plan."""
+    if not is_valid_plan(plan):
+        raise HTTPException(status_code=400, detail=f"Invalid plan. Must be one of: {', '.join(PLAN_NAMES)}")
+
+    client = db.query(User).filter(User.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    if plan == "custom" and not getattr(client, 'custom_credit_price', None):
+        raise HTTPException(
+            status_code=400,
+            detail="Set custom_credit_price first before switching to the custom plan",
+        )
+
+    old_plan = getattr(client, 'plan', 'trial')
+    client.plan = plan
+
+    if old_plan == "custom" and plan != "custom":
+        client.custom_credit_price = None
+
+    db.commit()
+
+    return {
+        "client_id": str(client_id),
+        "old_plan": old_plan,
+        "new_plan": plan,
+    }
+
+
+@router.put("/clients/{client_id}/custom-credit-price")
+def update_client_custom_credit_price(
+    client_id: UUID,
+    price: float = Query(..., gt=0),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Set the per-credit price for a client on the custom plan."""
+    client = db.query(User).filter(User.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    client.custom_credit_price = price
+    db.commit()
+
+    return {
+        "client_id": str(client_id),
+        "custom_credit_price": price,
+        "plan": getattr(client, 'plan', 'trial'),
     }
 
 

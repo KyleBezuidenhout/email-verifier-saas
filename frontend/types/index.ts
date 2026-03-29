@@ -5,6 +5,8 @@ export interface User {
   company_name?: string;
   company_website?: string;
   credits: number;
+  plan: string;
+  custom_credit_price?: number | null;
   api_key: string;
   catchall_verifier_api_key?: string;
   is_active: boolean;

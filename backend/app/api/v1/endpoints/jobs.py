@@ -10,12 +10,15 @@ import uuid
 import unicodedata
 from datetime import datetime
 
+from decimal import Decimal
+
 from app.db.session import get_db, SessionLocal
 from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
 from app.models.worker_config import WorkerConfig
 from app.api.dependencies import get_current_user, ADMIN_EMAIL
+from app.core.plans import get_enrichment_cost, is_enrichment_free
 from app.schemas.job import JobResponse, JobUploadResponse, JobProgressResponse
 from app.services.permutation import generate_email_permutations, normalize_domain, clean_first_name
 from app.core.config import settings
@@ -569,34 +572,35 @@ async def upload_file(
             detail=detail_msg
         )
     
-    # Check credits (1 credit per lead) - skip for admin
     leads_count = len(remapped_rows)
     is_admin = current_user.email == ADMIN_EMAIL or getattr(current_user, 'is_admin', False)
-    
-    if not is_admin and current_user.credits < leads_count:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {leads_count} credits. Please top up your account."
-        )
-    
-    # Create job with minimal info - enrichment worker will set total_leads
+    user_plan = getattr(current_user, 'plan', 'trial') or 'trial'
+
+    if not is_admin and not is_enrichment_free(user_plan):
+        enrichment_cost = get_enrichment_cost(user_plan)
+        required = float(leads_count * enrichment_cost)
+        if float(current_user.credits) < required:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"Insufficient credits. You have {float(current_user.credits):.1f} credits but this job requires {required:.1f} credits. Please top up your account."
+            )
+
     job = Job(
         user_id=current_user.id,
         status="pending",
         original_filename=file.filename,
-        job_name=job_name.strip() if job_name else None,  # Optional user-provided job name
-        total_leads=0,  # Will be set by enrichment worker
+        job_name=job_name.strip() if job_name else None,
+        total_leads=0,
         processed_leads=0,
         valid_emails_found=0,
         catchall_emails_found=0,
         cost_in_credits=0,
-        source=source,  # Tag job with source (e.g., "Sales Nav")
-        # company_size no longer used - 8 fixed patterns for all jobs
-        # Store manual column mappings for enrichment worker
+        plan_at_creation=user_plan,
+        source=source,
         column_first_name=column_first_name,
         column_last_name=column_last_name,
         column_website=column_website,
-        column_company_size=column_company_size,  # For reference only, goes to extra_data
+        column_company_size=column_company_size,
     )
     db.add(job)
     db.commit()
@@ -717,11 +721,15 @@ async def upload_verify_file(
             )
 
         is_admin = current_user.email == ADMIN_EMAIL or getattr(current_user, 'is_admin', False)
-        if not is_admin and current_user.credits < leads_count:
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {leads_count} credits. Please top up your account."
-            )
+        user_plan = getattr(current_user, 'plan', 'trial') or 'trial'
+        if not is_admin and not is_enrichment_free(user_plan):
+            enrichment_cost = get_enrichment_cost(user_plan)
+            required = float(leads_count * enrichment_cost)
+            if float(current_user.credits) < required:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=f"Insufficient credits. You have {float(current_user.credits):.1f} credits but this job requires {required:.1f} credits. Please top up your account."
+                )
 
         print(f"Large verification upload ({leads_count} emails in {len(rows)} rows), deferring to worker")
 
@@ -736,6 +744,7 @@ async def upload_verify_file(
             valid_emails_found=0,
             catchall_emails_found=0,
             cost_in_credits=0,
+            plan_at_creation=user_plan,
             column_first_name=column_first_name,
             column_last_name=column_last_name,
             column_email=column_email,
@@ -813,15 +822,18 @@ async def upload_verify_file(
             detail=detail_msg
         )
     
-    # Check credits (1 credit per email to verify) - skip for admin
     leads_count = len(remapped_rows)
     is_admin = current_user.email == ADMIN_EMAIL or getattr(current_user, 'is_admin', False)
-    
-    if not is_admin and current_user.credits < leads_count:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {leads_count} credits. Please top up your account."
-        )
+    user_plan = getattr(current_user, 'plan', 'trial') or 'trial'
+
+    if not is_admin and not is_enrichment_free(user_plan):
+        enrichment_cost = get_enrichment_cost(user_plan)
+        required = float(leads_count * enrichment_cost)
+        if float(current_user.credits) < required:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"Insufficient credits. You have {float(current_user.credits):.1f} credits but this job requires {required:.1f} credits. Please top up your account."
+            )
 
     job = Job(
         user_id=current_user.id,
@@ -834,6 +846,7 @@ async def upload_verify_file(
         valid_emails_found=0,
         catchall_emails_found=0,
         cost_in_credits=0,
+        plan_at_creation=user_plan,
         column_first_name=column_first_name,
         column_last_name=column_last_name,
         column_email=column_email,
@@ -1499,12 +1512,16 @@ async def upload_catchall_file(
             detail=f"Maximum {MAX_CATCHALL_ROWS} emails per catchall job. Your file has {len(parsed_rows)}.",
         )
 
-    # Credit check (1 credit per email) — skip for admin
     is_admin = current_user.email == ADMIN_EMAIL or getattr(current_user, "is_admin", False)
-    if not is_admin and current_user.credits < len(parsed_rows):
+    user_plan = getattr(current_user, 'plan', 'trial') or 'trial'
+    enrichment_cost = get_enrichment_cost(user_plan)
+    total_cost_decimal = len(parsed_rows) * enrichment_cost
+    total_cost = float(total_cost_decimal)
+
+    if not is_admin and total_cost > 0 and float(current_user.credits) < total_cost:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=f"Insufficient credits. You have {current_user.credits} credits but this job requires {len(parsed_rows)} credits.",
+            detail=f"Insufficient credits. You have {float(current_user.credits):.1f} credits but this job requires {total_cost:.1f} credits.",
         )
 
     job = Job(
@@ -1517,7 +1534,8 @@ async def upload_catchall_file(
         processed_leads=0,
         valid_emails_found=0,
         catchall_emails_found=0,
-        cost_in_credits=len(parsed_rows),
+        cost_in_credits=total_cost,
+        plan_at_creation=user_plan,
     )
     db.add(job)
     db.commit()
@@ -1559,9 +1577,8 @@ async def upload_catchall_file(
     db.bulk_save_objects(leads_to_create)
     db.commit()
 
-    # Deduct credits upfront (non-refundable)
-    if not is_admin:
-        current_user.credits -= len(parsed_rows)
+    if not is_admin and total_cost > 0:
+        current_user.credits -= total_cost_decimal
         db.commit()
 
     # Route to catchall Redis queue (separate from verification/enrichment)

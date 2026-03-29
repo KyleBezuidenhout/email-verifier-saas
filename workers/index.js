@@ -2688,10 +2688,10 @@ async function processJobFromQueue(jobId) {
         }
       }
       
-      // Calculate cost (1 credit per lead actually processed, not total_leads)
-      const costInCredits = processedCount;
-      
-      // Mark job as completed
+      // Plan-aware credit calculation: paid plans = free enrichment, trial = 0.5 per lead
+      const planAtCreation = jobData.plan_at_creation || 'trial';
+      const costInCredits = planAtCreation === 'trial' ? processedCount * 0.5 : 0;
+
       await updateJobStatus(jobId, 'completed', {
         processed_leads: processedCount,
         valid_emails_found: validCount,
@@ -2699,26 +2699,21 @@ async function processJobFromQueue(jobId) {
         cost_in_credits: costInCredits,
         completed_at: new Date(),
       });
-      
-      // Deduct credits (skip for admin, ensure credits never go below 0)
+
       let userEmailForNotification = null;
-      if (costInCredits > 0) {
-        // Check if user is admin
-        const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-        userEmailForNotification = userResult.rows[0]?.email;
-        
-        if (userEmailForNotification !== ADMIN_EMAIL) {
-          await pgPool.query(
-            'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
-            [costInCredits, jobData.user_id]
-          );
-          console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification}`);
-        } else {
-          console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
-        }
+      const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
+      userEmailForNotification = userResult.rows[0]?.email;
+
+      if (costInCredits > 0 && userEmailForNotification !== ADMIN_EMAIL) {
+        await pgPool.query(
+          'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
+          [costInCredits, jobData.user_id]
+        );
+        console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification} (plan: ${planAtCreation})`);
+      } else if (costInCredits === 0) {
+        console.log(`Paid plan (${planAtCreation}) - enrichment/verification is free, no credits deducted`);
       } else {
-        const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-        userEmailForNotification = userResult.rows[0]?.email;
+        console.log(`Admin user - skipping credit deduction`);
       }
       
       // Send job completion email notification
@@ -2756,7 +2751,7 @@ async function processJobFromQueue(jobId) {
       console.log(`   Throughput: ${leadsPerMinute} leads/minute (${leadsPerSecond}/sec)`);
       console.log(`   Allocated keys: ${allocatedKeys.length}`);
       console.log(`----------------------------------------`);
-      console.log(`Credits charged: ${costInCredits} (1 per lead)`);
+      console.log(`Credits charged: ${costInCredits} (plan: ${planAtCreation})`);
       console.log(`========================================\n`);
       
       return {
@@ -3097,11 +3092,10 @@ async function processJobFromQueue(jobId) {
       }
     }
     
-    // Calculate cost (1 credit per unique person/lead actually processed)
-    const costInCredits = completedPeopleCount;
-    
-    // Mark job as completed — use total_leads so progress bar shows 100%
-    // (completedPeopleCount may be less due to deduplication by enrichment_key)
+    // Plan-aware credit calculation: paid plans = free enrichment, trial = 0.5 per lead
+    const planAtCreation = jobData.plan_at_creation || 'trial';
+    const costInCredits = planAtCreation === 'trial' ? completedPeopleCount * 0.5 : 0;
+
     await updateJobStatus(jobId, 'completed', {
       processed_leads: jobData.total_leads,
       valid_emails_found: validCount,
@@ -3111,27 +3105,21 @@ async function processJobFromQueue(jobId) {
       cache_hits: cacheMap.size,
       cache_lookups: allPeople.length,
     });
-    
-    // Deduct credits (skip for admin, ensure credits never go below 0)
+
     let userEmailForNotification = null;
-    if (costInCredits > 0) {
-      // Check if user is admin
-      const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-      userEmailForNotification = userResult.rows[0]?.email;
-      
-      if (userEmailForNotification !== ADMIN_EMAIL) {
-        await pgPool.query(
-          'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
-          [costInCredits, jobData.user_id]
-        );
-        console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification}`);
-      } else {
-        console.log(`Admin user - skipping credit deduction for ${costInCredits} credits`);
-      }
+    const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
+    userEmailForNotification = userResult.rows[0]?.email;
+
+    if (costInCredits > 0 && userEmailForNotification !== ADMIN_EMAIL) {
+      await pgPool.query(
+        'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
+        [costInCredits, jobData.user_id]
+      );
+      console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification} (plan: ${planAtCreation})`);
+    } else if (costInCredits === 0) {
+      console.log(`Paid plan (${planAtCreation}) - enrichment is free, no credits deducted`);
     } else {
-      // Still get user email for notification even if no credits charged
-      const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-      userEmailForNotification = userResult.rows[0]?.email;
+      console.log(`Admin user - skipping credit deduction`);
     }
     
     // Send job completion email notification
@@ -3173,7 +3161,7 @@ async function processJobFromQueue(jobId) {
     console.log(`   Early exit savings: ${savedApiCalls} calls saved (${totalApiCalls + savedApiCalls > 0 ? Math.round((savedApiCalls / (totalApiCalls + savedApiCalls)) * 100) : 0}%)`);
     console.log(`   Cache hits: ${cacheMap.size}/${allPeople.length} (${cacheHitRate}%)`);
     console.log(`----------------------------------------`);
-    console.log(`Credits charged: ${costInCredits} (1 per lead)`);
+    console.log(`Credits charged: ${costInCredits} (plan: ${planAtCreation})`);
     console.log(`========================================\n`);
     
   } catch (error) {

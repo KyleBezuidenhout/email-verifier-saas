@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, Text
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, Text, Numeric
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 import uuid
@@ -15,19 +15,19 @@ class Job(Base):
     job_type = Column(String(50), default="enrichment", index=True)  # enrichment or verification
     source = Column(String(50))  # e.g., "Sales Nav"
     company_size = Column(String(50))  # Default company size for permutation ranking
-    # Manual column mappings from user (if provided, bypasses auto-detection in enrichment worker)
     column_first_name = Column(String(255), nullable=True)
     column_last_name = Column(String(255), nullable=True)
     column_website = Column(String(255), nullable=True)
     column_email = Column(String(255), nullable=True)
     column_company_size = Column(String(255), nullable=True)
     original_filename = Column(Text)
-    job_name = Column(String(255), nullable=True)  # Optional user-provided job name
+    job_name = Column(String(255), nullable=True)
     total_leads = Column(Integer, nullable=False)
     processed_leads = Column(Integer, default=0)
     valid_emails_found = Column(Integer, default=0)
     catchall_emails_found = Column(Integer, default=0)
-    cost_in_credits = Column(Integer, default=0)
+    cost_in_credits = Column(Numeric(12, 1), default=0)
+    plan_at_creation = Column(String(20), nullable=True)
     input_file_path = Column(Text)  # Path in Cloudflare R2
     output_file_path = Column(Text)  # Path in Cloudflare R2
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)

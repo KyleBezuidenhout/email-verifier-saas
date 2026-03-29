@@ -18,8 +18,11 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import text
 
+from decimal import Decimal
+
 from app.core.config import settings, ADMIN_EMAIL
 from app.core.security import decode_token
+from app.core.plans import get_enrichment_cost
 from app.db.session import SessionLocal
 from app.models.user import User
 from app.schemas.enrich import EnrichRequest, EnrichResponse
@@ -155,39 +158,48 @@ async def _get_user_for_enrich(
 
 # ── Credit helpers (standalone sessions, released immediately) ──
 
-async def _reserve_credit(user_id: str) -> Optional[int]:
-    """Atomically deduct 1 credit. Returns new balance, or None if insufficient."""
+async def _reserve_credit(user_id: str, cost: Decimal) -> Optional[float]:
+    """Atomically deduct `cost` credits. Returns new balance, or None if insufficient.
+    If cost <= 0 (free enrichment for paid plans), just returns current balance."""
     loop = asyncio.get_event_loop()
 
     def _do():
         db = SessionLocal()
         try:
+            if cost <= 0:
+                bal = db.execute(
+                    text("SELECT credits FROM users WHERE id = :uid"),
+                    {"uid": user_id},
+                ).scalar()
+                return float(bal) if bal is not None else 0.0
             row = db.execute(
                 text(
-                    "UPDATE users SET credits = credits - 1 "
-                    "WHERE id = :uid AND credits >= 1 "
+                    "UPDATE users SET credits = credits - :cost "
+                    "WHERE id = :uid AND credits >= :cost "
                     "RETURNING credits"
                 ),
-                {"uid": user_id},
+                {"uid": user_id, "cost": float(cost)},
             ).fetchone()
             db.commit()
-            return row[0] if row else None
+            return float(row[0]) if row else None
         finally:
             db.close()
 
     return await loop.run_in_executor(None, _do)
 
 
-async def _refund_credit(user_id: str) -> None:
-    """Return 1 credit on failure. Safe to call even if reservation already refunded."""
+async def _refund_credit(user_id: str, cost: Decimal) -> None:
+    """Return `cost` credits on failure. Must match the amount reserved."""
+    if cost <= 0:
+        return
     loop = asyncio.get_event_loop()
 
     def _do():
         db = SessionLocal()
         try:
             db.execute(
-                text("UPDATE users SET credits = credits + 1 WHERE id = :uid"),
-                {"uid": user_id},
+                text("UPDATE users SET credits = credits + :cost WHERE id = :uid"),
+                {"uid": user_id, "cost": float(cost)},
             )
             db.commit()
         finally:
@@ -199,17 +211,35 @@ async def _refund_credit(user_id: str) -> None:
         logger.exception("Failed to refund credit for user %s", user_id)
 
 
-async def _get_credits(user_id: str) -> int:
-    """Read current credit balance (for admin responses)."""
+async def _get_user_plan(user_id: str) -> str:
+    """Read user's plan."""
     loop = asyncio.get_event_loop()
 
     def _do():
         db = SessionLocal()
         try:
             return db.execute(
+                text("SELECT plan FROM users WHERE id = :uid"),
+                {"uid": user_id},
+            ).scalar() or "trial"
+        finally:
+            db.close()
+
+    return await loop.run_in_executor(None, _do)
+
+
+async def _get_credits(user_id: str) -> float:
+    """Read current credit balance (for admin responses)."""
+    loop = asyncio.get_event_loop()
+
+    def _do():
+        db = SessionLocal()
+        try:
+            val = db.execute(
                 text("SELECT credits FROM users WHERE id = :uid"),
                 {"uid": user_id},
-            ).scalar() or 0
+            ).scalar()
+            return float(val) if val is not None else 0.0
         finally:
             db.close()
 
@@ -243,12 +273,15 @@ async def enrich_endpoint(
     # ── Atomic credit reservation (standalone session, released immediately) ──
     credit_reserved = False
     credits_remaining = 0
+    enrichment_cost = Decimal("0")
     if not is_admin:
-        reserved = await _reserve_credit(user_id)
+        plan = await _get_user_plan(user_id)
+        enrichment_cost = get_enrichment_cost(plan)
+        reserved = await _reserve_credit(user_id, enrichment_cost)
         if reserved is None:
             raise HTTPException(status_code=402, detail="Insufficient credits")
         credits_remaining = reserved
-        credit_reserved = True
+        credit_reserved = enrichment_cost > 0
 
     # ── Wait for concurrency slots (no DB connection held) ──
     acquire_timeout = settings.ENRICH_API_ACQUIRE_TIMEOUT_SECONDS
@@ -310,7 +343,7 @@ async def enrich_endpoint(
             status=result.status,
             pattern=result.pattern,
             mx_provider=result.mx_provider,
-            credits_used=0 if is_admin else 1,
+            credits_used=0 if is_admin else float(enrichment_cost),
             credits_remaining=credits_remaining,
         )
 
@@ -320,5 +353,5 @@ async def enrich_endpoint(
         if user_acquired:
             await _get_user_concurrency().release(user_id)
         if credit_reserved:
-            logger.info("Refunding credit for user %s (enrichment did not complete)", user_id)
-            await _refund_credit(user_id)
+            logger.info("Refunding %s credit(s) for user %s (enrichment did not complete)", enrichment_cost, user_id)
+            await _refund_credit(user_id, enrichment_cost)

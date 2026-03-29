@@ -8,13 +8,18 @@ import { apiClient } from "@/lib/api";
 import { Speedometer } from "@/components/dashboard/Speedometer";
 import { AnalyticsPanel } from "@/components/admin/AnalyticsPanel";
 
-// Types for admin data
+import { PLANS, formatCredits } from "@/lib/plans";
+
+const PLAN_OPTIONS = PLANS.map((p) => ({ id: p.id, name: p.name }));
+
 interface ClientData {
   id: string;
   email: string;
   full_name: string | null;
   company_name: string | null;
   credits: number;
+  plan?: string;
+  custom_credit_price?: number | null;
   max_concurrent_jobs: number;
   is_active: boolean;
   is_admin: boolean;
@@ -154,6 +159,9 @@ export default function AdminConsolePage() {
   const [editingMaxJobsClientId, setEditingMaxJobsClientId] = useState<string | null>(null);
   const [maxJobsValue, setMaxJobsValue] = useState<string>("");
   const [maxJobsLoading, setMaxJobsLoading] = useState(false);
+  const [planLoading, setPlanLoading] = useState<string | null>(null);
+  const [editingCustomPriceClientId, setEditingCustomPriceClientId] = useState<string | null>(null);
+  const [customPriceValue, setCustomPriceValue] = useState<string>("");
 
   // Credit assignment state
   const [selectedClientId, setSelectedClientId] = useState<string>("");
@@ -310,6 +318,43 @@ export default function AdminConsolePage() {
       console.error("Failed to update max jobs:", err);
     } finally {
       setMaxJobsLoading(false);
+    }
+  };
+
+  const handlePlanChange = async (clientId: string, newPlan: string) => {
+    try {
+      setPlanLoading(clientId);
+      const res = await apiClient.updateClientPlan(clientId, newPlan);
+      setClients(prev =>
+        prev.map(c => c.id === clientId ? {
+          ...c,
+          plan: res.new_plan,
+          custom_credit_price: res.new_plan !== "custom" ? null : c.custom_credit_price,
+        } : c)
+      );
+    } catch (err) {
+      console.error("Failed to update plan:", err);
+      alert(err instanceof Error ? err.message : "Failed to update plan");
+    } finally {
+      setPlanLoading(null);
+    }
+  };
+
+  const handleCustomPriceSubmit = async (clientId: string) => {
+    const val = parseFloat(customPriceValue);
+    if (isNaN(val) || val <= 0) return;
+    try {
+      setPlanLoading(clientId);
+      const res = await apiClient.updateClientCustomCreditPrice(clientId, val);
+      setClients(prev =>
+        prev.map(c => c.id === clientId ? { ...c, custom_credit_price: res.custom_credit_price } : c)
+      );
+      setEditingCustomPriceClientId(null);
+      setCustomPriceValue("");
+    } catch (err) {
+      console.error("Failed to update custom price:", err);
+    } finally {
+      setPlanLoading(null);
     }
   };
 
@@ -737,6 +782,7 @@ export default function AdminConsolePage() {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Email</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">Company</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-dashboard-text-muted uppercase">Plan</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Credits</th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-dashboard-text-muted uppercase">Max Jobs</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-dashboard-text-muted uppercase">Jobs</th>
@@ -757,8 +803,47 @@ export default function AdminConsolePage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-dashboard-text-muted">{client.company_name || "-"}</td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <select
+                          value={client.plan || "trial"}
+                          onChange={(e) => handlePlanChange(client.id, e.target.value)}
+                          disabled={planLoading === client.id}
+                          className="bg-dashboard-card border border-dashboard-border text-dashboard-text text-xs rounded px-2 py-1 focus:border-dashboard-accent focus:outline-none"
+                        >
+                          {PLAN_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.name}</option>
+                          ))}
+                        </select>
+                        {client.plan === "custom" && (
+                          editingCustomPriceClientId === client.id ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                className="bg-dashboard-bg border border-dashboard-border text-dashboard-text rounded px-1 py-0.5 text-xs w-20 text-center"
+                                value={customPriceValue}
+                                onChange={(e) => setCustomPriceValue(e.target.value)}
+                                placeholder="0.0015"
+                              />
+                              <button onClick={() => handleCustomPriceSubmit(client.id)} className="text-green-400 hover:text-green-300 text-xs">Save</button>
+                              <button onClick={() => setEditingCustomPriceClientId(null)} className="text-red-400 hover:text-red-300 text-xs">×</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingCustomPriceClientId(client.id);
+                                setCustomPriceValue(client.custom_credit_price?.toString() ?? "");
+                              }}
+                              className="text-xs text-dashboard-accent hover:underline"
+                            >
+                              {client.custom_credit_price ? `$${client.custom_credit_price}/cr` : "Set price"}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </td>
                     <td className={`px-4 py-3 text-right font-medium ${client.credits < 10 ? "text-red-400" : "text-dashboard-text"}`}>
-                      {client.credits}
+                      {formatCredits(client.credits)}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {editingMaxJobsClientId === client.id ? (

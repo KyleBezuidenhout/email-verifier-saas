@@ -201,7 +201,7 @@ async def oauth_callback(provider: str, body: OAuthCallbackRequest, db: Session 
         oauth_provider=provider,
         oauth_provider_id=provider_id,
         email_verified=True,
-        credits=100,
+        credits=1000,
     )
     db.add(new_user)
     db.commit()

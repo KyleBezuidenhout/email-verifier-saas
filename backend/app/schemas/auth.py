@@ -56,7 +56,9 @@ class UserResponse(BaseModel):
     full_name: Optional[str] = None
     company_name: Optional[str] = None
     company_website: Optional[str] = None
-    credits: int
+    credits: float
+    plan: str = "trial"
+    custom_credit_price: Optional[float] = None
     api_key: UUID
     catchall_verifier_api_key: Optional[str] = None
     is_active: bool

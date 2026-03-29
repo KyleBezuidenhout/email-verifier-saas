@@ -1,97 +1,37 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { Check } from "lucide-react";
+import { useState, useMemo } from "react";
 import { apiClient } from "@/lib/api";
-
-const pricingPlans = [
-  {
-    name: "Freelance",
-    subtitle: "Individual professionals",
-    description: "Perfect for solo operators",
-    monthlyPrice: 297,
-    features: [
-      "Scrape leads at $2 per 1,000",
-      "Find 2,500 emails per hour",
-      "Find 130k+ valid emails daily",
-      "Uncapped verification",
-      "24hr Email Support",
-    ],
-    highlighted: false,
-    extras: [],
-  },
-  {
-    name: "Starter",
-    subtitle: "Growing teams",
-    description: "Scale your outreach",
-    monthlyPrice: 497,
-    features: [
-      "Scrape leads at $2 per 1,000",
-      "Find 5,000 emails per hour",
-      "Find over 250k+ valid email addresses daily (just need full name & website)",
-      "Uncapped verification",
-      "> 60-minute Email Support",
-    ],
-    highlighted: false,
-    extras: ["Enterprise Sales Nav Seat"],
-  },
-  {
-    name: "Agency",
-    subtitle: "High-volume teams",
-    description: "Maximize your pipeline",
-    monthlyPrice: 997,
-    features: [
-      "Scrape leads at $2 per 1,000",
-      "Find 10,000 emails per hour",
-      "Find over 500k+ valid email addresses daily (just need full name & website)",
-      "Uncapped verification",
-      "> 60-minute Email Support",
-      "API Access",
-    ],
-    highlighted: true,
-    extras: ["Enterprise Sales Nav Seat"],
-  },
-  {
-    name: "Enterprise",
-    subtitle: "Large scale operations",
-    description: "Unlimited potential",
-    monthlyPrice: 1497,
-    features: [
-      "Scrape leads at $2 per 1,000",
-      "Find 20,000 emails per hour",
-      "Find over 1M+ valid email addresses daily (just need full name & website)",
-      "Uncapped verification",
-      "> Priority Email Support",
-      "API Access",
-    ],
-    highlighted: false,
-    extras: ["Enterprise Sales Nav Seat", "Prewarmed LinkedIn Account"],
-  },
-];
+import { useAuth } from "@/context/AuthContext";
+import { getPlanById, formatCredits } from "@/lib/plans";
+import { PricingSlider } from "@/components/pricing/PricingSlider";
 
 export default function GetCreditsPage() {
-  const [isAnnual, setIsAnnual] = useState(false);
+  const { user } = useAuth();
   const [topUpAmount, setTopUpAmount] = useState(50);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const CREDIT_PRICE = 0.004; // $0.004 per credit
-  
-  // Calculate credits based on dollar amount
-  const creditsFromTopUp = Math.floor(topUpAmount / CREDIT_PRICE);
 
-  // Slider values: $10 to $500
+  const userPlan = user?.plan || "trial";
+  const planDef = getPlanById(userPlan);
+  const trialFallbackPrice = 0.0022;
+  const creditPrice = user?.custom_credit_price ?? planDef?.creditPrice ?? trialFallbackPrice;
+  const isTrialPlan = userPlan === "trial";
+  const isCustomMissingPrice = userPlan === "custom" && !user?.custom_credit_price;
+
+  const creditsFromTopUp = useMemo(
+    () => (creditPrice > 0 ? Math.round(topUpAmount / creditPrice) : 0),
+    [topUpAmount, creditPrice],
+  );
+
   const minAmount = 10;
   const maxAmount = 500;
 
-  // Handle purchase button click
   const handlePurchase = async () => {
     setIsLoading(true);
     setError(null);
-    
     try {
       const response = await apiClient.createCheckoutSession(topUpAmount);
-      // Redirect to Stripe Checkout
       window.location.href = response.checkout_url;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create checkout session");
@@ -101,18 +41,31 @@ export default function GetCreditsPage() {
 
   return (
     <div className="min-h-screen">
-      {/* Page Header */}
+      {/* Plan Banner */}
       <div className="px-6 lg:px-8 py-8 border-b border-dashboard-border">
-        <h1 className="text-3xl font-bold text-dashboard-text">Get More Credits</h1>
-        <p className="text-dashboard-text-muted mt-2">
-          Top up your credits or upgrade to a plan for better value.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-dashboard-text">Get More Credits</h1>
+            <p className="text-dashboard-text-muted mt-2">
+              Top up your credits or upgrade your plan for better rates.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="px-4 py-2 rounded-full text-sm font-semibold bg-dashboard-accent/10 text-dashboard-accent border border-dashboard-accent/20">
+              {planDef?.name ?? "Trial"} Plan
+            </span>
+            {user && (
+              <span className="text-dashboard-text-muted text-sm">
+                {formatCredits(user.credits)} credits
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* TOP UP SECTION */}
       <section className="px-6 lg:px-8 py-12 border-b border-dashboard-border">
         <div className="max-w-4xl mx-auto">
-          {/* Section Header */}
           <div className="text-center mb-10">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-dashboard-accent/10 border border-dashboard-accent/20 mb-4">
               <svg className="w-5 h-5 text-dashboard-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -126,15 +79,16 @@ export default function GetCreditsPage() {
             <p className="text-dashboard-text-muted">
               Pay only for what you need. Credits never expire.
             </p>
+            <p className="text-dashboard-text-muted text-sm mt-1">
+              You&apos;ll be charged at your <span className="text-dashboard-accent font-medium">{planDef?.name ?? "Trial"}</span> rate of{" "}
+              <span className="text-dashboard-accent font-medium">${creditPrice.toFixed(4)}</span> per credit
+            </p>
           </div>
 
-          {/* Top Up Card */}
           <div className="relative glass-card p-8 overflow-hidden">
-            {/* Decorative gradient */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-dashboard-accent/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-            
             <div className="relative grid md:grid-cols-2 gap-8 items-center">
-              {/* Left: Slider Section */}
+              {/* Left: Slider */}
               <div>
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-dashboard-text-muted mb-2">
@@ -148,7 +102,6 @@ export default function GetCreditsPage() {
                   </div>
                 </div>
 
-                {/* Custom Slider */}
                 <div className="relative mb-8">
                   <input
                     type="range"
@@ -189,17 +142,21 @@ export default function GetCreditsPage() {
                   </div>
                 </div>
 
-                {/* Error Message */}
+                {isCustomMissingPrice && (
+                  <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400 text-sm">
+                    Your custom plan credit price has not been configured yet. Please contact support before purchasing.
+                  </div>
+                )}
+
                 {error && (
                   <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
                     {error}
                   </div>
                 )}
 
-                {/* Buy Button */}
-                <button 
+                <button
                   onClick={handlePurchase}
-                  disabled={isLoading}
+                  disabled={isLoading || isCustomMissingPrice}
                   className="w-full py-4 px-6 bg-dashboard-accent text-white font-semibold rounded-xl hover:bg-dashboard-accent/90 transition-all duration-300 shadow-lg shadow-dashboard-accent/20 hover:shadow-dashboard-accent/40 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
@@ -216,7 +173,7 @@ export default function GetCreditsPage() {
                 </button>
               </div>
 
-              {/* Right: Credit Info */}
+              {/* Right: Credit Usage Info */}
               <div className="glass-card p-6">
                 <h3 className="text-lg font-semibold text-dashboard-text mb-4">Credit Usage</h3>
                 <div className="space-y-4">
@@ -227,11 +184,11 @@ export default function GetCreditsPage() {
                       </svg>
                     </div>
                     <div>
-                      <div className="text-dashboard-text font-semibold">1× Scrape</div>
+                      <div className="text-dashboard-text font-semibold">1× Sales Nav Scrape</div>
                       <div className="text-dashboard-text-muted text-sm">= 1 Credit</div>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-4 p-4 rounded-lg glass-card-hover">
                     <div className="w-12 h-12 rounded-xl bg-dashboard-accent/10 flex items-center justify-center">
                       <svg className="w-6 h-6 text-dashboard-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -239,16 +196,24 @@ export default function GetCreditsPage() {
                       </svg>
                     </div>
                     <div>
-                      <div className="text-dashboard-text font-semibold">1× Enrichment</div>
-                      <div className="text-dashboard-text-muted text-sm">= 1 Credit</div>
+                      <div className="text-dashboard-text font-semibold">1× Enrichment / Verification</div>
+                      <div className="text-dashboard-text-muted text-sm">
+                        {isTrialPlan ? "= 0.5 Credits" : (
+                          <span className="text-green-400 font-medium">Free (Uncapped)</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-dashboard-border">
+                <div className="mt-6 pt-4 border-t border-dashboard-border space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-dashboard-text-muted">Price per credit</span>
-                    <span className="text-dashboard-accent font-semibold">${CREDIT_PRICE.toFixed(3)}</span>
+                    <span className="text-dashboard-accent font-semibold">${creditPrice.toFixed(4)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-dashboard-text-muted">Your plan</span>
+                    <span className="text-dashboard-text font-semibold">{planDef?.name ?? "Trial"}</span>
                   </div>
                 </div>
               </div>
@@ -260,132 +225,9 @@ export default function GetCreditsPage() {
       {/* PRICING PLANS SECTION */}
       <section className="px-6 lg:px-8 py-16">
         <div className="max-w-7xl mx-auto">
-          {/* Section Header */}
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-dashboard-text mb-4">
-              Simple, Transparent Pricing
-            </h2>
-            <p className="text-dashboard-text-muted text-lg max-w-2xl mx-auto mb-10">
-              Choose the plan that fits your needs. Scale up anytime.
-            </p>
-            
-            {/* Annual/Monthly Toggle */}
-            <div className="flex items-center justify-center gap-4">
-              <button
-                onClick={() => setIsAnnual(false)}
-                className={`relative flex items-center gap-3 px-1 py-1 rounded-full transition-all duration-300 ${
-                  !isAnnual ? "text-dashboard-text" : "text-dashboard-text-muted"
-                }`}
-              >
-                <div
-                  className={`w-14 h-8 rounded-full transition-all duration-300 cursor-pointer flex items-center ${
-                    isAnnual ? "bg-dashboard-accent" : "bg-dashboard-card"
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsAnnual(!isAnnual);
-                  }}
-                >
-                  <div
-                    className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 mx-1 ${
-                      isAnnual ? "translate-x-6" : "translate-x-0"
-                    }`}
-                  />
-                </div>
-                <span className={`font-medium transition-colors ${isAnnual ? "text-dashboard-text" : "text-dashboard-text-muted"}`}>
-                  Annual billing
-                </span>
-                <span className="text-dashboard-accent font-medium">(2 months free)</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Pricing Cards Grid */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-5">
-            {pricingPlans.map((plan, index) => {
-              const displayPrice = isAnnual ? plan.monthlyPrice * 10 : plan.monthlyPrice;
-              
-              return (
-                <div
-                  key={plan.name}
-                  className={`relative flex flex-col p-6 lg:p-8 glass-card transition-all duration-300 animate-fade-in ${
-                    plan.highlighted
-                      ? "border-dashboard-accent shadow-lg shadow-dashboard-accent/10"
-                      : "hover:border-dashboard-border-light"
-                  }`}
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                >
-                  {/* Plan Header */}
-                  <div className="text-center mb-6">
-                    <h3 className="text-xl font-bold text-dashboard-text mb-1">
-                      {plan.name}
-                    </h3>
-                    <p className="text-dashboard-text-muted text-sm mb-1">{plan.subtitle}</p>
-                    <p className="text-dashboard-text/70 text-sm">{plan.description}</p>
-                  </div>
-
-                  {/* Price */}
-                  <div className="text-center mb-6">
-                    <div className="flex items-baseline justify-center">
-                      <span className={`text-4xl lg:text-5xl font-bold ${plan.highlighted ? "text-dashboard-accent" : "text-dashboard-text"}`}>
-                        ${displayPrice.toLocaleString()}
-                      </span>
-                      <span className="text-dashboard-text-muted text-base ml-1">
-                        /{isAnnual ? "yr" : "mo"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* CTA Button */}
-                  <Link
-                    href="/register"
-                    className={`w-full py-3 px-6 font-semibold text-center transition-all duration-300 mb-8 rounded-lg ${
-                      plan.highlighted
-                        ? "bg-dashboard-accent text-white hover:bg-dashboard-accent/90 shadow-lg shadow-dashboard-accent/20"
-                        : "bg-transparent border border-dashboard-border text-dashboard-text hover:border-dashboard-accent hover:text-dashboard-accent"
-                    }`}
-                  >
-                    Get started
-                  </Link>
-
-                  {/* Divider */}
-                  <div className="border-t border-dashboard-border mb-6" />
-
-                  {/* Features List */}
-                  <div className="flex-1">
-                    <p className="text-dashboard-text font-semibold text-sm mb-4">
-                      What&apos;s included
-                    </p>
-                    <ul className="space-y-3">
-                      {plan.features.map((feature, featureIndex) => (
-                        <li key={featureIndex} className="flex items-start gap-3">
-                          <Check className="w-5 h-5 text-dashboard-accent flex-shrink-0 mt-0.5" />
-                          <span className="text-dashboard-text text-sm leading-relaxed">
-                            {feature}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    
-                    {/* Extras */}
-                    {plan.extras.length > 0 && (
-                      <div className="mt-6 pt-4 border-t border-dashboard-border/50">
-                        {plan.extras.map((extra, extraIndex) => (
-                          <div key={extraIndex} className="flex items-center gap-2 text-dashboard-accent text-sm font-medium">
-                            <span>+</span>
-                            <span>{extra}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <PricingSlider variant="dashboard" />
         </div>
       </section>
     </div>
   );
 }
-

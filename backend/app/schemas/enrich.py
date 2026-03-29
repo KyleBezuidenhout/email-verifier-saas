@@ -25,5 +25,5 @@ class EnrichResponse(BaseModel):
     status: str  # valid | catchall | not_found
     pattern: Optional[str] = None
     mx_provider: Optional[str] = None
-    credits_used: int
-    credits_remaining: int
+    credits_used: float
+    credits_remaining: float

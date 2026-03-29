@@ -226,6 +226,7 @@ async def startup_tasks():
         from migrate_add_vayne_slot_columns import run_migration as migrate_vayne_slot_columns
         from migrate_add_oauth_columns import run_migration as migrate_oauth_columns
         from migrate_add_vayne_daily_reset import run_migration as migrate_vayne_daily_reset
+        from migrate_add_plan_billing import run_migration as migrate_plan_billing
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -256,6 +257,7 @@ async def startup_tasks():
         migrate_vayne_slot_columns()  # Add api_key_slot + last_heartbeat to vayne_orders for concurrent slot processing
         migrate_oauth_columns()
         migrate_vayne_daily_reset()
+        migrate_plan_billing()
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)
