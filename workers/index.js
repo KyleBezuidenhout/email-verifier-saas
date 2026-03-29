@@ -2700,9 +2700,7 @@ async function processJobFromQueue(jobId) {
         completed_at: new Date(),
       });
 
-      let userEmailForNotification = null;
-      const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-      userEmailForNotification = userResult.rows[0]?.email;
+      const userEmailForNotification = userData?.email || null;
 
       if (costInCredits > 0 && userEmailForNotification !== ADMIN_EMAIL) {
         await pgPool.query(
@@ -3106,9 +3104,7 @@ async function processJobFromQueue(jobId) {
       cache_lookups: allPeople.length,
     });
 
-    let userEmailForNotification = null;
-    const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-    userEmailForNotification = userResult.rows[0]?.email;
+    const userEmailForNotification = userData?.email || null;
 
     if (costInCredits > 0 && userEmailForNotification !== ADMIN_EMAIL) {
       await pgPool.query(
