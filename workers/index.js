@@ -3107,8 +3107,7 @@ async function processJobFromQueue(jobId) {
     });
 
     let userEmailForNotification = null;
-    const userResult = await pgPool.query('SELECT email FROM users WHERE id = $1', [jobData.user_id]);
-    userEmailForNotification = userResult.rows[0]?.email;
+    userEmailForNotification = userData?.email;
 
     if (costInCredits > 0 && userEmailForNotification !== ADMIN_EMAIL) {
       await pgPool.query(
