@@ -16,7 +16,7 @@ class JobResponse(BaseModel):
     processed_leads: int
     valid_emails_found: int
     catchall_emails_found: int
-    cost_in_credits: int
+    cost_in_credits: float
     input_file_path: Optional[str]
     output_file_path: Optional[str]
     created_at: datetime
