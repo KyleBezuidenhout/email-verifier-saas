@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { apiClient, ApiError } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
 export default function OAuthCallbackPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { refreshUser } = useAuth();
   const [error, setError] = useState("");
   const exchanged = useRef(false);
 
@@ -39,6 +41,7 @@ export default function OAuthCallbackPage() {
     (async () => {
       try {
         const response = await apiClient.oauthCallback(provider, code, stateParam);
+        await refreshUser();
         const user = response.user;
         if (!user.company_website) {
           router.replace("/onboarding");

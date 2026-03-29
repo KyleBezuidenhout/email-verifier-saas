@@ -29,10 +29,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(userData);
     } catch (error) {
       setUser(null);
-      // Clear invalid token cookie
       if (typeof document !== "undefined") {
-        document.cookie = "token=; path=/; max-age=0";
-        document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
+        const isOAuthCallback = window.location.pathname.startsWith("/auth/callback");
+        if (!isOAuthCallback) {
+          document.cookie = "token=; path=/; max-age=0";
+          document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
+        }
       }
     } finally {
       setLoading(false);
