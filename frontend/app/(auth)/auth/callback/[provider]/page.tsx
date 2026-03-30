@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { apiClient, ApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -12,15 +12,17 @@ export default function OAuthCallbackPage() {
   const router = useRouter();
   const { setAuthUser } = useAuth();
   const [error, setError] = useState("");
-  const exchanged = useRef(false);
 
   const provider = params.provider as string;
   const code = searchParams.get("code");
   const stateParam = searchParams.get("state");
 
   useEffect(() => {
-    if (exchanged.current) return;
-    exchanged.current = true;
+    // sessionStorage survives React StrictMode unmount-remount cycles,
+    // preventing the same single-use auth code from being sent twice.
+    const key = code ? `oauth_exchanged:${code}` : null;
+    if (key && sessionStorage.getItem(key)) return;
+    if (key) sessionStorage.setItem(key, "1");
 
     const errorParam = searchParams.get("error");
     const errorDesc = searchParams.get("error_description");
@@ -49,6 +51,7 @@ export default function OAuthCallbackPage() {
           router.replace("/sales-nav-scraper");
         }
       } catch (err) {
+        if (key) sessionStorage.removeItem(key);
         if (err instanceof ApiError && err.status === 409) {
           const method = err.detail.toLowerCase().includes("email and password")
             ? "email"
