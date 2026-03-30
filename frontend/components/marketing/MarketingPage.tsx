@@ -1,12 +1,34 @@
 "use client";
 
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { LandingHeader } from "./LandingHeader";
 import { LandingFooter } from "./LandingFooter";
-import { DataVisualization } from "./DataVisualization";
 import { IntegrationsShowcase } from "./IntegrationsShowcase";
 import { PricingSlider } from "../pricing/PricingSlider";
-import { Check, Users, Sparkles, ShieldCheck } from "lucide-react";
+import { Check, Users, Sparkles, ShieldCheck, ChevronDown } from "lucide-react";
+
+function useDailyCounter(startValue: number, endValue: number) {
+  const compute = () => {
+    const now = new Date();
+    const secondsSinceMidnightUTC =
+      now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+    const startSecond = 60; // 00:01:00
+    const endSecond = 86340; // 23:59:00
+    const elapsed = Math.max(0, secondsSinceMidnightUTC - startSecond);
+    const progress = Math.min(elapsed / (endSecond - startSecond), 1);
+    return Math.round(startValue + (endValue - startValue) * progress);
+  };
+
+  const [value, setValue] = useState(compute);
+
+  useEffect(() => {
+    const interval = setInterval(() => setValue(compute()), 5000);
+    return () => clearInterval(interval);
+  }, [startValue, endValue]);
+
+  return value;
+}
 
 const trustCards = [
   {
@@ -111,23 +133,210 @@ const howItWorksSteps = [
   },
 ];
 
+const howItWorksSticky = [
+  {
+    number: "01",
+    headline: "Filter For Your ICP",
+    description:
+      "Filter by industry, title, company size, location, and dozens more - to instantly surface your ideal prospects from a database of 1.3 billion B2B profiles.",
+    image: "/images/step-1-screenshot.png",
+  },
+  {
+    number: "02",
+    headline: "Extract Your Target Profiles",
+    description:
+      "Submit your Sales Nav search URL and session cookie, and we'll extract your entire search at 1,000 profiles per 6 minutes.",
+    image: "/images/step-2-cookie.png",
+  },
+  {
+    number: "03",
+    headline: "Find Valid Emails",
+    description:
+      "Upload your profiles and we'll find and verify over 20,000 emails per hour. We guarantee a sub 1% hard bounce rate on all emails marked as valid.",
+    image: "/images/step-3-screenshot.png",
+  },
+];
+
 // Default credit price for non-logged-in users (trial rate)
 const DEFAULT_CREDIT_PRICE = 0.0022;
 const MIN_AMOUNT = 10;
 const MAX_AMOUNT = 500;
 
+const faqItems = [
+  {
+    question: "What data fields are returned when I scrape a Sales Nav profile?",
+    answer: (
+      <>
+        <p className="mb-4">Every scraped profile includes the full set of LinkedIn data - no fields left behind:</p>
+        <p className="font-semibold text-landing-heading mb-2">Personal:</p>
+        <p className="mb-4">First name, Last name, About, Current position, Position description, LinkedIn URL, LinkedIn ID, Location</p>
+        <p className="font-semibold text-landing-heading mb-2">Company:</p>
+        <p>Company name, Company LinkedIn URL, Company website, Company description, Specialities/keywords, Employee count, Industry, Year founded, HQ location, Company LinkedIn ID</p>
+      </>
+    ),
+  },
+  {
+    question: "Do I need a LinkedIn Sales Navigator Account?",
+    answer: (
+      <>
+        <p className="mb-4">Yes - Sales Navigator is required to use BillionVerifier&apos;s scraping feature.</p>
+        <p>If you don&apos;t have one yet, contact us at support@billionverifier.io and we&apos;ll share an exclusive 75% discount to get you set up.</p>
+      </>
+    ),
+  },
+  {
+    question: "How Many Profiles can I Scrape per day?",
+    answer: (
+      <>
+        <p className="mb-4">To protect your LinkedIn account from potential flagging or suspension, we limit scraping to 15,000 profiles per day per account.</p>
+        <p className="mb-4">This keeps your account within LinkedIn&apos;s safe activity thresholds.</p>
+        <p>However, If you have a second Sales Navigator account, you can reset your daily limit directly from your Sales Nav Scraper dashboard.</p>
+      </>
+    ),
+  },
+  {
+    question: "Do I need to re-verify emails found during enrichment?",
+    answer: (
+      <>
+        <p className="mb-4">No. Every email marked as Valid is already verified. You can send with confidence straight from your results.</p>
+        <p>That said, if you&apos;d like to run them through verification again for peace of mind, you&apos;re welcome to - you won&apos;t be charged for verification on any paid plan.</p>
+      </>
+    ),
+  },
+  {
+    question: "Does BillionVerifier clean my scraped data?",
+    answer: (
+      <>
+        <p className="mb-4">With each extraction, we clean up:</p>
+        <p className="mb-2">First names<br />Last names<br />Company names<br />Job titles</p>
+        <p className="mb-2">By cleaning we mean:</p>
+        <p>Removing emojis<br />Correcting typos<br />Standardising names (capital letters)</p>
+      </>
+    ),
+  },
+  {
+    question: "Is my LinkedIn account safe?",
+    answer: (
+      <>
+        <p className="mb-4">Yes. BillionVerifier is built with LinkedIn account safety as a core design principle - not an afterthought.</p>
+        <p className="mb-4">Our system rate-limits all requests to LinkedIn&apos;s servers to keep your activity within safe thresholds.</p>
+        <p className="mb-4">To keep your account fully protected while using BillionVerifier at full capacity:</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>Don&apos;t use other LinkedIn scraping tools on the same day</li>
+          <li>Limit manual profile visits to under 100 per day</li>
+        </ul>
+        <p className="mt-4">Following these guidelines, your account remains safe and within LinkedIn&apos;s recommended usage limits.</p>
+      </>
+    ),
+  },
+  {
+    question: "Who owns BillionVerfier?",
+    answer: (
+      <>
+        <p className="mb-4">BillionVerifier was built by an outbound team who spent years sending 50,000+ emails per day and paying five-figure monthly bills for data tools.</p>
+        <p className="mb-4">After years of overpaying for fragmented, overpriced solutions, they made the decision to build BillionVerifier and make it available to everyone.</p>
+        <p>The founding team prefers to let the product speak for itself.</p>
+      </>
+    ),
+  },
+  {
+    question: "Does BillionVerifier offer a Guarantee?",
+    answer: "Yes, we guarantee a sub 1% hard bounce rate on any emails marked as \"valid\".",
+  },
+];
+
 export function MarketingPage() {
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+  const toggleFaq = (index: number) => setOpenFaqIndex(openFaqIndex === index ? null : index);
+  const validEmails = useDailyCounter(412_723, 1_417_136);
+  const bouncesPrevented = useDailyCounter(236_451, 739_586);
+  const totalEmailsFound = useDailyCounter(748_395_192, 749_395_192);
+
+  const [activeHiwStep, setActiveHiwStep] = useState(0);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const hiwObserverRef = useRef<IntersectionObserver | null>(null);
+  const stepsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Callback ref that sets up observation when elements mount
+  const setHiwStepRef = useCallback(
+    (index: number) => (el: HTMLDivElement | null) => {
+      if (!el || !hiwObserverRef.current) return;
+      (el as HTMLElement & { _hiwIndex?: number })._hiwIndex = index;
+      hiwObserverRef.current.observe(el);
+    },
+    []
+  );
+
+  useEffect(() => {
+    hiwObserverRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const idx = (entry.target as HTMLElement & { _hiwIndex?: number })._hiwIndex;
+            if (typeof idx === "number") setActiveHiwStep(idx);
+          }
+        });
+      },
+      { threshold: 0.5, rootMargin: "0px 0px -20% 0px" }
+    );
+
+    return () => {
+      hiwObserverRef.current?.disconnect();
+    };
+  }, []);
+
+  // Scroll progress tracking for the progress line and step 02
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!stepsContainerRef.current) return;
+      
+      const container = stepsContainerRef.current;
+      const rect = container.getBoundingClientRect();
+      const windowHeight = window.innerHeight;
+      
+      // Calculate progress based on how much of the container has scrolled through viewport
+      const containerTop = rect.top;
+      const containerHeight = rect.height;
+      
+      // Start progress when container top reaches center of viewport
+      // End progress when container bottom reaches center of viewport
+      const centerOffset = windowHeight / 2;
+      const start = containerTop - centerOffset;
+      const end = containerTop + containerHeight - centerOffset;
+      const total = end - start;
+      
+      const progress = Math.max(0, Math.min(1, -start / total));
+      setScrollProgress(progress);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll(); // Initial calculation
+    
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   return (
     <div className="flex flex-col min-h-screen bg-[#0D0F12]">
       <LandingHeader />
 
-      <main className="flex-1">
+      <main className="flex-1 bg-[#0D0F12] bg-blueprint-grid">
         {/* SECTION 1: Hero Section */}
-        <section className="relative min-h-screen flex flex-col bg-[#0D0F12] bg-blueprint-grid pt-20">
+        <section className="relative flex flex-col pt-20 pb-12 lg:pb-20">
           <div className="absolute inset-0 bg-gradient-mesh pointer-events-none" />
+          <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.6) 75%, rgb(0,0,0) 100%)" }} />
 
-          <div className="relative flex-1 flex flex-col items-center justify-center max-w-5xl mx-auto px-6 lg:px-8 py-24 lg:py-32">
-            <div className="text-center animate-fade-in-up mb-16">
+          <div className="relative flex-1 flex flex-col items-center max-w-6xl mx-auto px-6 lg:px-8 pt-16 lg:pt-24 pb-0">
+            <div className="text-center animate-fade-in-up mb-12">
+              {/* Badge */}
+              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border border-landing-accent/30 bg-landing-accent/10 mb-6">
+                <span className="px-2 py-0.5 rounded-full bg-landing-accent/20 text-landing-accent font-semibold text-xs">
+                  Built By
+                </span>
+                <span className="text-landing-text font-medium text-xs">
+                  High-Volume Senders
+                </span>
+              </div>
+
               <h1 className="text-4xl md:text-5xl lg:text-[64px] font-bold text-landing-heading leading-[1.08] tracking-tight mb-6">
                 Stop Renting Leads.
                 <br />
@@ -145,7 +354,7 @@ export function MarketingPage() {
                   href="/register"
                   className="inline-flex items-center gap-2 bg-landing-accent text-landing-bg px-6 py-3 rounded-lg font-semibold text-sm tracking-wide glow-accent hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
                 >
-                  Get started
+                  Free Credits
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                   </svg>
@@ -162,237 +371,417 @@ export function MarketingPage() {
               </div>
             </div>
 
-            <div className="w-full animate-fade-in-delay-2">
-              <DataVisualization />
+            {/* Dashboard Preview */}
+            <div className="relative w-full max-w-5xl mx-auto mt-4 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
+              <div className="rounded-xl overflow-hidden border border-white/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
+                <img
+                  src="/images/dashboard-preview.png"
+                  alt="BillionVerifier dashboard — email verification results"
+                  className="w-full block object-cover object-top"
+                  style={{ height: "472px" }}
+                />
+              </div>
+              <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black to-transparent pointer-events-none" />
+            </div>
+
+          </div>
+
+        </section>
+
+        {/* Live Stats Counter */}
+        <section className="pt-16 lg:pt-20 pb-16 lg:pb-20 bg-black border-t border-b border-white/[0.06] flex items-center justify-center min-h-[140px]">
+          <div className="max-w-5xl mx-auto px-6 lg:px-8 w-full">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-10 lg:gap-16 text-center items-center">
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-lg md:text-xl font-semibold text-landing-text tabular-nums tracking-tight">
+                  {validEmails.toLocaleString()}
+                </span>
+                <span className="text-sm lg:text-base text-landing-muted uppercase tracking-wide">
+                  Valid Emails Found Today
+                </span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-lg md:text-xl font-semibold text-landing-text tabular-nums tracking-tight">
+                  {bouncesPrevented.toLocaleString()}
+                </span>
+                <span className="text-sm lg:text-base text-landing-muted uppercase tracking-wide">
+                  Bounces Prevented Today
+                </span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-lg md:text-xl font-semibold text-landing-text tabular-nums tracking-tight">
+                  {totalEmailsFound.toLocaleString()}
+                </span>
+                <span className="text-sm lg:text-base text-landing-muted uppercase tracking-wide">
+                  Total Emails Found
+                </span>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* SECTION 2: Trust Bar — Carousel */}
-        <section className="bg-[#121418] border-y border-landing-border py-16 lg:py-20 overflow-hidden">
-          <div className="flex gap-6 animate-carousel" style={{ width: "max-content" }}>
-            {[...trustCards, ...trustCards].map((card, i) => (
-              <div
-                key={i}
-                className="group relative w-[340px] shrink-0 rounded-2xl p-8 border border-white/[0.08] transition-all duration-300 hover:border-landing-accent/40 hover:shadow-[0_0_50px_rgba(0,163,255,0.15)] shadow-[0_8px_32px_rgba(0,0,0,0.6),0_2px_8px_rgba(0,0,0,0.4)]"
-                style={{
-                  background: "rgba(10, 12, 16, 0.75)",
-                  backdropFilter: "blur(20px)",
-                  WebkitBackdropFilter: "blur(20px)",
-                  transform: "translateY(-4px)",
-                }}
-              >
-                <div className="absolute inset-0 rounded-2xl opacity-30 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 50%)" }} />
-                <div className="absolute inset-x-0 top-0 h-px rounded-t-2xl bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+        {/* Bento Grid - Key Value Props */}
+        <section className="bg-black pt-10 lg:pt-12 pb-8 lg:pb-12 relative overflow-hidden">
+          <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
+            {/* Section Header */}
+            <div className="text-center mb-16 lg:mb-20">
+              <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+                Why Teams Switch to BillionVerifier
+              </h2>
+            </div>
+
+            {/* Bento Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+              {/* Card 1: Quality Guarantee */}
+              <div className="group relative p-6 lg:p-8 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.08] to-white/[0.02] backdrop-blur-sm transition-all duration-500 hover:border-landing-accent/40 hover:shadow-[0_0_60px_rgba(0,163,255,0.12)]">
+                {/* Glow effect */}
+                <div className="absolute -inset-px rounded-2xl bg-gradient-to-br from-landing-accent/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl" />
+                
                 <div className="relative">
-                  <div className="w-14 h-14 rounded-xl bg-landing-accent/10 border border-landing-accent/20 flex items-center justify-center mb-6">
-                    {card.icon}
-                  </div>
-                  <h3 className="text-2xl font-bold text-landing-heading mb-3">
-                    {card.title}
+                  {/* Header */}
+                  <h3 className="text-lg lg:text-xl font-bold text-white mb-2 tracking-tight">
+                    Quality Guarantee
                   </h3>
-                  <p className="text-landing-muted leading-relaxed">
-                    {card.description}
+                  
+                  {/* Description */}
+                  <p className="text-white/70 text-sm leading-relaxed">
+                    We Guarantee a Sub 1% Hard Bounce Rate on All Emails Marked as Valid.
                   </p>
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
 
-        {/* SECTION 2b: Social Proof — Enterprise Stats */}
-        <section className="bg-[#0D0F12] py-24 lg:py-32 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-mesh pointer-events-none" />
-          <div className="relative max-w-5xl mx-auto px-6 lg:px-8">
-            <div className="text-center mb-14 animate-fade-in">
-              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-landing-heading leading-[1.1] tracking-tight mb-5">
-                Built by Enterprise Senders Who{" "}
-                <span className="text-landing-accent">Prioritize Performance</span>{" "}
-                at Scale
-              </h2>
-              <p className="text-lg md:text-xl text-landing-muted max-w-2xl mx-auto">
-                No scraper suited us, so we built our own.
-              </p>
-            </div>
+              {/* Card 2: Credits Never Expire */}
+              <div className="group relative p-6 lg:p-8 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.08] to-white/[0.02] backdrop-blur-sm transition-all duration-500 hover:border-landing-accent/40 hover:shadow-[0_0_60px_rgba(0,163,255,0.12)]">
+                {/* Glow effect */}
+                <div className="absolute -inset-px rounded-2xl bg-gradient-to-br from-landing-accent/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl" />
+                
+                <div className="relative">
+                  {/* Header */}
+                  <h3 className="text-lg lg:text-xl font-bold text-white mb-2 tracking-tight">
+                    Credits Never Expire
+                  </h3>
+                  
+                  {/* Description */}
+                  <p className="text-white/70 text-sm leading-relaxed">
+                    No monthly pressure, no wasted credits.
+                  </p>
+                </div>
+              </div>
 
-            <div className="relative mx-auto max-w-4xl rounded-2xl border border-landing-border bg-gradient-to-b from-[#1a1d24] to-[#14161a] p-2 shadow-[0_0_80px_rgba(0,163,255,0.08)]">
-              <div className="overflow-hidden rounded-xl">
-                <img
-                  src="/images/dashboard-stats.png"
-                  alt="Enterprise campaign performance dashboard"
-                  className="w-full h-auto"
-                />
+              {/* Card 3: 1.3 Billion B2B Profiles */}
+              <div className="group relative p-6 lg:p-8 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.08] to-white/[0.02] backdrop-blur-sm transition-all duration-500 hover:border-landing-accent/40 hover:shadow-[0_0_60px_rgba(0,163,255,0.12)]">
+                {/* Glow effect */}
+                <div className="absolute -inset-px rounded-2xl bg-gradient-to-br from-landing-accent/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl" />
+                
+                <div className="relative">
+                  {/* Header */}
+                  <h3 className="text-lg lg:text-xl font-bold text-white mb-2 tracking-tight">
+                    1.3 Billion B2B Profiles
+                  </h3>
+                  
+                  {/* Description */}
+                  <p className="text-white/70 text-sm leading-relaxed">
+                    Filter & Extract Profile From The World&apos;s Largest B2B Database
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* SECTION 3: How It Works */}
-        <section className="bg-[#0D0F12] py-24 lg:py-32 relative">
-          <div className="absolute inset-0 bg-blueprint-grid opacity-30 pointer-events-none" />
-
-          <div className="relative max-w-6xl mx-auto px-6 lg:px-8">
+        {/* SECTION: How it Works — Sticky Scroll */}
+        <section className="relative bg-black">
+          <div className="relative w-full px-6 lg:px-8 py-24 lg:py-32">
             {/* Section Header */}
-            <div className="text-center mb-16 lg:mb-20 animate-fade-in">
-              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-landing-heading leading-[1.1] tracking-tight mb-6">
-                How{" "}
-                <span className="text-landing-accent">BillionVerifier</span>{" "}
-                Works
+            <div className="text-center mb-16 lg:mb-24 animate-fade-in">
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-landing-heading leading-[1.15] tracking-tight">
+                <span className="block">Built by Enterprise Senders</span>
+                <span className="block">
+                  Who <span className="text-landing-accent">Prioritize Performance</span> at Scale
+                </span>
               </h2>
-              <p className="text-lg md:text-xl text-landing-muted max-w-2xl mx-auto">
-                Build your lead pipeline in three simple steps.
+            </div>
+
+            {/* Sticky Layout: Image Left, Scrolling Steps Right */}
+            <div className="flex flex-col lg:flex-row items-start justify-center gap-12 lg:gap-20">
+              {/* Left — Sticky Image Panel - pushed down to align with step 00 */}
+              <div className="lg:w-[45%] lg:sticky lg:top-[25vh] self-start lg:mt-[15vh]">
+                <div
+                  className="relative rounded-2xl overflow-hidden bg-[#0a0a0a]"
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    boxShadow: `
+                      0 20px 40px -12px rgba(0,0,0,0.9),
+                      inset 0 1px 0 rgba(255,255,255,0.05)
+                    `,
+                  }}
+                >
+                  {/* Step 0 — Dashboard Stats */}
+                  <img
+                    src="/images/dashboard-stats.png"
+                    alt="Enterprise campaign performance dashboard"
+                    className="w-full h-full object-cover"
+                    style={{
+                      opacity: activeHiwStep === 0 ? 1 : 0,
+                      transition: "opacity 0.4s ease-in-out",
+                      position: activeHiwStep === 0 ? "relative" : "absolute",
+                    }}
+                  />
+                  {howItWorksSticky.map((step, i) => {
+                    // Step 02 (index 1) uses a single combined image
+                    if (i === 1) {
+                      return (
+                        <img
+                          key={`${step.number}-combined`}
+                          src="/images/step-2-combined.png"
+                          alt="LinkedIn Authentication and Sales Navigator URL"
+                          className="w-full h-full object-cover"
+                          style={{
+                            opacity: activeHiwStep === 2 ? 1 : 0,
+                            transition: "opacity 0.4s ease-in-out",
+                            position: activeHiwStep === 2 ? "relative" : "absolute",
+                            top: 0,
+                            left: 0,
+                          }}
+                        />
+                      );
+                    }
+
+                    // Step 01 and 03 - normal behavior
+                    return (
+                      <img
+                        key={step.number}
+                        src={step.image}
+                        alt={step.headline}
+                        className="w-full h-full object-cover"
+                        style={{
+                          opacity: activeHiwStep === i + 1 ? 1 : 0,
+                          transition: "opacity 0.4s ease-in-out",
+                          position: activeHiwStep === i + 1 ? "relative" : "absolute",
+                          top: 0,
+                          left: 0,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right — All Scrollable Steps (00, 01, 02, 03) with Progress Line */}
+              <div ref={stepsContainerRef} className="lg:w-[45%] flex flex-col relative">
+                {/* Progress Line Container - starts aligned with image top (15vh offset) */}
+                <div className="absolute left-[22px] top-[15vh] bottom-0 w-[3px] hidden lg:block">
+                  {/* Background track (dimmed) */}
+                  <div className="absolute inset-0 bg-zinc-800/50 rounded-full" />
+                  
+                  {/* Active progress - dot that grows into a line */}
+                  <div className="absolute top-0 left-0 w-full" style={{ height: '100%' }}>
+                    {/* The fill starts as a dot and grows downward */}
+                    <div 
+                      className="w-full bg-[#0099FF] rounded-full origin-top"
+                      style={{ 
+                        height: scrollProgress < 0.01 ? '8px' : `${scrollProgress * 100}%`,
+                        minHeight: '8px',
+                        transition: 'height 0.1s ease-out',
+                      }}
+                    />
+                  </div>
+                  
+                  {/* Blue dot at the starting point (always visible) */}
+                  <div 
+                    className="absolute left-1/2 -translate-x-1/2 w-[8px] h-[8px] bg-[#0099FF] rounded-full"
+                    style={{ 
+                      top: '0px',
+                      boxShadow: '0 0 8px rgba(0, 153, 255, 0.5)',
+                    }}
+                  />
+                </div>
+
+                {/* Step 00 */}
+                <div
+                  ref={setHiwStepRef(0)}
+                  className="flex items-center justify-center"
+                  style={{
+                    minHeight: "60vh",
+                    opacity: activeHiwStep === 0 ? 1 : 0.35,
+                    transition: "opacity 0.4s ease-in-out",
+                  }}
+                >
+                  <div className="py-12 max-w-[400px] pl-6">
+                    <h3 className="text-2xl lg:text-[28px] font-bold text-white leading-tight mb-4">
+                      Scale Your Outbound<br />in 3 Steps
+                    </h3>
+                  </div>
+                </div>
+
+                {/* Steps 01, 02, 03 */}
+                {howItWorksSticky.map((step, i) => (
+                  <div
+                    key={step.number}
+                    ref={setHiwStepRef(i + 1)}
+                    className="flex items-center justify-center"
+                    style={{
+                      minHeight: "60vh",
+                      opacity: activeHiwStep === i + 1 ? 1 : 0.35,
+                      transition: "opacity 0.4s ease-in-out",
+                    }}
+                  >
+                    <div className="py-12 max-w-[400px] pl-6">
+                      <span className="text-landing-accent text-sm font-semibold tracking-[0.2em] uppercase mb-4 block">
+                        {step.number}
+                      </span>
+                      <h3 className="text-2xl lg:text-[28px] font-bold text-white leading-tight mb-4">
+                        {step.headline}
+                      </h3>
+                      <p className="text-zinc-400 text-base leading-relaxed">
+                        {step.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Trusted By Logos */}
+        <section className="pt-8 lg:pt-10 pb-16 lg:pb-20 bg-black border-t border-b border-white/[0.06]">
+          <h3 className="text-base uppercase tracking-widest text-landing-text mb-10 text-center animate-fade-in">
+            Trusted by thousands of industry leaders
+          </h3>
+          <div className="relative flex items-center justify-center gap-16 lg:gap-32 overflow-hidden mt-10 mb-10">
+            {/* Left gradient fade */}
+            <div 
+              className="absolute left-0 top-0 bottom-0 w-32 sm:w-48 lg:w-64 z-10 pointer-events-none"
+              style={{
+                background: "linear-gradient(to right, rgb(0, 0, 0) 0%, rgba(0, 0, 0, 0.8) 30%, transparent 100%)"
+              }}
+            />
+            {/* Right gradient fade */}
+            <div 
+              className="absolute right-0 top-0 bottom-0 w-32 sm:w-48 lg:w-64 z-10 pointer-events-none"
+              style={{
+                background: "linear-gradient(to left, rgb(0, 0, 0) 0%, rgba(0, 0, 0, 0.8) 30%, transparent 100%)"
+              }}
+            />
+
+            {/* Logo 1 - Floqer */}
+            <div className="flex items-center justify-center shrink-0 h-7 lg:h-9 mt-12">
+              <img
+                src="https://www.floqer.com/logo-dark-wb.svg"
+                alt="Floqer"
+                className="h-full w-auto object-contain grayscale brightness-200 opacity-80"
+              />
+            </div>
+
+            {/* Logo 2 - PlusVibe */}
+            <div className="flex items-center justify-center shrink-0 h-7 lg:h-9 mt-12">
+              <img
+                src="https://app.plusvibe.ai/v2/images/logo.svg"
+                alt="PlusVibe"
+                className="h-full w-auto object-contain grayscale brightness-150 opacity-70"
+              />
+            </div>
+
+            {/* Logo 3 - EPC VIP */}
+            <div className="flex items-center justify-center shrink-0 h-7 lg:h-9 mt-12">
+              <img
+                src="https://www.epcvip.com/build/images/epcvip_v2x2.png"
+                alt="EPC VIP"
+                className="h-full w-auto object-contain brightness-0 invert opacity-70"
+              />
+            </div>
+
+            {/* Logo 4 - Gravity */}
+            <div className="flex items-center justify-center shrink-0 h-7 lg:h-9 mt-12">
+              <img
+                src="https://www.trygravity.ai/assets/Gravity%20lockup%20white%20on%20black%20libre%20baskerville-0pJUGtNY.png"
+                alt="Gravity"
+                className="h-full w-auto object-contain brightness-0 invert opacity-70"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* SECTION 2b: Pricing - Dashboard Style */}
+        <section id="pricing" className="py-24 lg:py-32 relative scroll-mt-20 bg-black">
+          <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
+            {/* Header */}
+            <div className="text-center mb-12">
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4">
+                Wholesale Pricing
+              </h2>
+              <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
+                All paid plans include uncapped enrichment & verification, credits never expire
               </p>
             </div>
 
-            {/* Step Cards */}
-            <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
-              {howItWorksSteps.map((step, index) => {
-                const IconComponent = step.icon;
-                return (
-                  <div
-                    key={step.title}
-                    className={`relative flex flex-col p-8 lg:p-10 bg-[#0F1215] rounded-2xl border transition-all duration-300 animate-fade-in ${
-                      step.highlighted
-                        ? "border-landing-accent/50 shadow-lg shadow-landing-accent/10"
-                        : "border-landing-border hover:border-landing-border/80"
-                    }`}
-                    style={{ animationDelay: `${index * 0.15}s` }}
-                  >
-                    {/* Step Number Badge */}
-                    <div className="absolute -top-3 left-8">
-                      <span className="bg-[#0D0F12] px-3 py-1 text-xs font-semibold text-landing-muted border border-landing-border rounded-full">
-                        Step {index + 1}
-                      </span>
-                    </div>
-
-                    {/* Icon */}
-                    <div className="flex justify-center mb-8">
-                      <div
-                        className={`w-16 h-16 flex items-center justify-center rounded-xl ${
-                          step.highlighted
-                            ? "bg-landing-accent/10 border border-landing-accent/30"
-                            : "bg-[#1A1E24] border border-landing-border"
-                        }`}
-                      >
-                        <IconComponent
-                          className={`w-8 h-8 ${
-                            step.highlighted
-                              ? "text-landing-accent"
-                              : "text-landing-text/70"
-                          }`}
-                          strokeWidth={1.5}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Title */}
-                    <h3 className="text-xl lg:text-2xl font-bold text-center mb-6 text-landing-heading">
-                      {step.title}
-                    </h3>
-
-                    {/* Features List */}
-                    <ul className="space-y-4 flex-1">
-                      {step.features.map((feature, featureIndex) => (
-                        <li
-                          key={featureIndex}
-                          className="flex items-start gap-3"
-                        >
-                          <div
-                            className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                              step.highlighted
-                                ? "bg-landing-accent/20"
-                                : "bg-[#1A1E24]"
-                            }`}
-                          >
-                            <Check
-                              className={`w-3 h-3 ${
-                                step.highlighted
-                                  ? "text-landing-accent"
-                                  : "text-landing-muted"
-                              }`}
-                              strokeWidth={3}
-                            />
-                          </div>
-                          <span className="text-landing-text/80 text-sm lg:text-base leading-relaxed">
-                            {feature}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    {/* Highlighted Card Indicator */}
-                    {step.highlighted && (
-                      <div className="absolute -bottom-px left-1/2 -translate-x-1/2">
-                        <div className="w-24 h-1 bg-landing-accent rounded-full" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Connecting Flow Lines */}
-            <div className="hidden md:flex justify-center items-center mt-12 gap-4">
-              <div className="flex items-center gap-2 text-landing-muted text-sm">
-                <div className="w-8 h-px bg-gradient-to-r from-transparent to-landing-accent/50" />
-                <span>Scrape</span>
-                <div className="w-12 h-px bg-landing-accent/30" />
-                <svg
-                  className="w-4 h-4 text-landing-accent"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-                <div className="w-12 h-px bg-landing-accent/30" />
-                <span className="text-landing-accent font-medium">Enrich</span>
-                <div className="w-12 h-px bg-landing-accent/30" />
-                <svg
-                  className="w-4 h-4 text-landing-accent"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-                <div className="w-12 h-px bg-landing-accent/30" />
-                <span>Verify</span>
-                <div className="w-8 h-px bg-gradient-to-l from-transparent to-landing-accent/50" />
-              </div>
-            </div>
+            {/* PRICING PLANS SECTION - Full Plan Comparison */}
+            <PricingSlider variant="marketing" />
           </div>
         </section>
 
         {/* SECTION 4: Integrations Showcase */}
         <IntegrationsShowcase />
 
-        {/* SECTION 5: Pricing - Dashboard Style */}
-        <section id="pricing" className="bg-[#0D0F12] py-24 lg:py-32 relative scroll-mt-20">
-          <div className="absolute inset-0 bg-blueprint-grid opacity-30 pointer-events-none" />
-          <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
-            {/* Header */}
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4">
-                Wholesale Pricing For The <span className="text-[#0099FF]">Top 5%</span>
+        {/* SECTION 5: FAQ */}
+        <section className="bg-black py-24 lg:py-32 relative">
+          <div className="relative max-w-3xl mx-auto px-6 lg:px-8">
+            {/* Section Header */}
+            <div className="text-center mb-16">
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-[1.1] tracking-tight mb-6">
+                Frequently Asked{" "}
+                <span className="text-[#0099FF]">Questions</span>
               </h2>
-              <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-                All plans include uncapped enrichment & verification, credits never expire
+              <p className="text-lg text-zinc-400 max-w-xl mx-auto">
+                Everything you need to know about BillionVerifier
               </p>
             </div>
 
-            {/* PRICING PLANS SECTION - Full Plan Comparison */}
-            <PricingSlider variant="marketing" />
+            {/* FAQ Items */}
+            <div className="space-y-4">
+              {faqItems.map((item, index) => (
+                <div
+                  key={index}
+                  className={`rounded-2xl border transition-all duration-300 ${
+                    openFaqIndex === index
+                      ? "border-[#0099FF]/40 bg-zinc-900/50"
+                      : "border-white/[0.08] bg-zinc-900/30 hover:border-white/[0.15]"
+                  }`}
+                >
+                  <button
+                    onClick={() => toggleFaq(index)}
+                    className="w-full flex items-center justify-between p-6 text-left"
+                  >
+                    <span className="text-lg font-semibold text-white pr-4">
+                      {item.question}
+                    </span>
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
+                        openFaqIndex === index
+                          ? "bg-[#0099FF]/20"
+                          : "bg-zinc-800"
+                      }`}
+                    >
+                      <ChevronDown
+                        className={`w-5 h-5 text-[#0099FF] transition-transform duration-300 ${
+                          openFaqIndex === index ? "rotate-180" : ""
+                        }`}
+                      />
+                    </div>
+                  </button>
+                  <div
+                    className={`overflow-hidden transition-all duration-300 ${
+                      openFaqIndex === index ? "max-h-[600px]" : "max-h-0"
+                    }`}
+                  >
+                    <div className="px-6 pb-6 text-zinc-300 leading-relaxed">
+                      {item.answer}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 

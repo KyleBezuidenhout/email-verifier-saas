@@ -247,7 +247,7 @@ export default function VerifyEmailsPage() {
                 type="text"
                 value={jobName}
                 onChange={(e) => setJobName(e.target.value)}
-                placeholder="e.g., Email List Verification Feb 2026"
+                placeholder="e.g., Email List Verification Feb 2024"
                 className="apple-input w-full"
               />
               <p className="mt-2 text-xs text-dashboard-text-muted">

@@ -264,7 +264,7 @@ export default function FindValidEmailsPage() {
                 type="text"
                 value={jobName}
                 onChange={(e) => setJobName(e.target.value)}
-                placeholder="e.g., Q4 Tech Leads, Marketing Campaign Jan 2026"
+                placeholder="e.g., Q4 Tech Leads, Marketing Campaign Jan 2024"
                 className="apple-input w-full"
               />
               <p className="mt-2 text-xs text-dashboard-text-muted">

@@ -69,7 +69,7 @@ export function Footer() {
         {/* Copyright */}
         <div className="pt-8 border-t border-dashboard-border text-center">
           <p className="text-xs text-dashboard-text-muted">
-            © {new Date().getFullYear()} Billion Verifier. All rights reserved.
+            © 2024 Billion Verifier. All rights reserved.
           </p>
         </div>
       </div>

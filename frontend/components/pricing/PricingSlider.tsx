@@ -17,23 +17,18 @@ function buildFeatures(plan: PlanDef): string[] {
   const features: string[] = [];
 
   if (plan.id === "trial") {
-    features.push("1,000 Sales Navigator Profile Credits");
+    features.push("1000 credits");
     features.push("0.5 credits per enrichment/verification email");
     features.push("1 credit per Sales Nav profile scraped");
     features.push(plan.support);
   } else if (plan.id === "custom") {
     features.push("5,000,000+ Sales Navigator Profiles");
     features.push("Uncapped Enrichment & Verification");
-    features.push("1 credit per Sales Nav profile scraped");
     features.push("Custom pricing per 1,000 profiles");
     features.push(plan.support);
   } else {
     features.push(`${formatSnLabel(plan.snLabel!)} Sales Navigator Profiles`);
     features.push("Uncapped Enrichment & Verification");
-    features.push("1 credit per Sales Nav profile scraped");
-    if (plan.perThousand) {
-      features.push(`${plan.perThousand} per 1,000 profiles scraped`);
-    }
     features.push(plan.support);
   }
   features.push("Credits never expire");
@@ -71,16 +66,16 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
     <div className="w-full max-w-4xl mx-auto">
       {/* Header */}
       <div className="text-left mb-6">
-        <h2 className="text-xl md:text-2xl font-bold text-dashboard-text mb-1">
-          How many contacts do you want to find?
-        </h2>
+              <h2 className="text-lg md:text-xl font-bold text-dashboard-text mb-1">
+                How many contacts do you want to find?
+              </h2>
         <p className="text-dashboard-text-muted text-base">
           Up to <span className="text-dashboard-accent font-semibold">{snLabelDisplay}</span> per month
         </p>
       </div>
 
       {/* Slider + Toggle Row */}
-      <div className="flex flex-col md:flex-row items-center gap-6 mb-10">
+      <div className="flex flex-col md:flex-row items-center gap-4 mb-8">
         {/* Slider */}
         <div className="flex-1 w-full">
           <input
@@ -90,7 +85,7 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
             step={1}
             value={sliderIndex}
             onChange={(e) => setSliderIndex(Number(e.target.value))}
-            className="w-full h-3 rounded-full appearance-none cursor-pointer bg-dashboard-card"
+            className="w-full h-2 rounded-full appearance-none cursor-pointer bg-dashboard-card"
             style={{
               background: `linear-gradient(to right, #0099FF 0%, #0099FF ${(sliderIndex / SLIDER_STEPS) * 100}%, #1E2228 ${(sliderIndex / SLIDER_STEPS) * 100}%, #1E2228 100%)`,
             }}
@@ -98,25 +93,25 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
           <style jsx>{`
             input[type="range"]::-webkit-slider-thumb {
               appearance: none;
-              width: 28px;
-              height: 28px;
+              width: 22px;
+              height: 22px;
               border-radius: 50%;
               background: #0099FF;
               cursor: pointer;
-              box-shadow: 0 0 20px rgba(0, 153, 255, 0.5);
-              border: 3px solid #fff;
+              box-shadow: 0 0 16px rgba(0, 153, 255, 0.5);
+              border: 2px solid #fff;
             }
             input[type="range"]::-moz-range-thumb {
-              width: 28px;
-              height: 28px;
+              width: 22px;
+              height: 22px;
               border-radius: 50%;
               background: #0099FF;
               cursor: pointer;
-              box-shadow: 0 0 20px rgba(0, 153, 255, 0.5);
-              border: 3px solid #fff;
+              box-shadow: 0 0 16px rgba(0, 153, 255, 0.5);
+              border: 2px solid #fff;
             }
           `}</style>
-          <div className="flex justify-between text-xs text-dashboard-text-muted mt-2 px-1">
+          <div className="flex justify-between text-xs text-dashboard-text-muted mt-1 px-1">
             <span>1k</span>
             <span>50k</span>
             <span>100k</span>
@@ -151,10 +146,56 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
         </div>
       </div>
 
-      {/* Plan Card */}
-      <div className="glass-card p-8 lg:p-10 relative overflow-hidden">
-        {/* Decorative gradient */}
-        <div className="absolute top-0 right-0 w-80 h-80 bg-dashboard-accent/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+      {/* Plan Card - 3D Glass Effect */}
+      <div
+        className="relative p-8 lg:p-10 rounded-2xl overflow-hidden"
+        style={{
+          background: 'linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(13,15,18,0.6) 100%)',
+          backdropFilter: 'blur(24px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: `
+            0 25px 50px -12px rgba(0,0,0,0.5),
+            0 0 0 1px rgba(255,255,255,0.05),
+            inset 0 1px 0 rgba(255,255,255,0.15),
+            inset 0 -1px 0 rgba(0,0,0,0.2),
+            0 8px 32px rgba(0,153,255,0.1)
+          `,
+          transform: 'translateZ(0)',
+        }}
+      >
+        {/* Top highlight shine */}
+        <div
+          className="absolute inset-x-0 top-0 h-px pointer-events-none"
+          style={{
+            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
+          }}
+        />
+
+        {/* Corner glow accent */}
+        <div
+          className="absolute -top-20 -right-20 w-60 h-60 pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, rgba(0,153,255,0.25) 0%, transparent 70%)',
+            filter: 'blur(40px)',
+          }}
+        />
+
+        {/* Bottom inner shadow for depth */}
+        <div
+          className="absolute inset-x-0 bottom-0 h-32 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to top, rgba(0,0,0,0.3), transparent)',
+          }}
+        />
+
+        {/* Glass edge reflection */}
+        <div
+          className="absolute inset-y-0 left-0 w-px pointer-events-none"
+          style={{
+            background: 'linear-gradient(180deg, transparent, rgba(255,255,255,0.2), transparent)',
+          }}
+        />
 
         <div className="relative grid md:grid-cols-2 gap-8 items-start">
           {/* Left: Plan Info */}
@@ -169,18 +210,18 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
             {/* Price */}
             {selectedPlan.id === "trial" ? (
               <div className="mb-4">
-                <div className="text-4xl lg:text-5xl font-bold text-dashboard-text">Free</div>
+                <div className="text-3xl lg:text-4xl font-bold text-white">Free</div>
                 <p className="text-dashboard-text-muted mt-1">Get 1,000 Free Credits</p>
               </div>
             ) : isCustom ? (
               <div className="mb-4">
-                <div className="text-4xl lg:text-5xl font-bold text-dashboard-text">Custom</div>
+                <div className="text-3xl lg:text-4xl font-bold text-white">Custom</div>
                 <p className="text-dashboard-text-muted mt-1">5,000,000+ profiles per month</p>
               </div>
             ) : (
               <div className="mb-4">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-4xl lg:text-5xl font-bold text-dashboard-accent">
+                  <span className="text-3xl lg:text-4xl font-bold text-white">
                     ${displayPrice?.toLocaleString()}
                   </span>
                   <span className="text-dashboard-text-muted text-lg">/{isAnnual ? "yr" : "mo"}</span>
@@ -202,20 +243,16 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
                 href={CUSTOM_PLAN.ctaHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block w-full py-3.5 px-6 font-semibold text-center rounded-xl bg-dashboard-accent text-white hover:bg-dashboard-accent/90 transition-all shadow-lg shadow-dashboard-accent/20"
+                className="inline-block py-3.5 px-6 font-semibold text-center rounded-xl bg-dashboard-accent text-white hover:bg-dashboard-accent/90 transition-all shadow-lg shadow-dashboard-accent/20"
               >
                 Book a Call
               </a>
             ) : (
               <Link
                 href={variant === "dashboard" ? "/get-credits" : selectedPlan.ctaHref}
-                className={`inline-block w-full py-3.5 px-6 font-semibold text-center rounded-xl transition-all ${
-                  selectedPlan.id === "trial"
-                    ? "bg-dashboard-accent text-white hover:bg-dashboard-accent/90 shadow-lg shadow-dashboard-accent/20"
-                    : "bg-dashboard-accent text-white hover:bg-dashboard-accent/90 shadow-lg shadow-dashboard-accent/20"
-                }`}
+                className="inline-block py-3.5 px-6 font-semibold text-center rounded-xl transition-all bg-dashboard-accent text-white hover:bg-dashboard-accent/90 shadow-lg shadow-dashboard-accent/20"
               >
-                {selectedPlan.cta}
+                {selectedPlan.id === "trial" ? "Get Free Credits" : selectedPlan.cta}
               </Link>
             )}
           </div>
@@ -236,10 +273,6 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
 
             {/* Value props */}
             <div className="mt-6 pt-4 border-t border-dashboard-border/50">
-              <p className="flex items-center gap-2 text-sm text-green-400">
-                <Check className="w-4 h-4" />
-                You only pay for verified results. No charge if we can&apos;t find it.
-              </p>
             </div>
           </div>
         </div>

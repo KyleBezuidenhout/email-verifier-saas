@@ -11,7 +11,7 @@ export function LandingFooter() {
               BillionVerifier
             </span>
             <span className="text-landing-text text-sm">
-              © {new Date().getFullYear()}
+              © 2024
             </span>
             <a href="https://www.linkedin.com/company/billionverifier/" target="_blank" rel="noopener noreferrer" className="text-landing-muted hover:text-landing-accent transition-colors">
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
