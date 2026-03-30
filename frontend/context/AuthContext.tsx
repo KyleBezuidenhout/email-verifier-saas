@@ -4,6 +4,11 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { User, LoginRequest, RegisterRequest } from "@/types";
 import { apiClient } from "@/lib/api";
 
+function hasTokenCookie(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.cookie.split(";").some((c) => c.trim().startsWith("token="));
+}
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -11,6 +16,7 @@ interface AuthContextType {
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  setAuthUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,17 +30,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const checkAuth = async () => {
+    if (!hasTokenCookie()) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       const userData = await apiClient.getCurrentUser();
       setUser(userData);
     } catch (error) {
       setUser(null);
       if (typeof document !== "undefined") {
-        const isOAuthCallback = window.location.pathname.startsWith("/auth/callback");
-        if (!isOAuthCallback) {
-          document.cookie = "token=; path=/; max-age=0";
-          document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
-        }
+        document.cookie = "token=; path=/; max-age=0";
+        document.cookie = "token=; path=/; max-age=0; domain=" + window.location.hostname;
       }
     } finally {
       setLoading(false);
@@ -55,6 +64,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
+  const setAuthUser = (userData: User) => {
+    setUser(userData);
+  };
+
   const refreshUser = async () => {
     try {
       const userData = await apiClient.getCurrentUser();
@@ -66,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, logout, refreshUser }}
+      value={{ user, loading, login, register, logout, refreshUser, setAuthUser }}
     >
       {children}
     </AuthContext.Provider>

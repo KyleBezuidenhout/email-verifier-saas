@@ -385,15 +385,6 @@ export default function ResultsPage() {
         </div>
         <div className="flex justify-between items-center">
           <div className="flex space-x-2">
-            {catchallLeads.length > 0 && (
-              <button
-                disabled={true}
-                title="Catchall verification temporarily unavailable"
-                className="px-4 py-2 glass-card text-dashboard-text-muted cursor-not-allowed transition-opacity text-sm font-medium flex items-center space-x-2"
-              >
-                <span>Verify Catchalls (Coming Soon)</span>
-              </button>
-            )}
             <button
               onClick={downloadCSV}
               className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"

@@ -10,7 +10,7 @@ export default function OAuthCallbackPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { refreshUser } = useAuth();
+  const { setAuthUser } = useAuth();
   const [error, setError] = useState("");
   const exchanged = useRef(false);
 
@@ -41,7 +41,7 @@ export default function OAuthCallbackPage() {
     (async () => {
       try {
         const response = await apiClient.oauthCallback(provider, code, stateParam);
-        await refreshUser();
+        setAuthUser(response.user);
         const user = response.user;
         if (!user.company_website) {
           router.replace("/onboarding");

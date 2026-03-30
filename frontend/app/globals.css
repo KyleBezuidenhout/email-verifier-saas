@@ -313,6 +313,17 @@
   .stagger-2 { animation-delay: 0.2s; }
   .stagger-3 { animation-delay: 0.3s; }
   .stagger-4 { animation-delay: 0.4s; }
+
+  /* Trust bar carousel */
+  @keyframes carousel-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  .animate-carousel {
+    animation: carousel-scroll 45s linear infinite;
+  }
+
 }
 
 

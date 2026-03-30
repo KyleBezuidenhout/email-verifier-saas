@@ -2,7 +2,7 @@
 
 export function DataVisualization() {
   return (
-    <div className="relative w-full max-w-2xl mx-auto lg:mx-0">
+    <div className="relative w-full max-w-4xl mx-auto">
       <svg
         viewBox="0 0 500 320"
         className="w-full h-auto"

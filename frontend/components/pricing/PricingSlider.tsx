@@ -70,11 +70,11 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
   return (
     <div className="w-full max-w-4xl mx-auto">
       {/* Header */}
-      <div className="text-center mb-10">
-        <h2 className="text-3xl md:text-4xl font-bold text-dashboard-text mb-2">
-          How many Sales Navigator Profiles do you want to scrape?
+      <div className="text-left mb-6">
+        <h2 className="text-xl md:text-2xl font-bold text-dashboard-text mb-1">
+          How many contacts do you want to find?
         </h2>
-        <p className="text-dashboard-text-muted text-lg">
+        <p className="text-dashboard-text-muted text-base">
           Up to <span className="text-dashboard-accent font-semibold">{snLabelDisplay}</span> per month
         </p>
       </div>
