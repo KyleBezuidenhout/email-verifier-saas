@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_, update
 from typing import Optional, List, Tuple
+from pydantic import BaseModel
 import csv
 import io
 import re
@@ -21,6 +22,7 @@ from app.api.dependencies import get_current_user, ADMIN_EMAIL
 from app.core.plans import get_enrichment_cost, is_enrichment_free
 from app.schemas.job import JobResponse, JobUploadResponse, JobProgressResponse
 from app.services.permutation import generate_email_permutations, normalize_domain, clean_first_name
+from app.services.mailtester_client import MailTesterClient
 from app.core.config import settings
 from app.core.security import decode_token
 import boto3
@@ -917,6 +919,60 @@ async def upload_verify_file(
         job_id=job.id,
         message="File uploaded successfully. Verification started."
     )
+
+
+class SingleVerifyRequest(BaseModel):
+    email: str
+
+class SingleVerifyResponse(BaseModel):
+    email: str
+    status: str
+    reason: Optional[str] = None
+
+@router.post("/verify-single", response_model=SingleVerifyResponse)
+async def verify_single_email(
+    request: SingleVerifyRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Verify a single email address using MailTester API.
+    Authenticated endpoint - requires valid JWT token.
+    """
+    if not request.email or not request.email.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is required"
+        )
+    
+    email = request.email.strip()
+    
+    # Validate email format
+    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_regex, email):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email format"
+        )
+    
+    mailtester = MailTesterClient()
+    
+    try:
+        result = await mailtester.verify_email(email)
+        
+        return SingleVerifyResponse(
+            email=email,
+            status=result.get('status', 'unknown'),
+            reason=result.get('reason') if result.get('reason') else None
+        )
+    
+    except Exception as e:
+        print(f"Error verifying email {email}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error verifying email: {str(e)}"
+        )
+    finally:
+        await mailtester.close()
 
 
 @router.get("", response_model=List[JobResponse])

@@ -100,7 +100,7 @@ async def _cache_lookup(db: Session, enrichment_key: str, loop: asyncio.Abstract
                 "SELECT email, pattern_used, verification_status, mx_record, mx_provider "
                 "FROM leads "
                 "WHERE enrichment_key = :ek AND is_final_result = true "
-                "AND verification_status IN ('valid', 'catchall') "
+                "AND verification_status = 'valid' "
                 "ORDER BY created_at DESC LIMIT 1"
             ),
             {"ek": enrichment_key},
@@ -117,22 +117,6 @@ async def _cache_lookup(db: Session, enrichment_key: str, loop: asyncio.Abstract
             "mx_provider": row[4],
         }
     return None
-
-
-async def _catchall_fast_path(db: Session, domain: str, loop: asyncio.AbstractEventLoop) -> bool:
-    """Return True if domain has a recent catchall result (< 7 days)."""
-    def _query():
-        row = db.execute(
-            text(
-                "SELECT 1 FROM leads "
-                "WHERE domain = :d AND verification_status = 'catchall' AND is_final_result = true "
-                "AND created_at > NOW() - INTERVAL '7 days' "
-                "LIMIT 1"
-            ),
-            {"d": domain},
-        ).fetchone()
-        return row is not None
-    return await loop.run_in_executor(None, _query)
 
 
 async def _insert_lead(
@@ -222,28 +206,33 @@ async def _enrich_inner(
     result: EnrichmentResult,
     enrichment_key: str,
 ) -> EnrichmentResult:
-    # ── Step 1: Cache lookup ──
+    # ── Step 1: Cache lookup with re-verification ──
     cached = await _cache_lookup(db, enrichment_key, loop)
     if cached:
-        result.email = cached["email"]
-        result.status = cached["status"]
-        result.pattern = cached["pattern"]
-        result.mx_record = cached.get("mx_record")
-        result.mx_provider = cached.get("mx_provider")
-        return result
+        api_key = await rate_limiter.get_best_key()
+        if api_key:
+            vr = await _verify_with_fallback(cached["email"], api_key, rate_limiter, client)
+            status = vr.get("status", "invalid")
+            mx_raw = vr.get("mx", "")
 
-    # ── Step 2: Catchall fast-path ──
-    if await _catchall_fast_path(db, domain, loop):
-        perms = generate_email_permutations(first_name, last_name, domain)
-        if perms:
-            result.email = perms[0]["email"]
-            result.pattern = perms[0]["pattern"]
-        result.status = "catchall"
-        result.mx_provider = None
-        await _insert_lead(db, user_id, first_name, last_name, domain, enrichment_key, result, loop)
-        return result
+            if status == "valid":
+                result.email = cached["email"]
+                result.status = "valid"
+                result.pattern = cached["pattern"]
+                result.mx_record = mx_raw
+                result.mx_provider = extract_provider_from_mx(mx_raw)
+                return result
 
-    # ── Step 3: 8-permutation early-exit ──
+            if status == "catchall":
+                result.email = cached["email"]
+                result.status = "catchall"
+                result.pattern = cached["pattern"]
+                result.mx_record = mx_raw
+                result.mx_provider = extract_provider_from_mx(mx_raw)
+                return result
+        # Re-verify failed or no API key available → fall through to permutations
+
+    # ── Step 2: 8-permutation early-exit ──
     perms = generate_email_permutations(first_name, last_name, domain)
     if not perms:
         result.status = "not_found"

@@ -395,6 +395,13 @@ class ApiClient {
     });
   }
 
+  async verifySingleEmail(data: { email: string }): Promise<{ email: string; status: string; reason: string | null }> {
+    return this.request<{ email: string; status: string; reason: string | null }>("/api/v1/jobs/verify-single", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
   // Test email endpoint (public, no auth required)
   async testEmail(name: string, companyWebsite: string): Promise<{ name: string; company: string; email: string; status: string }> {
     const url = `${this.baseUrl}/api/v1/test-email`;

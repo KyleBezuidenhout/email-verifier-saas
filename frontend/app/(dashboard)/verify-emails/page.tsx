@@ -22,13 +22,27 @@ export default function VerifyEmailsPage() {
   const jobId = searchParams.get("jobId");
   
   // Upload-related state
+  // Upload mode toggle
+  const [uploadMode, setUploadMode] = useState<'file' | 'single'>('file');
+
+  // File upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [jobName, setJobName] = useState("");
   const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
   const [isMappingValid, setIsMappingValid] = useState(false);
-  
+
+  // Single verification state
+  const [singleEmail, setSingleEmail] = useState("");
+  const [singleResult, setSingleResult] = useState<{
+    email: string;
+    status: string;
+    reason: string | null;
+  } | null>(null);
+  const [singleLoading, setSingleLoading] = useState(false);
+  const [copiedEmail, setCopiedEmail] = useState(false);
+
   // Error modal state
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState("");
@@ -130,6 +144,47 @@ export default function VerifyEmailsPage() {
     }
   };
 
+  const handleCopyEmail = async (email: string) => {
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopiedEmail(true);
+      setTimeout(() => setCopiedEmail(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy email:", err);
+    }
+  };
+
+  const handleSingleVerify = async () => {
+    if (!singleEmail.trim()) {
+      setUploadError("Email is required");
+      return;
+    }
+
+    setSingleLoading(true);
+    setUploadError("");
+    setSingleResult(null);
+
+    try {
+      const response = await apiClient.verifySingleEmail({
+        email: singleEmail.trim(),
+      });
+
+      setSingleResult({
+        email: response.email,
+        status: response.status,
+        reason: response.reason || null,
+      });
+
+      // Clear form after successful verification
+      setSingleEmail("");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Verification failed";
+      setUploadError(errorMessage);
+    } finally {
+      setSingleLoading(false);
+    }
+  };
+
   // Real-time progress updates via SSE
   const handleProgressUpdate = useCallback((progress: JobProgress) => {
     setJobs((prevJobs) =>
@@ -192,89 +247,217 @@ export default function VerifyEmailsPage() {
         </div>
       )}
 
+      {/* Upload Mode Toggle */}
+      <div className="mb-4 flex items-center gap-2">
+        <button
+          onClick={() => {
+            setUploadMode('file');
+            setUploadError("");
+            setSingleResult(null);
+          }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            uploadMode === 'file'
+              ? 'bg-dashboard-accent text-white'
+              : 'bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text'
+          }`}
+        >
+          File Upload
+        </button>
+        <button
+          onClick={() => {
+            setUploadMode('single');
+            setUploadError("");
+            setSelectedFile(null);
+          }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            uploadMode === 'single'
+              ? 'bg-dashboard-accent text-white'
+              : 'bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text'
+          }`}
+        >
+          Single Email
+        </button>
+      </div>
+
       {/* Upload Section */}
       <div className="mb-8 glass-card p-6 space-y-6">
-        {uploadError && (
-          <div className="badge-error px-4 py-3 rounded-lg text-sm">
-            {uploadError}
-          </div>
-        )}
-
-        <div className="glass-card-hover p-4">
-          <p className="text-sm text-dashboard-text-muted">
-            <strong className="text-dashboard-text">Note:</strong> CSV must include an <strong>email</strong> column. 
-            Optional columns: first_name, last_name for display purposes.
-          </p>
-        </div>
-
-        <DropZone
-          onFileSelect={setSelectedFile}
-          selectedFile={selectedFile}
-        />
-
-        {selectedFile && (
+        {uploadMode === 'file' ? (
+          // File Upload Mode
           <>
-            <div className="border-t border-dashboard-border pt-6">
-              <h3 className="text-lg font-medium text-dashboard-text mb-4">
-                File Information
-              </h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-dashboard-text-muted">File name:</span>
-                  <span className="ml-2 font-medium text-dashboard-text">{selectedFile.name}</span>
-                </div>
-                <div>
-                  <span className="text-dashboard-text-muted">File size:</span>
-                  <span className="ml-2 font-medium text-dashboard-text">
-                    {formatFileSize(selectedFile.size)}
-                  </span>
-                </div>
+            {uploadError && (
+              <div className="badge-error px-4 py-3 rounded-lg text-sm">
+                {uploadError}
               </div>
-            </div>
+            )}
 
-            <FilePreview file={selectedFile} onMappingChange={handleMappingChange} mode="verification" />
-
-            {/* Job Name Input - Optional */}
-            <div className="border-t border-dashboard-border pt-6">
-              <h3 className="text-lg font-medium text-dashboard-text mb-4">
-                Job Name (Optional)
-              </h3>
-              <input
-                type="text"
-                value={jobName}
-                onChange={(e) => setJobName(e.target.value)}
-                placeholder="e.g., Email List Verification Feb 2024"
-                className="apple-input w-full"
-              />
-              <p className="mt-2 text-xs text-dashboard-text-muted">
-                Give your job a descriptive name to easily identify it later
+            <div className="glass-card-hover p-4">
+              <p className="text-sm text-dashboard-text-muted">
+                <strong className="text-dashboard-text">Note:</strong> CSV must include an <strong>email</strong> column.
+                Optional columns: first_name, last_name for display purposes.
               </p>
             </div>
 
-            <div className="flex justify-end space-x-4 pt-6 border-t border-dashboard-border">
-              <button
-                onClick={() => {
-                  setSelectedFile(null);
-                  setColumnMapping(null);
-                  setIsMappingValid(false);
-                  setJobName("");
-                  setUploadError("");
-                }}
-                className="btn-secondary"
-                disabled={uploading}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpload}
-                disabled={uploading || !isMappingValid}
-                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                title={!isMappingValid ? "Please map the email column first" : ""}
-              >
-                {uploading && <LoadingSpinner size="sm" />}
-                <span>{uploading ? "Uploading..." : "Upload & Verify"}</span>
-              </button>
+            <DropZone
+              onFileSelect={setSelectedFile}
+              selectedFile={selectedFile}
+            />
+
+            {selectedFile && (
+              <>
+                <div className="border-t border-dashboard-border pt-6">
+                  <h3 className="text-lg font-medium text-dashboard-text mb-4">
+                    File Information
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-dashboard-text-muted">File name:</span>
+                      <span className="ml-2 font-medium text-dashboard-text">{selectedFile.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-dashboard-text-muted">File size:</span>
+                      <span className="ml-2 font-medium text-dashboard-text">
+                        {formatFileSize(selectedFile.size)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <FilePreview file={selectedFile} onMappingChange={handleMappingChange} mode="verification" />
+
+                {/* Job Name Input - Optional */}
+                <div className="border-t border-dashboard-border pt-6">
+                  <h3 className="text-lg font-medium text-dashboard-text mb-4">
+                    Job Name (Optional)
+                  </h3>
+                  <input
+                    type="text"
+                    value={jobName}
+                    onChange={(e) => setJobName(e.target.value)}
+                    placeholder="e.g., Email List Verification Feb 2024"
+                    className="apple-input w-full"
+                  />
+                  <p className="mt-2 text-xs text-dashboard-text-muted">
+                    Give your job a descriptive name to easily identify it later
+                  </p>
+                </div>
+
+                <div className="flex justify-end space-x-4 pt-6 border-t border-dashboard-border">
+                  <button
+                    onClick={() => {
+                      setSelectedFile(null);
+                      setColumnMapping(null);
+                      setIsMappingValid(false);
+                      setJobName("");
+                      setUploadError("");
+                    }}
+                    className="btn-secondary"
+                    disabled={uploading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUpload}
+                    disabled={uploading || !isMappingValid}
+                    className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                    title={!isMappingValid ? "Please map the email column first" : ""}
+                  >
+                    {uploading && <LoadingSpinner size="sm" />}
+                    <span>{uploading ? "Uploading..." : "Upload & Verify"}</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          // Single Verification Mode
+          <>
+            <div className="glass-card-hover p-4">
+              <p className="text-sm text-dashboard-text-muted">
+                <strong className="text-dashboard-text">Note:</strong> Enter an <strong>email address</strong> to verify its validity.
+              </p>
             </div>
+
+            {uploadError && (
+              <div className="badge-error px-4 py-3 rounded-lg text-sm">
+                {uploadError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-dashboard-text mb-2">
+                  Email Address <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={singleEmail}
+                  onChange={(e) => setSingleEmail(e.target.value)}
+                  placeholder="e.g., john@example.com"
+                  className="apple-input w-full"
+                />
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <button
+                  onClick={handleSingleVerify}
+                  disabled={singleLoading || !singleEmail.trim()}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  {singleLoading && <LoadingSpinner size="sm" />}
+                  <span>{singleLoading ? "Verifying..." : "Verify Email"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Single Verification Result */}
+            {singleResult && (
+              <div className="border-t border-dashboard-border pt-6">
+                <h3 className="text-lg font-medium text-dashboard-text mb-4">
+                  Result
+                </h3>
+                <div className="glass-card-hover p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-dashboard-text-muted">Email:</span>
+                    <button
+                      onClick={() => handleCopyEmail(singleResult.email)}
+                      className="flex items-center gap-2 font-medium text-dashboard-text cursor-pointer"
+                      title="Click to copy"
+                    >
+                      {singleResult.email}
+                      {copiedEmail ? (
+                        <svg className="w-4 h-4 text-dashboard-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-dashboard-text-muted">Status:</span>
+                    <span className={`font-medium ${
+                      singleResult.status === 'valid' ? 'text-green-400' :
+                      singleResult.status === 'catchall' ? 'text-yellow-400' :
+                      'text-red-400'
+                    }`}>
+                      {singleResult.status}
+                    </span>
+                  </div>
+                  {singleResult.status === 'catchall' && (
+                    <p className="text-sm text-yellow-400/80 mt-2">
+                      This recipient's email could bounce, run this email through a catchall verifier before you send them an email.
+                    </p>
+                  )}
+                  {singleResult.status === 'valid' && (
+                    <p className="text-sm text-green-400/80 mt-2">
+                      This recipient's email is valid. It is safe to send emails to them.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

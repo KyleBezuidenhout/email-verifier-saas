@@ -44,6 +44,7 @@ export default function FindValidEmailsPage() {
     pattern: string | null;
   } | null>(null);
   const [singleLoading, setSingleLoading] = useState(false);
+  const [copiedEmail, setCopiedEmail] = useState(false);
 
   // Error modal state
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -168,6 +169,16 @@ export default function FindValidEmailsPage() {
     console.log("SalesNav scraping:", { url });
   };
 
+  const handleCopyEmail = async (email: string) => {
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopiedEmail(true);
+      setTimeout(() => setCopiedEmail(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy email:", err);
+    }
+  };
+
   const handleSingleEnrich = async () => {
     if (!singleWebsite.trim()) {
       setUploadError("Website is required");
@@ -190,6 +201,11 @@ export default function FindValidEmailsPage() {
         status: response.status,
         pattern: response.pattern,
       });
+
+      // Clear form fields after successful enrichment
+      setSingleFirstName("");
+      setSingleLastName("");
+      setSingleWebsite("");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Enrichment failed";
       setUploadError(errorMessage);
@@ -436,20 +452,7 @@ export default function FindValidEmailsPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-4 pt-4">
-                <button
-                  onClick={() => {
-                    setSingleFirstName("");
-                    setSingleLastName("");
-                    setSingleWebsite("");
-                    setUploadError("");
-                    setSingleResult(null);
-                  }}
-                  className="btn-secondary"
-                  disabled={singleLoading}
-                >
-                  Clear
-                </button>
+              <div className="flex justify-end pt-4">
                 <button
                   onClick={handleSingleEnrich}
                   disabled={singleLoading || !singleWebsite.trim()}
@@ -468,11 +471,26 @@ export default function FindValidEmailsPage() {
                   Result
                 </h3>
                 <div className="glass-card-hover p-4 space-y-3">
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
                     <span className="text-dashboard-text-muted">Email:</span>
-                    <span className="font-medium text-dashboard-text">{singleResult.email}</span>
+                    <button
+                      onClick={() => handleCopyEmail(singleResult.email)}
+                      className="flex items-center gap-2 font-medium text-dashboard-text cursor-pointer"
+                      title="Click to copy"
+                    >
+                      {singleResult.email}
+                      {copiedEmail ? (
+                        <svg className="w-4 h-4 text-dashboard-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </button>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
                     <span className="text-dashboard-text-muted">Status:</span>
                     <span className={`font-medium ${
                       singleResult.status === 'valid' ? 'text-green-400' :
@@ -482,6 +500,16 @@ export default function FindValidEmailsPage() {
                       {singleResult.status}
                     </span>
                   </div>
+                  {singleResult.status === 'catchall' && (
+                    <p className="text-sm text-yellow-400/80 mt-2">
+                      This recipient's email could bounce, run this email through a catchall verifier before you send them an email.
+                    </p>
+                  )}
+                  {singleResult.status === 'valid' && (
+                    <p className="text-sm text-green-400/80 mt-2">
+                      This recipient's email is valid. It is safe to send emails to them.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
