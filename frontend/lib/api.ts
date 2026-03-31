@@ -1146,6 +1146,13 @@ class ApiClient {
 
     return response.json();
   }
+
+  async enrichSingleAuthenticated(params: EnrichRequest): Promise<EnrichResponse> {
+    return this.request<EnrichResponse>("/api/v1/enrich", {
+      method: "POST",
+      body: JSON.stringify(params),
+    }, 60_000); // 60s timeout for enrichment
+  }
 }
 
 export const apiClient = new ApiClient(API_URL);

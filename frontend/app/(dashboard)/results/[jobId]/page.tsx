@@ -17,7 +17,7 @@ export default function ResultsPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [statusFilters, setStatusFilters] = useState<string[]>(["all"]); // ["all"] or ["valid", "catchall", "invalid"]
   const [mxFilters, setMxFilters] = useState<string[]>([]); // Empty = all MX, or ["outlook", "google", "other"]
   const [verifyingCatchalls, setVerifyingCatchalls] = useState(false);
 
@@ -78,15 +78,29 @@ export default function ResultsPage() {
     return 'other';
   };
 
-  // Apply status filter first
+  // Apply status filters (multi-select)
   const statusFilteredLeads =
-    filter === "all"
+    statusFilters.includes("all") || statusFilters.length === 0
       ? leads
-      : filter === "valid"
-      ? leads.filter((lead) => lead.verification_status === "valid" || lead.verification_tag === "valid-catchall" || lead.verification_tag === "catchall-verified")
-      : filter === "invalid"
-      ? leads.filter((lead) => lead.verification_status === "invalid" || lead.verification_status === "not_found")
-      : leads.filter((lead) => lead.verification_status === filter);
+      : leads.filter((lead) => {
+          if (statusFilters.includes("valid") && 
+              (lead.verification_status === "valid" || 
+               lead.verification_tag === "valid-catchall" || 
+               lead.verification_tag === "catchall-verified")) {
+            return true;
+          }
+          if (statusFilters.includes("catchall") && 
+              lead.verification_status === "catchall" && 
+              lead.verification_tag !== "catchall-verified" && 
+              lead.verification_tag !== "valid-catchall") {
+            return true;
+          }
+          if (statusFilters.includes("invalid") && 
+              (lead.verification_status === "invalid" || lead.verification_status === "not_found")) {
+            return true;
+          }
+          return false;
+        });
   
   // Apply MX provider filter (if any selected)
   const filteredLeads = mxFilters.length === 0
@@ -121,20 +135,21 @@ export default function ResultsPage() {
     return Array.from(cols).sort(); // Sort alphabetically for consistent ordering
   }, [leads]);
   
-  // Calculate filtered counts for display in filter buttons
-  const filteredValidLeads = filteredLeads.filter((l) => 
+  // Calculate counts for display in stat blocks (show totals, not filtered)
+  // These show the total counts regardless of other filters
+  const validCount = leads.filter((l) => 
     l.verification_status === "valid" || 
     l.verification_tag === "catchall-verified" || 
     l.verification_tag === "valid-catchall"
-  );
-  const filteredCatchallLeads = filteredLeads.filter((l) => 
+  ).length;
+  const catchallCount = leads.filter((l) => 
     l.verification_status === "catchall" && 
     l.verification_tag !== "catchall-verified" && 
     l.verification_tag !== "valid-catchall"
-  );
-  const filteredNotFoundLeads = filteredLeads.filter((l) => 
+  ).length;
+  const notFoundCount = leads.filter((l) => 
     l.verification_status === "invalid" || l.verification_status === "not_found"
-  );
+  ).length;
   
   // Check if user can verify catchalls (job has catchall leads)
   const canVerifyCatchalls = catchallLeads.length > 0;
@@ -198,7 +213,9 @@ export default function ResultsPage() {
     const baseName = job?.job_name?.trim()
       ? job.job_name.trim().replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "_").slice(0, 50)
       : jobId;
-    const filterSuffix = filter !== "all" ? `-${filter}` : "";
+    const filterSuffix = !statusFilters.includes("all") && statusFilters.length > 0 
+      ? `-${statusFilters.join("-")}` 
+      : "";
     a.download = `results-${baseName}${filterSuffix}.csv`;
     a.click();
   };
@@ -237,160 +254,188 @@ export default function ResultsPage() {
           ← {backLinkText}
         </Link>
         <h1 className="text-3xl font-bold text-dashboard-text">Results</h1>
-        <p className="mt-2 text-dashboard-text-muted">Job ID: {jobId}</p>
       </div>
 
-      {/* Hit Rate Summary Banner - Only show after completion */}
-      {job && (
-        <div className="mb-8 glass-card p-6">
-          {job.status === "completed" ? (
-            <h2 className="text-3xl font-bold text-dashboard-accent">
-              {job.job_type === "enrichment"
-                ? `${job.total_leads > 0 ? Math.min(((validLeads.length + catchallLeads.length) / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% of Emails Were Found`
-                : job.job_type === "catchall_verification"
-                ? `${job.total_leads > 0 ? Math.min((validLeads.length / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% Are Valid`
-                : `${job.total_leads > 0 ? Math.min((validLeads.length / job.total_leads) * 100, 100).toFixed(1) : "0.0"}% of Emails Are Valid`
-              }
-            </h2>
-          ) : job.status === "processing" ? (
-            <h2 className="text-3xl font-bold text-dashboard-text-muted">
-              Processing... {job.processed_leads}/{job.total_leads} leads
-            </h2>
-          ) : (
-            <h2 className="text-3xl font-bold text-dashboard-text-muted">
-              Status: {job.status === "waiting" ? "queued" : job.status}
-            </h2>
-          )}
-        </div>
-      )}
-
-      {/* Stats Blocks - Click to Filter */}
+      {/* Stats Blocks - Click to Filter (Multi-select) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <button
-          onClick={() => setFilter("all")}
-          className={`text-left glass-card p-6 transition-all hover:border-dashboard-accent ${
-            filter === "all" ? "border-dashboard-accent ring-2 ring-dashboard-accent/20" : ""
-          }`}
+          onClick={() => {
+            if (statusFilters.includes("all")) {
+              setStatusFilters([]);
+            } else {
+              setStatusFilters(["all"]);
+            }
+          }}
+          className="text-left glass-card p-6 transition-all"
+          style={{
+            borderColor: statusFilters.includes("all") ? 'rgba(59,130,246,0.35)' : undefined,
+            boxShadow: statusFilters.includes("all") ? '0 0 0 1px rgba(59,130,246,0.25)' : undefined,
+          }}
         >
           <p className="text-sm text-dashboard-text-muted">Total Leads</p>
           <p className="text-2xl font-bold text-dashboard-text">{job.total_leads}</p>
         </button>
         <button
-          onClick={() => setFilter("valid")}
-          className={`text-left glass-card p-6 transition-all hover:border-dashboard-accent ${
-            filter === "valid" ? "border-dashboard-accent ring-2 ring-dashboard-accent/20" : ""
-          }`}
+          onClick={() => {
+            let newFilters = statusFilters.filter(f => f !== "all");
+            if (statusFilters.includes("valid")) {
+              newFilters = newFilters.filter(f => f !== "valid");
+            } else {
+              newFilters.push("valid");
+            }
+            setStatusFilters(newFilters.length > 0 ? newFilters : ["all"]);
+          }}
+          className="text-left glass-card p-6 transition-all"
+          style={{
+            borderColor: statusFilters.includes("valid") ? 'rgba(59,130,246,0.35)' : undefined,
+            boxShadow: statusFilters.includes("valid") ? '0 0 0 1px rgba(59,130,246,0.25)' : undefined,
+          }}
         >
           <p className="text-sm text-dashboard-text-muted">Valid Emails</p>
-          <p className="text-2xl font-bold text-dashboard-accent">
-            {validLeads.length}
+          <p className="text-2xl font-bold" style={{ color: '#22C55E' }}>
+            {validCount}
           </p>
         </button>
         <button
-          onClick={() => setFilter("catchall")}
-          className={`text-left glass-card p-6 transition-all hover:border-yellow-500 ${
-            filter === "catchall" ? "border-yellow-500 ring-2 ring-yellow-500/20" : ""
-          }`}
+          onClick={() => {
+            let newFilters = statusFilters.filter(f => f !== "all");
+            if (statusFilters.includes("catchall")) {
+              newFilters = newFilters.filter(f => f !== "catchall");
+            } else {
+              newFilters.push("catchall");
+            }
+            setStatusFilters(newFilters.length > 0 ? newFilters : ["all"]);
+          }}
+          className="text-left glass-card p-6 transition-all"
+          style={{
+            borderColor: statusFilters.includes("catchall") ? 'rgba(59,130,246,0.35)' : undefined,
+            boxShadow: statusFilters.includes("catchall") ? '0 0 0 1px rgba(59,130,246,0.25)' : undefined,
+          }}
         >
           <p className="text-sm text-dashboard-text-muted">Catchall Emails</p>
-          <p className="text-2xl font-bold text-yellow-500">
-            {catchallLeads.length}
+          <p className="text-2xl font-bold" style={{ color: '#F5A623' }}>
+            {catchallCount}
           </p>
         </button>
         <button
-          onClick={() => setFilter("invalid")}
-          className={`text-left glass-card p-6 transition-all hover:border-red-500 ${
-            filter === "invalid" ? "border-red-500 ring-2 ring-red-500/20" : ""
-          }`}
+          onClick={() => {
+            let newFilters = statusFilters.filter(f => f !== "all");
+            if (statusFilters.includes("invalid")) {
+              newFilters = newFilters.filter(f => f !== "invalid");
+            } else {
+              newFilters.push("invalid");
+            }
+            setStatusFilters(newFilters.length > 0 ? newFilters : ["all"]);
+          }}
+          className="text-left glass-card p-6 transition-all"
+          style={{
+            borderColor: statusFilters.includes("invalid") ? 'rgba(59,130,246,0.35)' : undefined,
+            boxShadow: statusFilters.includes("invalid") ? '0 0 0 1px rgba(59,130,246,0.25)' : undefined,
+          }}
         >
           <p className="text-sm text-dashboard-text-muted">Not Found</p>
-          <p className="text-2xl font-bold text-red-500">
-            {notFoundLeads.length}
+          <p className="text-2xl font-bold" style={{ color: '#E5484D' }}>
+            {notFoundCount}
           </p>
         </button>
       </div>
 
       <div className="glass-card p-6">
         <div className="mb-4">
-          {/* Current Filter Info */}
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
-            <div className="text-sm text-dashboard-text-muted">
-              Showing <span className="font-medium text-dashboard-text">{previewLeads.length}</span> of <span className="font-medium text-dashboard-text">{filteredLeads.length}</span> {filter === "all" ? "leads" : filter === "valid" ? "valid emails" : filter === "catchall" ? "catchall emails" : "not found"}
-              {mxFilters.length > 0 && <span> • Filtered by: {mxFilters.join(", ")}</span>}
+          {/* Filter bar - Description + Download on left, MX Provider on right */}
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            {/* Left side - Description and Download */}
+            <div className="flex flex-col gap-2">
+              <div className="text-sm text-dashboard-text-muted">
+                Showing <span className="font-medium text-dashboard-text">{previewLeads.length}</span> of <span className="font-medium text-dashboard-text">{filteredLeads.length}</span>
+                {!statusFilters.includes("all") && statusFilters.length > 0 && (
+                  <span> {statusFilters.join(" + ")}</span>
+                )}
+                {statusFilters.includes("all") && " leads"}
+                {mxFilters.length > 0 && <span> • MX: {mxFilters.join(", ")}</span>}
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={downloadCSV}
+                  className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
+                >
+                  Download
+                </button>
+              </div>
             </div>
-          </div>
-          
-          {/* MX Provider Filter */}
-          <div className="flex items-center space-x-4">
-            <span className="text-sm font-medium text-dashboard-text-muted">MX Provider:</span>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => {
-                  if (mxFilters.includes('outlook')) {
-                    setMxFilters(mxFilters.filter(f => f !== 'outlook'));
-                  } else {
-                    setMxFilters([...mxFilters, 'outlook']);
-                  }
-                }}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all ${
-                  mxFilters.includes('outlook')
-                    ? 'bg-dashboard-card text-dashboard-text ring-1 ring-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]'
-                    : 'bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text hover:bg-dashboard-card/80'
-                }`}
-              >
-                Outlook
-              </button>
-              <button
-                onClick={() => {
-                  if (mxFilters.includes('google')) {
-                    setMxFilters(mxFilters.filter(f => f !== 'google'));
-                  } else {
-                    setMxFilters([...mxFilters, 'google']);
-                  }
-                }}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all ${
-                  mxFilters.includes('google')
-                    ? 'bg-dashboard-card text-dashboard-text ring-1 ring-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]'
-                    : 'bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text hover:bg-dashboard-card/80'
-                }`}
-              >
-                Google
-              </button>
-              <button
-                onClick={() => {
-                  if (mxFilters.includes('other')) {
-                    setMxFilters(mxFilters.filter(f => f !== 'other'));
-                  } else {
-                    setMxFilters([...mxFilters, 'other']);
-                  }
-                }}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all ${
-                  mxFilters.includes('other')
-                    ? 'bg-dashboard-card text-dashboard-text ring-1 ring-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]'
-                    : 'bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text hover:bg-dashboard-card/80'
-                }`}
-              >
-                Other
-              </button>
+
+            {/* Right side - MX Provider Filter */}
+            <div className="flex flex-col items-start gap-2">
+              <span className="text-sm font-medium text-dashboard-text">Filter by MX Provider</span>
+              <div className="flex items-center justify-between w-full gap-3">
+                <button
+                  onClick={() => {
+                    if (mxFilters.includes('outlook')) {
+                      setMxFilters(mxFilters.filter(f => f !== 'outlook'));
+                    } else {
+                      setMxFilters([...mxFilters, 'outlook']);
+                    }
+                  }}
+                  className={`p-2 rounded-md transition-all flex items-center justify-center ${
+                    mxFilters.includes('outlook')
+                      ? 'bg-dashboard-card ring-1 ring-[#3b82f6] shadow-[0_0_12px_rgba(59,130,246,0.6)]'
+                      : 'bg-dashboard-card shadow-[0_0_8px_rgba(59,130,246,0.25)]'
+                  }`}
+                  style={{ opacity: mxFilters.includes('outlook') ? 1 : 0.75 }}
+                  title="Outlook"
+                >
+                  <img
+                    src="https://app.plusvibe.ai/v2/images/logos/microsoft.svg"
+                    alt="Outlook"
+                    className="h-5 w-auto"
+                  />
+                </button>
+                <button
+                  onClick={() => {
+                    if (mxFilters.includes('google')) {
+                      setMxFilters(mxFilters.filter(f => f !== 'google'));
+                    } else {
+                      setMxFilters([...mxFilters, 'google']);
+                    }
+                  }}
+                  className={`p-2 rounded-md transition-all flex items-center justify-center ${
+                    mxFilters.includes('google')
+                      ? 'bg-dashboard-card ring-1 ring-[#3b82f6] shadow-[0_0_12px_rgba(59,130,246,0.6)]'
+                      : 'bg-dashboard-card shadow-[0_0_8px_rgba(59,130,246,0.25)]'
+                  }`}
+                  style={{ opacity: mxFilters.includes('google') ? 1 : 0.75 }}
+                  title="Google Workspace"
+                >
+                  <img
+                    src="https://app.plusvibe.ai/v2/images/logos/google-workspace.svg"
+                    alt="Google"
+                    className="h-5 w-auto"
+                  />
+                </button>
+                <button
+                  onClick={() => {
+                    if (mxFilters.includes('other')) {
+                      setMxFilters(mxFilters.filter(f => f !== 'other'));
+                    } else {
+                      setMxFilters([...mxFilters, 'other']);
+                    }
+                  }}
+                  className={`p-2 rounded-md transition-all flex items-center justify-center ${
+                    mxFilters.includes('other')
+                      ? 'bg-dashboard-card ring-1 ring-[#3b82f6] shadow-[0_0_12px_rgba(59,130,246,0.6)]'
+                      : 'bg-dashboard-card shadow-[0_0_8px_rgba(59,130,246,0.25)]'
+                  }`}
+                  style={{ opacity: mxFilters.includes('other') ? 1 : 0.75 }}
+                  title="Other"
+                >
+                  <img
+                    src="https://app.plusvibe.ai/v2/images/logos/any-provider.svg"
+                    alt="Other"
+                    className="h-5 w-auto"
+                  />
+                </button>
+              </div>
             </div>
-            {mxFilters.length > 0 && (
-              <button
-                onClick={() => setMxFilters([])}
-                className="text-xs text-dashboard-text-muted hover:text-dashboard-text underline"
-              >
-                Clear ({mxFilters.length})
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="flex justify-between items-center">
-          <div className="flex space-x-2">
-            <button
-              onClick={downloadCSV}
-              className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
-            >
-              Download CSV
-            </button>
           </div>
         </div>
 
@@ -398,27 +443,27 @@ export default function ResultsPage() {
           <table className="min-w-full divide-y divide-dashboard-border">
             <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
-                  First Name
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
+                  First name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
-                  Last Name
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
+                  Last name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
                   Website
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
                   Email
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
-                  MX Type
+                <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
+                  MX type
                 </th>
                 {/* Dynamic columns from extra_data */}
                 {extraColumns.map((col) => (
-                  <th key={col} className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase">
+                  <th key={col} className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
                     {col.replace(/_/g, ' ')}
                   </th>
                 ))}
@@ -427,30 +472,30 @@ export default function ResultsPage() {
             <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
               {previewLeads.map((lead) => (
                 <tr key={lead.id} className="hover:bg-dashboard-card/50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
                     {lead.first_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
                     {lead.last_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
                     {lead.domain}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
                     {lead.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <span
-                        className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                        className={`text-xs font-medium ${
                           lead.verification_status === "valid" || lead.verification_tag === "valid-catchall"
-                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                            ? "text-green-400"
                             : lead.verification_status === "catchall"
-                            ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-                            : "bg-red-500/20 text-red-400 border border-red-500/30"
+                            ? "text-yellow-400"
+                            : "text-red-400"
                         }`}
                       >
-                        {lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status}
+                        {lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status?.replace(/_/g, ' ')}
                       </span>
                       {lead.verification_tag === "catchall-verified" && (
                         <span className="px-2 py-1 text-xs font-semibold rounded-full bg-dashboard-accent/20 text-dashboard-accent border border-dashboard-accent/30">
@@ -464,7 +509,7 @@ export default function ResultsPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
                     {(() => {
                       const mxType = getProviderFromMX(lead.mx_record, lead.mx_provider);
                       return mxType.charAt(0).toUpperCase() + mxType.slice(1); // Capitalize first letter
@@ -472,7 +517,7 @@ export default function ResultsPage() {
                   </td>
                   {/* Dynamic cells from extra_data */}
                   {extraColumns.map((col) => (
-                    <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
+                    <td key={col} className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
                       {lead.extra_data?.[col] || "-"}
                     </td>
                   ))}

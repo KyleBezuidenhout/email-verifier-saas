@@ -83,7 +83,7 @@ class MailTesterClient:
             # Definitive result from API
             if code == "ok":
                 status = "valid"
-            elif code == "mb" or "catch" in message_lower:
+            elif code == "mb" or "catch" in message_lower or "limited" in message_lower:
                 status = "catchall"
             else:
                 status = "invalid"

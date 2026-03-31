@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Job } from "@/types";
 import { apiClient } from "@/lib/api";
 import { JobTable } from "@/components/dashboard/JobTable";
-import { QuickStats } from "@/components/dashboard/QuickStats";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { DropZone } from "@/components/upload/DropZone";
@@ -192,9 +191,6 @@ export default function VerifyEmailsPage() {
           {error}
         </div>
       )}
-
-      {/* Quick Stats - only for last 30 days */}
-      <QuickStats jobs={filteredJobs} />
 
       {/* Upload Section */}
       <div className="mb-8 glass-card p-6 space-y-6">
