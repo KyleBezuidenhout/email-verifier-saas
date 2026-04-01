@@ -283,9 +283,9 @@ export default function ResultsPage() {
                 <button
                   onClick={handleDownload}
                   disabled={downloading || filteredLeads.length === 0}
-                  className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 border border-dashboard-accent text-dashboard-accent bg-transparent text-xs rounded-lg hover:bg-dashboard-accent/10 transition-colors disabled:opacity-50"
                 >
-                  {downloading ? "Downloading..." : "Download"}
+                  {downloading ? "Downloading..." : "Download CSV"}
                 </button>
               </div>
             </div>

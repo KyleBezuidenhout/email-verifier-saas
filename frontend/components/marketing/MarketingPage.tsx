@@ -373,13 +373,20 @@ export function MarketingPage() {
 
             {/* Dashboard Preview */}
             <div className="relative w-full max-w-5xl mx-auto mt-4 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
-              <div className="rounded-xl overflow-hidden border border-white/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
+              <div className="relative rounded-xl overflow-hidden border border-white/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
                 <img
                   src="/images/dashboard-preview.png"
                   alt="BillionVerifier dashboard — email verification results"
-                  className="w-full block object-cover object-top"
-                  style={{ height: "472px" }}
+                  className="w-full block"
                 />
+                {/* Per-row email blur overlays */}
+                {[63, 72.5, 82, 91.5].map((top) => (
+                  <div
+                    key={top}
+                    className="absolute pointer-events-none backdrop-blur-[3px]"
+                    style={{ left: "43%", width: "22%", top: `${top}%`, height: "5%" }}
+                  />
+                ))}
               </div>
               <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black to-transparent pointer-events-none" />
             </div>

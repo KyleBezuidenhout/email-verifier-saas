@@ -101,8 +101,13 @@
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     @apply border border-dashboard-border rounded-lg px-4 py-2 text-dashboard-text placeholder-dashboard-text-muted;
-    @apply focus:outline-none focus:ring-2 focus:ring-dashboard-accent focus:border-dashboard-accent;
+    @apply focus:outline-none;
     transition: all 0.2s ease;
+  }
+
+  .dashbrd-input:focus {
+    border-color: rgba(59, 130, 246, 0.35);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
   }
 
   .apple-input {
@@ -111,8 +116,13 @@
     -webkit-backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     @apply rounded-lg px-4 py-2 text-dashboard-text placeholder-dashboard-text-muted;
-    @apply focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:border-[#0099FF];
+    @apply focus:outline-none;
     transition: all 0.2s ease;
+  }
+
+  .apple-input:focus {
+    border-color: rgba(59, 130, 246, 0.35);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
   }
 
   /* Glass input - explicit glass treatment for form fields */
@@ -123,8 +133,13 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 0.5rem;
     @apply px-4 py-2 text-white placeholder-gray-500;
-    @apply focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:border-[#0099FF];
+    @apply focus:outline-none;
     transition: all 0.2s ease;
+  }
+
+  .glass-input:focus {
+    border-color: rgba(59, 130, 246, 0.35);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
   }
 
   .glass-input:hover {
