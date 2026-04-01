@@ -84,7 +84,7 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
         company_website=user_data.company_website,
         referral_source=user_data.referral_source,
         daily_cold_emails=user_data.daily_cold_emails,
-        credits=1000,
+        credits=5000,
         email_verified=False,
         email_verification_token=token,
         email_verification_expires=datetime.utcnow() + timedelta(hours=48),

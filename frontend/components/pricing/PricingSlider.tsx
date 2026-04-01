@@ -17,7 +17,7 @@ function buildFeatures(plan: PlanDef): string[] {
   const features: string[] = [];
 
   if (plan.id === "trial") {
-    features.push("1000 credits");
+    features.push("5,000 credits");
     features.push("0.5 credits per enrichment/verification email");
     features.push("1 credit per Sales Nav profile scraped");
     features.push(plan.support);
@@ -211,7 +211,7 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
             {selectedPlan.id === "trial" ? (
               <div className="mb-4">
                 <div className="text-3xl lg:text-4xl font-bold text-white">Free</div>
-                <p className="text-dashboard-text-muted mt-1">Get 1,000 Free Credits</p>
+                <p className="text-dashboard-text-muted mt-1">Get 5,000 Free Credits</p>
               </div>
             ) : isCustom ? (
               <div className="mb-4">

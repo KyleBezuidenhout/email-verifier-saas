@@ -19,7 +19,7 @@ class User(Base):
     oauth_provider = Column(String(50), nullable=True)
     oauth_provider_id = Column(String(255), nullable=True)
     daily_cold_emails = Column(Integer, nullable=True)
-    credits = Column(Numeric(12, 1), default=1000)
+    credits = Column(Numeric(12, 1), default=5000)
     plan = Column(String(20), default="trial", nullable=False, server_default="trial")
     custom_credit_price = Column(Numeric(10, 5), nullable=True)
     api_key = Column(UUID(as_uuid=True), unique=True, default=uuid.uuid4)
