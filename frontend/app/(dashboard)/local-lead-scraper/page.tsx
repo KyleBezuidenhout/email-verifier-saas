@@ -49,53 +49,29 @@ function SearchableSelect({
       const openUpward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
       
       setDropdownPosition({
-        top: openUpward ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
-        left: rect.left,
+        top: openUpward ? rect.top + window.scrollY - dropdownHeight : rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
         width: rect.width,
         openUpward,
       });
     }
   }, []);
 
-  // Update dropdown position when opened and on scroll/resize
-  useEffect(() => {
-    if (isOpen) {
+  // Handle opening dropdown
+  const handleOpen = () => {
+    if (!disabled && !loading) {
       updateDropdownPosition();
-      
-      // Focus search input when dropdown opens
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 10);
-      
-      const handleScrollOrResize = () => updateDropdownPosition();
-      window.addEventListener("scroll", handleScrollOrResize, true);
-      window.addEventListener("resize", handleScrollOrResize);
-      
-      return () => {
-        window.removeEventListener("scroll", handleScrollOrResize, true);
-        window.removeEventListener("resize", handleScrollOrResize);
-      };
+      setIsOpen(true);
+      setSearch("");
     }
-  }, [isOpen, updateDropdownPosition]);
+  };
 
-  // Handle click outside to close dropdown
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (
-        triggerRef.current && !triggerRef.current.contains(target) &&
-        dropdownRef.current && !dropdownRef.current.contains(target)
-      ) {
-        setIsOpen(false);
-        setSearch("");
-      }
-    };
-    
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [isOpen]);
+  // Handle option selection
+  const handleSelect = (option: string) => {
+    onChange(option);
+    setIsOpen(false);
+    setSearch("");
+  };
 
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -103,666 +79,270 @@ function SearchableSelect({
       setIsOpen(false);
       setSearch("");
     } else if (e.key === "Enter" && filteredOptions.length === 1) {
-      onChange(filteredOptions[0]);
-      setIsOpen(false);
-      setSearch("");
+      handleSelect(filteredOptions[0]);
     }
   };
 
-  const dropdownContent = isOpen && !disabled && typeof document !== 'undefined' ? createPortal(
-    <div 
-      ref={dropdownRef}
-      className="fixed bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden animate-in"
-      style={{ 
-        zIndex: 99999,
-        top: dropdownPosition.top,
-        left: dropdownPosition.left,
-        width: dropdownPosition.width,
-        maxHeight: 250,
-      }}
-      onKeyDown={handleKeyDown}
-    >
-      <div className="sticky top-0 p-2 border-b border-dashboard-border bg-dashboard-surface">
-        <input
-          ref={searchInputRef}
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Type to search..."
-          className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={handleKeyDown}
-        />
-      </div>
-      <div className="overflow-y-auto" style={{ maxHeight: 200 }}>
-        {filteredOptions.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-dashboard-text-muted text-center">
-            {search ? `No results for "${search}"` : "No options available"}
-          </div>
-        ) : (
-          filteredOptions.map((option) => (
-            <div
-              key={option}
-              className={`px-4 py-2.5 cursor-pointer text-sm transition-colors ${
-                option === value 
-                  ? 'bg-dashboard-accent/20 text-dashboard-accent font-medium' 
-                  : 'text-dashboard-text hover:bg-dashboard-card'
-              }`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange(option);
-                setIsOpen(false);
-                setSearch("");
-              }}
-            >
-              {option}
-            </div>
-          ))
-        )}
-      </div>
-    </div>,
-    document.body
-  ) : null;
-
-  return (
-    <div className="relative">
-      <div
-        ref={triggerRef}
-        className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${isOpen ? 'ring-2 ring-dashboard-accent border-dashboard-accent' : ''}`}
-        onClick={() => !disabled && setIsOpen(!isOpen)}
-      >
-        <span className={value ? "text-dashboard-text" : "text-dashboard-text-muted"}>
-          {value || placeholder}
-        </span>
-        {loading ? (
-          <LoadingSpinner size="sm" />
-        ) : (
-          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        )}
-      </div>
-      {dropdownContent}
-    </div>
-  );
-}
-
-// Multi-Select Searchable Component with Portal (for admin multi-state selection)
-function MultiSelectSearchable({
-  options,
-  values,
-  onChange,
-  placeholder,
-  disabled,
-  loading,
-}: {
-  options: string[];
-  values: string[];
-  onChange: (values: string[]) => void;
-  placeholder: string;
-  disabled?: boolean;
-  loading?: boolean;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0, openUpward: false });
-  const triggerRef = useRef<HTMLDivElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  const filteredOptions = useMemo(() => {
-    if (!search) return options;
-    return options.filter(opt => 
-      opt.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [options, search]);
-
-  // Calculate dropdown position
-  const updateDropdownPosition = useCallback(() => {
-    if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      const dropdownHeight = 300; // Approximate height of dropdown
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      const openUpward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
-      
-      setDropdownPosition({
-        top: openUpward ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
-        openUpward,
-      });
-    }
-  }, []);
-
-  // Update dropdown position when opened and on scroll/resize
+  // Focus search input when dropdown opens
   useEffect(() => {
-    if (isOpen) {
-      updateDropdownPosition();
-      
-      // Focus search input when dropdown opens
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 10);
-      
-      const handleScrollOrResize = () => updateDropdownPosition();
-      window.addEventListener("scroll", handleScrollOrResize, true);
-      window.addEventListener("resize", handleScrollOrResize);
-      
-      return () => {
-        window.removeEventListener("scroll", handleScrollOrResize, true);
-        window.removeEventListener("resize", handleScrollOrResize);
-      };
-    }
-  }, [isOpen, updateDropdownPosition]);
-
-  // Handle click outside to close dropdown
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (
-        triggerRef.current && !triggerRef.current.contains(target) &&
-        dropdownRef.current && !dropdownRef.current.contains(target)
-      ) {
-        setIsOpen(false);
-        setSearch("");
-      }
-    };
-    
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+    if (isOpen && searchInputRef.current) {
+      setTimeout(() => searchInputRef.current?.focus(), 0);
     }
   }, [isOpen]);
 
-  // Handle keyboard navigation
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      setIsOpen(false);
-      setSearch("");
-    }
-  };
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
 
-  const toggleOption = (option: string) => {
-    if (values.includes(option)) {
-      onChange(values.filter(v => v !== option));
-    } else {
-      onChange([...values, option]);
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      window.addEventListener("scroll", updateDropdownPosition, true);
+      window.addEventListener("resize", updateDropdownPosition);
     }
-  };
 
-  const dropdownContent = isOpen && !disabled && typeof document !== 'undefined' ? createPortal(
-    <div 
-      ref={dropdownRef}
-      className="fixed bg-dashboard-surface border border-dashboard-border rounded-lg shadow-2xl overflow-hidden animate-in"
-      style={{ 
-        zIndex: 99999,
-        top: dropdownPosition.top,
-        left: dropdownPosition.left,
-        width: dropdownPosition.width,
-        maxHeight: 300,
-      }}
-      onKeyDown={handleKeyDown}
-    >
-      <div className="sticky top-0 p-2 border-b border-dashboard-border bg-dashboard-surface">
-        <input
-          ref={searchInputRef}
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Type to search states..."
-          className="w-full px-3 py-2 bg-dashboard-card border border-dashboard-border rounded-lg text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:ring-2 focus:ring-dashboard-accent"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={handleKeyDown}
-        />
-      </div>
-      <div className="overflow-y-auto" style={{ maxHeight: 250 }}>
-        {filteredOptions.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-dashboard-text-muted text-center">
-            {search ? `No results for "${search}"` : "No options available"}
-          </div>
-        ) : (
-          filteredOptions.map((option) => (
-            <div
-              key={option}
-              className={`px-4 py-2.5 cursor-pointer text-sm transition-colors flex items-center gap-3 ${
-                values.includes(option)
-                  ? 'bg-dashboard-accent/20 text-dashboard-accent' 
-                  : 'text-dashboard-text hover:bg-dashboard-card'
-              }`}
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleOption(option);
-              }}
-            >
-              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                values.includes(option) 
-                  ? 'bg-dashboard-accent border-dashboard-accent' 
-                  : 'border-dashboard-border'
-              }`}>
-                {values.includes(option) && (
-                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-              </div>
-              {option}
-            </div>
-          ))
-        )}
-      </div>
-    </div>,
-    document.body
-  ) : null;
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+      window.removeEventListener("resize", updateDropdownPosition);
+    };
+  }, [isOpen, updateDropdownPosition]);
 
   return (
-    <div className="relative">
+    <>
       <div
         ref={triggerRef}
-        className={`apple-input w-full py-3 cursor-pointer flex items-center justify-between min-h-[48px] ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${isOpen ? 'ring-2 ring-dashboard-accent border-dashboard-accent' : ''}`}
-        onClick={() => !disabled && setIsOpen(!isOpen)}
+        onClick={handleOpen}
+        className={`w-full rounded-lg border border-dashboard-border bg-dashboard-card text-dashboard-text px-4 py-3 cursor-pointer flex items-center justify-between ${disabled || loading ? "opacity-50 cursor-not-allowed" : ""}`}
       >
-        <div className="flex-1 flex flex-wrap gap-1">
-          {values.length === 0 ? (
-            <span className="text-dashboard-text-muted">{placeholder}</span>
-          ) : (
-            values.map(v => (
-              <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 bg-dashboard-accent/20 text-dashboard-accent rounded text-xs font-medium">
-                {v}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onChange(values.filter(val => val !== v));
-                  }}
-                  className="hover:text-red-400 transition-colors"
-                >
-                  ×
-                </button>
-              </span>
-            ))
-          )}
-        </div>
-        {loading ? (
-          <LoadingSpinner size="sm" />
-        ) : (
-          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform duration-200 flex-shrink-0 ml-2 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        )}
+        <span className={value ? "text-dashboard-text" : "text-dashboard-text-muted"}>
+          {loading ? "Loading..." : value || placeholder}
+        </span>
+        <svg className="w-5 h-5 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
       </div>
-      {dropdownContent}
-    </div>
+
+      {isOpen && createPortal(
+        <div
+          ref={dropdownRef}
+          className="fixed bg-dashboard-card border border-dashboard-border rounded-lg shadow-2xl z-[9999]"
+          style={{
+            top: dropdownPosition.top,
+            left: dropdownPosition.left,
+            width: dropdownPosition.width,
+            maxHeight: "250px",
+            display: "flex",
+            flexDirection: "column",
+          }}
+          onKeyDown={handleKeyDown}
+        >
+          <div className="p-2 border-b border-dashboard-border">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="w-full px-3 py-2 bg-dashboard-bg border border-dashboard-border rounded text-sm text-dashboard-text placeholder-dashboard-text-muted focus:outline-none focus:border-dashboard-accent"
+            />
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {filteredOptions.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-dashboard-text-muted">No matches found</div>
+            ) : (
+              filteredOptions.map((option) => (
+                <div
+                  key={option}
+                  onClick={() => handleSelect(option)}
+                  className={`px-4 py-2 cursor-pointer text-sm hover:bg-dashboard-border ${option === value ? "bg-dashboard-accent/20 text-dashboard-accent" : "text-dashboard-text"}`}
+                >
+                  {option}
+                </div>
+              ))
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
-export default function GoogleMapsScraperPage() {
-  // Health check state
+export default function LocalLeadScraperPage() {
+  const [mounted, setMounted] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [healthStatus, setHealthStatus] = useState<GoogleMapsScraperHealthStatus | null>(null);
-  
-  // Mode state
-  const [scrapeMode, setScrapeMode] = useState<ScrapeMode>("single_city");
+  const [orders, setOrders] = useState<GoogleMapsScraperOrder[]>([]);
+  const [totalCost, setTotalCost] = useState(0);
   
   // Form state
-  const [jobName, setJobName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedState, setSelectedState] = useState("");  // For single city mode
-  const [selectedStates, setSelectedStates] = useState<string[]>([]);  // For full state mode (admin)
+  const [selectedState, setSelectedState] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
-  const [useCache, setUseCache] = useState(false);  // Enable caching toggle
-  const [showCacheTooltip, setShowCacheTooltip] = useState(false);  // Tooltip visibility
+  const [scrapeMode, setScrapeMode] = useState<ScrapeMode>("single_city");
+  const [maxCities, setMaxCities] = useState(5);
+  const [maxLeadsPerCity, setMaxLeadsPerCity] = useState(100);
+  const [submitting, setSubmitting] = useState(false);
   
-  // Dropdown data
-  const [states, setStates] = useState<string[]>([]);
-  const [cities, setCities] = useState<string[]>([]);
-  const [loadingStates, setLoadingStates] = useState(false);
-  const [loadingCities, setLoadingCities] = useState(false);
-  
-  // Cost estimate
-  const [costEstimate, setCostEstimate] = useState<{ num_cities: number; estimated_cost: number } | null>(null);
-  const [loadingEstimate, setLoadingEstimate] = useState(false);
-  
-  // Order state
-  const [creatingOrder, setCreatingOrder] = useState(false);
-  const [orders, setOrders] = useState<GoogleMapsScraperOrder[]>([]);
-  const [loadingOrders, setLoadingOrders] = useState(false);
+  // Cities data
+  const [availableStates, setAvailableStates] = useState<string[]>([]);
+  const [availableCities, setAvailableCities] = useState<string[]>([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
   
   // UI state
-  const [error, setError] = useState("");
-  const [showErrorModal, setShowErrorModal] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [errorModalOpen, setErrorModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"submit" | "history">("submit");
   const [downloadingOrderId, setDownloadingOrderId] = useState<string | null>(null);
-  const [deleteConfirmOrderId, setDeleteConfirmOrderId] = useState<string | null>(null);
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
-  
-  // Preview modal state
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<GoogleMapsScraperPreviewResponse | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
 
-  // Advanced Apify settings state
-  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
-  const [maxResultsPerCity, setMaxResultsPerCity] = useState<string>("");
-  const [skipClosedPlaces, setSkipClosedPlaces] = useState(true);
-  const [websiteFilter, setWebsiteFilter] = useState<"allPlaces" | "withWebsite" | "withoutWebsite">("withWebsite");
-  const [scrapeReviews, setScrapeReviews] = useState(false);
-  const [maxReviews, setMaxReviews] = useState(0);
-  const [scrapeImages, setScrapeImages] = useState(false);
-  const [maxImages, setMaxImages] = useState(0);
-  const [language, setLanguage] = useState("en");
-
-  // Check Apify API health
-  const checkHealth = useCallback(async () => {
-    try {
-      const status = await apiClient.getGoogleMapsScraperHealth();
-      setHealthStatus(status);
-    } catch (err) {
-      setHealthStatus({ apify_api: "disconnected", message: "Could not check API status" });
-    }
-  }, []);
-
-  // Load states
-  const loadStates = useCallback(async () => {
-    setLoadingStates(true);
-    try {
-      const response = await apiClient.getGoogleMapsScraperStates();
-      setStates(response.states);
-    } catch (err) {
-      console.error("Failed to load states:", err);
-    } finally {
-      setLoadingStates(false);
-    }
-  }, []);
-
-  // Load cities for selected state
-  const loadCities = useCallback(async (state: string) => {
-    if (!state) {
-      setCities([]);
-      return;
-    }
-    setLoadingCities(true);
-    try {
-      const response = await apiClient.getGoogleMapsScraperCities(state);
-      setCities(response.cities);
-    } catch (err) {
-      console.error("Failed to load cities:", err);
-      setCities([]);
-    } finally {
-      setLoadingCities(false);
-    }
-  }, []);
-
-  // Load orders
-  const loadOrders = useCallback(async () => {
-    setLoadingOrders(true);
-    try {
-      const response = await apiClient.getGoogleMapsScraperOrders(100, 0);
-      const visibleOrders = response.orders
-        .filter((order) => order.status !== "cancelled")
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setOrders(visibleOrders);
-    } catch (err) {
-      console.error("Failed to load orders:", err);
-    } finally {
-      setLoadingOrders(false);
-    }
-  }, []);
-
-  // Estimate cost
-  const estimateCost = useCallback(async () => {
-    const statesToEstimate = scrapeMode === "single_city" ? [selectedState] : selectedStates;
-    
-    if (statesToEstimate.length === 0 || (scrapeMode === "single_city" && !selectedState)) {
-      setCostEstimate(null);
-      return;
-    }
-    
-    setLoadingEstimate(true);
-    try {
-      const estimate = await apiClient.estimateGoogleMapsScraperCost(
-        scrapeMode,
-        statesToEstimate,
-        scrapeMode === "single_city" ? selectedCity : undefined
-      );
-      setCostEstimate(estimate);
-    } catch (err) {
-      console.error("Failed to estimate cost:", err);
-      setCostEstimate(null);
-    } finally {
-      setLoadingEstimate(false);
-    }
-  }, [scrapeMode, selectedState, selectedStates, selectedCity]);
-
-  // Initial data load
   useEffect(() => {
-    const loadInitialData = async () => {
-      try {
-        setInitialLoading(true);
-        await Promise.all([checkHealth(), loadStates(), loadOrders()]);
-      } catch (err) {
-        console.error("Error loading initial data:", err);
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-    loadInitialData();
-  }, [checkHealth, loadStates, loadOrders]);
+    setMounted(true);
+    loadData();
+  }, []);
 
-  // Load cities when state changes (single city mode)
+  const loadData = async () => {
+    try {
+      setInitialLoading(true);
+      const [health, ordersData, states] = await Promise.all([
+        apiClient.getGoogleMapsScraperHealth(),
+        apiClient.getGoogleMapsScraperOrders(),
+        apiClient.getUsCities().then(citiesData => {
+          const statesList = Object.keys(citiesData).sort();
+          setAvailableStates(statesList);
+          return statesList;
+        }),
+      ]);
+      
+      setHealthStatus(health);
+      setOrders(ordersData.orders);
+      setTotalCost(ordersData.total_cost);
+    } catch (err) {
+      console.error("Failed to load data:", err);
+      setError(err instanceof Error ? err.message : "Failed to load data");
+      setErrorModalOpen(true);
+    } finally {
+      setInitialLoading(false);
+    }
+  };
+
+  // Load cities when state changes
   useEffect(() => {
-    if (scrapeMode === "single_city" && selectedState) {
-      loadCities(selectedState);
+    if (selectedState) {
+      setCitiesLoading(true);
+      apiClient.getUsCities()
+        .then(citiesData => {
+          const cities = citiesData[selectedState] || [];
+          setAvailableCities(cities.sort());
+          setSelectedCity(""); // Reset city when state changes
+        })
+        .catch(err => {
+          console.error("Failed to load cities:", err);
+          setAvailableCities([]);
+        })
+        .finally(() => {
+          setCitiesLoading(false);
+        });
     } else {
-      setCities([]);
+      setAvailableCities([]);
       setSelectedCity("");
     }
-  }, [selectedState, scrapeMode, loadCities]);
+  }, [selectedState]);
 
-  // Estimate cost when relevant values change
-  useEffect(() => {
-    if (scrapeMode === "single_city") {
-      if (selectedState && selectedCity) {
-        estimateCost();
-      } else {
-        setCostEstimate(null);
-      }
-    } else {
-      if (selectedStates.length > 0) {
-        estimateCost();
-      } else {
-        setCostEstimate(null);
-      }
-    }
-  }, [scrapeMode, selectedState, selectedStates, selectedCity, estimateCost]);
-
-  // Reset form when mode changes
-  useEffect(() => {
-    setSelectedState("");
-    setSelectedStates([]);
-    setSelectedCity("");
-    setCostEstimate(null);
-  }, [scrapeMode]);
-
-  // Poll for order status updates
-  useEffect(() => {
-    const POLL_INTERVAL = 30000;
-
-    const pollOrderStatuses = async () => {
-      const activeOrders = orders.filter(
-        (order) => order.status === "pending" || order.status === "processing"
-      );
-
-      if (activeOrders.length === 0) return;
-
-      const updates = await Promise.allSettled(
-        activeOrders.map(async (order) => {
-          const result = await apiClient.pollGoogleMapsScraperOrderStatus(order.id);
-          return { orderId: order.id, result };
-        })
-      );
-
-      setOrders((currentOrders) =>
-        currentOrders.map((order) => {
-          const update = updates.find(
-            (u) => u.status === "fulfilled" && u.value.orderId === order.id
-          );
-          if (update && update.status === "fulfilled") {
-            const { result } = update.value;
-            return {
-              ...order,
-              status: result.status as GoogleMapsScraperOrder["status"],
-              completed_cities: result.completed_cities,
-              progress_percentage: result.progress_percentage,
-              results_count: result.results_count,
-              error_message: result.error_message || null,
-            };
-          }
-          return order;
-        })
-      );
-    };
-
-    const intervalId = setInterval(pollOrderStatuses, POLL_INTERVAL);
-    const timeoutId = setTimeout(pollOrderStatuses, 5000);
-
-    return () => {
-      clearInterval(intervalId);
-      clearTimeout(timeoutId);
-    };
-  }, [orders]);
-
-  // Start scraping
-  const handleStartScraping = async () => {
-    if (!jobName.trim()) {
-      setError("Please enter a job name");
-      setShowErrorModal(true);
-      return;
-    }
-
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!searchTerm.trim()) {
-      setError("Please enter a search term (e.g., 'Restaurants', 'Dentists')");
-      setShowErrorModal(true);
+      setError("Please enter a search term");
+      setErrorModalOpen(true);
       return;
     }
 
-    if (scrapeMode === "single_city") {
-      if (!selectedState) {
-        setError("Please select a state");
-        setShowErrorModal(true);
-        return;
-      }
-      if (!selectedCity) {
-        setError("Please select a city");
-        setShowErrorModal(true);
-        return;
-      }
-    } else {
-      if (selectedStates.length === 0) {
-        setError("Please select at least one state");
-        setShowErrorModal(true);
-        return;
-      }
+    if (scrapeMode === "single_city" && (!selectedState || !selectedCity)) {
+      setError("Please select both a state and city");
+      setErrorModalOpen(true);
+      return;
     }
 
-    setCreatingOrder(true);
-    try {
-      const newOrder = await apiClient.createGoogleMapsScraperOrder({
-        job_name: jobName.trim(),
-        scrape_mode: scrapeMode,
-        states: scrapeMode === "single_city" ? [selectedState] : selectedStates,
-        city: scrapeMode === "single_city" ? selectedCity : null,
-        search_term: searchTerm.trim(),
-        use_cache: useCache,
-        // Apify settings
-        max_results_per_city: maxResultsPerCity ? parseInt(maxResultsPerCity, 10) : null,
-        skip_closed_places: skipClosedPlaces,
-        website_filter: websiteFilter,
-        scrape_reviews: scrapeReviews,
-        max_reviews: maxReviews,
-        scrape_images: scrapeImages,
-        max_images: maxImages,
-        language: language,
-      });
+    if (scrapeMode === "full_state" && !selectedState) {
+      setError("Please select a state");
+      setErrorModalOpen(true);
+      return;
+    }
 
-      setOrders((prev) => [newOrder, ...prev]);
-      setJobName("");
+    try {
+      setSubmitting(true);
+      
+      const request = {
+        search_term: searchTerm.trim(),
+        state: selectedState,
+        city: scrapeMode === "single_city" ? selectedCity : null,
+        mode: scrapeMode,
+        max_cities: scrapeMode === "full_state" ? maxCities : null,
+        max_leads_per_city: maxLeadsPerCity,
+      };
+
+      await apiClient.createGoogleMapsScraperOrder(request);
+      
+      // Reset form
       setSearchTerm("");
       setSelectedState("");
-      setSelectedStates([]);
       setSelectedCity("");
-      setCostEstimate(null);
-      setUseCache(false);
-      // Reset advanced settings to defaults
-      setMaxResultsPerCity("");
-      setSkipClosedPlaces(true);
-      setWebsiteFilter("withWebsite");
-      setScrapeReviews(false);
-      setMaxReviews(0);
-      setScrapeImages(false);
-      setMaxImages(0);
-      setLanguage("en");
-
+      setScrapeMode("single_city");
+      setMaxCities(5);
+      setMaxLeadsPerCity(100);
+      
+      // Switch to history tab and refresh
+      setActiveTab("history");
+      await loadData();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(errorMessage || "Failed to start scraping");
-      setShowErrorModal(true);
+      console.error("Failed to submit order:", err);
+      setError(err instanceof Error ? err.message : "Failed to create scraping order");
+      setErrorModalOpen(true);
     } finally {
-      setCreatingOrder(false);
+      setSubmitting(false);
     }
   };
 
-  // Delete order
-  const handleDeleteOrder = async (orderId: string) => {
-    if (deleteConfirmOrderId === orderId) {
-      try {
-        await apiClient.deleteGoogleMapsScraperOrder(orderId);
-        setOrders((prev) => prev.filter((o) => o.id !== orderId));
-        setDeleteConfirmOrderId(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to delete order");
-        setShowErrorModal(true);
-        setDeleteConfirmOrderId(null);
-      }
-    } else {
-      setDeleteConfirmOrderId(orderId);
-    }
-  };
-
-  // Download results
   const handleDownloadResults = async (orderId: string) => {
-    setDownloadingOrderId(orderId);
     try {
+      setDownloadingOrderId(orderId);
       await apiClient.downloadGoogleMapsScraperResults(orderId);
     } catch (err) {
+      console.error("Failed to download results:", err);
       setError(err instanceof Error ? err.message : "Failed to download results");
-      setShowErrorModal(true);
+      setErrorModalOpen(true);
     } finally {
       setDownloadingOrderId(null);
     }
   };
 
-  // Preview results
   const handlePreviewResults = async (orderId: string) => {
-    setPreviewOrderId(orderId);
-    setPreviewLoading(true);
-    setShowPreviewModal(true);
     try {
-      const data = await apiClient.getGoogleMapsScraperPreview(orderId);
+      setPreviewLoading(true);
+      setPreviewOrderId(orderId);
+      setShowPreviewModal(true);
+      const data = await apiClient.previewGoogleMapsScraperResults(orderId);
       setPreviewData(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load preview");
-      setShowErrorModal(true);
+      console.error("Failed to preview results:", err);
+      setError(err instanceof Error ? err.message : "Failed to preview results");
+      setErrorModalOpen(true);
       setShowPreviewModal(false);
     } finally {
       setPreviewLoading(false);
-    }
-  };
-
-  const handleRowClick = (order: GoogleMapsScraperOrder, e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('button')) return;
-    if (order.status === "completed") {
-      handlePreviewResults(order.id);
     }
   };
 
@@ -812,59 +392,357 @@ export default function GoogleMapsScraperPage() {
             <p className={`text-sm font-medium ${
               healthStatus?.apify_api === "connected" ? "text-[#22c55e]" : "text-red-400"
             }`}>
-              {healthStatus?.apify_api === "connected" ? "Apify API Connected" : "Apify API Disconnected"}
+              {healthStatus?.apify_api === "connected" ? "API Connected" : "API Disconnected"}
             </p>
-            <p className="text-xs text-dashboard-text-muted">{healthStatus?.message}</p>
+            <p className="text-xs text-dashboard-text-muted">
+              {healthStatus?.apify_api === "connected" 
+                ? `Apify API is operational. Credits remaining: ${healthStatus?.credits_remaining || 'Unknown'}`
+                : healthStatus?.error || "Unable to connect to Apify API"
+              }
+            </p>
           </div>
-          <button onClick={checkHealth} className="ml-auto px-3 py-1 text-xs bg-dashboard-card hover:bg-dashboard-border rounded-lg transition-colors">
-            Refresh
+        </div>
+      </div>
+
+      {/* Total Cost Summary */}
+      <div className="mb-6 glass-card p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-dashboard-text-muted">Total Spent</p>
+            <p className="text-2xl font-bold text-dashboard-text">{formatCost(totalCost)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-dashboard-text-muted">Active Orders</p>
+            <p className="text-2xl font-bold text-dashboard-accent">
+              {orders.filter(o => o.status === "running" || o.status === "pending").length}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="mb-6 border-b border-dashboard-border">
+        <div className="flex gap-6">
+          <button
+            onClick={() => setActiveTab("submit")}
+            className={`pb-3 text-sm font-medium transition-colors ${
+              activeTab === "submit"
+                ? "text-dashboard-accent border-b-2 border-dashboard-accent"
+                : "text-dashboard-text-muted hover:text-dashboard-text"
+            }`}
+          >
+            Submit New Scrape
+          </button>
+          <button
+            onClick={() => setActiveTab("history")}
+            className={`pb-3 text-sm font-medium transition-colors ${
+              activeTab === "history"
+                ? "text-dashboard-accent border-b-2 border-dashboard-accent"
+                : "text-dashboard-text-muted hover:text-dashboard-text"
+            }`}
+          >
+            History ({orders.length})
           </button>
         </div>
       </div>
 
-      <ErrorModal isOpen={showErrorModal} message={error} onClose={() => setShowErrorModal(false)} />
+      {/* Submit Form */}
+      {activeTab === "submit" && (
+        <div className="glass-card p-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Search Term */}
+            <div>
+              <label className="block text-sm font-medium text-dashboard-text mb-2">
+                Search Term *
+              </label>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="e.g., Plumbers, Restaurants, Law Firms"
+                className="input-field w-full"
+                disabled={submitting}
+              />
+              <p className="mt-1 text-xs text-dashboard-text-muted">
+                What type of businesses are you looking for?
+              </p>
+            </div>
 
-      {/* Results Preview Modal */}
-      {showPreviewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setShowPreviewModal(false); setPreviewData(null); setPreviewOrderId(null); }} />
-          <div className="relative bg-dashboard-surface border border-dashboard-border rounded-2xl p-6 max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-xl font-bold text-dashboard-text">Results Preview</h2>
-                {previewData && <p className="text-sm text-dashboard-text-muted mt-1">Showing {previewData.preview_count} of {previewData.total_rows.toLocaleString()} results</p>}
+            {/* Scrape Mode */}
+            <div>
+              <label className="block text-sm font-medium text-dashboard-text mb-2">
+                Scrape Mode
+              </label>
+              <div className="flex gap-4">
+                <button
+                  type="button"
+                  onClick={() => setScrapeMode("single_city")}
+                  className={`flex-1 py-3 px-4 rounded-lg border text-sm font-medium transition-all ${
+                    scrapeMode === "single_city"
+                      ? "border-dashboard-accent bg-dashboard-accent/10 text-dashboard-accent"
+                      : "border-dashboard-border text-dashboard-text-muted hover:border-dashboard-text"
+                  }`}
+                >
+                  Single City
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScrapeMode("full_state")}
+                  className={`flex-1 py-3 px-4 rounded-lg border text-sm font-medium transition-all ${
+                    scrapeMode === "full_state"
+                      ? "border-dashboard-accent bg-dashboard-accent/10 text-dashboard-accent"
+                      : "border-dashboard-border text-dashboard-text-muted hover:border-dashboard-text"
+                  }`}
+                >
+                  Full State (Multiple Cities)
+                </button>
               </div>
-              <button onClick={() => { setShowPreviewModal(false); setPreviewData(null); setPreviewOrderId(null); }} className="p-2 hover:bg-dashboard-card rounded-lg transition-colors">
-                <svg className="w-5 h-5 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </div>
+
+            {/* State Selection */}
+            <div>
+              <label className="block text-sm font-medium text-dashboard-text mb-2">
+                State *
+              </label>
+              <div className="relative">
+                {mounted ? (
+                  <SearchableSelect
+                    options={availableStates}
+                    value={selectedState}
+                    onChange={setSelectedState}
+                    placeholder="Select a state"
+                    disabled={submitting}
+                    loading={availableStates.length === 0}
+                  />
+                ) : (
+                  <div className="w-full rounded-lg border border-dashboard-border bg-dashboard-card text-dashboard-text px-4 py-3">
+                    Loading states...
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* City Selection (only for single city mode) */}
+            {scrapeMode === "single_city" && (
+              <div>
+                <label className="block text-sm font-medium text-dashboard-text mb-2">
+                  City *
+                </label>
+                <div className="relative">
+                  {mounted ? (
+                    <SearchableSelect
+                      options={availableCities}
+                      value={selectedCity}
+                      onChange={setSelectedCity}
+                      placeholder={selectedState ? "Select a city" : "Select a state first"}
+                      disabled={submitting || !selectedState || citiesLoading}
+                      loading={citiesLoading}
+                    />
+                  ) : (
+                    <div className="w-full rounded-lg border border-dashboard-border bg-dashboard-card text-dashboard-text px-4 py-3">
+                      Loading cities...
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Max Cities (only for full state mode) */}
+            {scrapeMode === "full_state" && (
+              <div>
+                <label className="block text-sm font-medium text-dashboard-text mb-2">
+                  Maximum Cities to Scrape
+                </label>
+                <input
+                  type="number"
+                  value={maxCities}
+                  onChange={(e) => setMaxCities(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                  min={1}
+                  max={50}
+                  className="input-field w-full"
+                  disabled={submitting}
+                />
+                <p className="mt-1 text-xs text-dashboard-text-muted">
+                  Limit to top N cities by population (1-50)
+                </p>
+              </div>
+            )}
+
+            {/* Max Leads Per City */}
+            <div>
+              <label className="block text-sm font-medium text-dashboard-text mb-2">
+                Maximum Leads Per City
+              </label>
+              <input
+                type="number"
+                value={maxLeadsPerCity}
+                onChange={(e) => setMaxLeadsPerCity(Math.max(10, Math.min(1000, parseInt(e.target.value) || 100)))}
+                min={10}
+                max={1000}
+                step={10}
+                className="input-field w-full"
+                disabled={submitting}
+              />
+              <p className="mt-1 text-xs text-dashboard-text-muted">
+                Maximum businesses to extract per city (10-1000)
+              </p>
+            </div>
+
+            {/* Submit Button */}
+            <div className="flex gap-3 pt-4">
+              <button
+                type="submit"
+                disabled={submitting || healthStatus?.apify_api !== "connected"}
+                className="btn-primary flex-1"
+              >
+                {submitting ? (
+                  <>
+                    <LoadingSpinner size="sm" />
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  "Start Scraping"
+                )}
               </button>
             </div>
-            {previewLoading ? (
-              <div className="flex items-center justify-center py-12"><LoadingSpinner size="lg" /></div>
-            ) : previewData && previewData.rows.length > 0 ? (
-              <div className="flex-1 overflow-auto">
-                <table className="min-w-full divide-y divide-dashboard-border">
-                  <thead style={{ background: "rgba(13, 15, 18, 0.5)" }} className="sticky top-0">
-                    <tr>
-                      {previewData.columns.map((col) => (
-                        <th key={col} className="px-4 py-2 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider whitespace-nowrap">{col.replace(/([A-Z])/g, ' $1').trim()}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody style={{ background: "rgba(13, 15, 18, 0.3)" }} className="divide-y divide-dashboard-border">
-                    {previewData.rows.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-dashboard-card/30">
+
+            {healthStatus?.apify_api !== "connected" && (
+              <p className="text-sm text-red-400 text-center">
+                Cannot submit orders while API is disconnected
+              </p>
+            )}
+          </form>
+        </div>
+      )}
+
+      {/* History Tab */}
+      {activeTab === "history" && (
+        <div className="space-y-4">
+          {orders.length === 0 ? (
+            <div className="glass-card p-8 text-center">
+              <p className="text-dashboard-text-muted">No scraping orders yet</p>
+              <button
+                onClick={() => setActiveTab("submit")}
+                className="mt-4 text-dashboard-accent hover:underline"
+              >
+                Submit your first scrape
+              </button>
+            </div>
+          ) : (
+            orders.map((order) => (
+              <div key={order.id} className="glass-card p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="font-medium text-dashboard-text">
+                        {order.search_term}
+                      </h3>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        order.status === "completed" ? "bg-green-500/20 text-[#22c55e]" :
+                        order.status === "running" ? "bg-blue-500/20 text-blue-400" :
+                        order.status === "failed" ? "bg-red-500/20 text-red-400" :
+                        "bg-yellow-500/20 text-yellow-400"
+                      }`}>
+                        {order.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-dashboard-text-muted mb-1">
+                      {order.city ? `${order.city}, ${order.state}` : order.state} • {order.total_leads?.toLocaleString() || 0} leads
+                    </p>
+                    <p className="text-xs text-dashboard-text-muted">
+                      Created: {formatDate(order.created_at)} • Cost: {formatCost(order.estimated_cost)}
+                    </p>
+                    {order.error_message && (
+                      <p className="text-xs text-red-400 mt-2">
+                        Error: {order.error_message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 ml-4">
+                    {order.status === "completed" && (
+                      <>
+                        <button
+                          onClick={() => handlePreviewResults(order.id)}
+                          disabled={previewLoading && previewOrderId === order.id}
+                          className="px-3 py-1.5 text-sm bg-dashboard-card border border-dashboard-border rounded hover:bg-dashboard-border transition-colors text-dashboard-text"
+                        >
+                          {previewLoading && previewOrderId === order.id ? "Loading..." : "Preview"}
+                        </button>
+                        <button
+                          onClick={() => handleDownloadResults(order.id)}
+                          disabled={downloadingOrderId === order.id}
+                          className="px-3 py-1.5 text-sm bg-dashboard-accent text-white rounded hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50"
+                        >
+                          {downloadingOrderId === order.id ? "Downloading..." : "Download CSV"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="glass-card w-full max-w-4xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-dashboard-border">
+              <h3 className="text-lg font-semibold text-dashboard-text">Results Preview</h3>
+              <button
+                onClick={() => { setShowPreviewModal(false); setPreviewData(null); setPreviewOrderId(null); }}
+                className="text-dashboard-text-muted hover:text-dashboard-text"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-4">
+              {previewLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <LoadingSpinner size="lg" />
+                </div>
+              ) : previewData ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-dashboard-border">
+                    <thead style={{ background: "rgba(13, 15, 18, 0.5)" }} className="sticky top-0">
+                      <tr>
                         {previewData.columns.map((col) => (
-                          <td key={col} className={`px-4 py-2 text-sm whitespace-nowrap max-w-[200px] truncate ${col === 'website' ? row[col] ? 'text-blue-400' : 'text-dashboard-text-muted' : col === 'phone' ? row[col] ? 'text-[#22c55e]' : 'text-dashboard-text-muted' : 'text-dashboard-text'}`} title={row[col] || '-'}</td>
+                          <th key={col} className="px-4 py-2 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider whitespace-nowrap">{col.replace(/([A-Z])/g, ' $1').trim()}</th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center py-12"><p className="text-dashboard-text-muted">No results available</p></div>
-            )}
-            <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-dashboard-border">
+                    </thead>
+                    <tbody style={{ background: "rgba(13, 15, 18, 0.3)" }} className="divide-y divide-dashboard-border">
+                      {previewData.rows.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-dashboard-card/30">
+                          {previewData.columns.map((col) => {
+                            const cellValue = row[col] || '-';
+                            let textClass = 'text-dashboard-text';
+                            if (col === 'website') {
+                              textClass = cellValue !== '-' ? 'text-blue-400' : 'text-dashboard-text-muted';
+                            } else if (col === 'phone') {
+                              textClass = cellValue !== '-' ? 'text-[#22c55e]' : 'text-dashboard-text-muted';
+                            }
+                            return (
+                              <td key={col} className={`px-4 py-2 text-sm whitespace-nowrap max-w-[200px] truncate ${textClass}`} title={cellValue}>
+                                {cellValue}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-12"><p className="text-dashboard-text-muted">No results available</p></div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 p-4 border-t border-dashboard-border">
               <button onClick={() => { setShowPreviewModal(false); setPreviewData(null); setPreviewOrderId(null); }} className="px-4 py-2 bg-dashboard-card text-dashboard-text rounded-lg hover:bg-dashboard-border transition-colors">Close</button>
               {previewOrderId && <button onClick={() => handleDownloadResults(previewOrderId)} disabled={downloadingOrderId === previewOrderId} className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50">{downloadingOrderId === previewOrderId ? "Downloading..." : "Download Full CSV"}</button>}
             </div>
@@ -872,411 +750,13 @@ export default function GoogleMapsScraperPage() {
         </div>
       )}
 
-      {/* Mode Toggle */}
-      <div className="glass-card p-6 mb-6">
-        <label className="block text-sm font-medium text-dashboard-text mb-4">Scrape Mode</label>
-        <div className="flex rounded-lg overflow-hidden border border-dashboard-border">
-          <button
-            onClick={() => setScrapeMode("single_city")}
-            className={`flex-1 px-6 py-3 text-sm font-medium transition-all ${scrapeMode === "single_city" ? "bg-dashboard-accent text-white" : "bg-dashboard-card text-dashboard-text-muted hover:bg-dashboard-border"}`}
-          >
-            <div className="flex items-center justify-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Single City
-            </div>
-            <p className="text-xs mt-1 opacity-75">~$0.80 per city</p>
-          </button>
-          <button
-            onClick={() => setScrapeMode("full_state")}
-            className={`flex-1 px-6 py-3 text-sm font-medium transition-all ${scrapeMode === "full_state" ? "bg-dashboard-accent text-white" : "bg-dashboard-card text-dashboard-text-muted hover:bg-dashboard-border"}`}
-          >
-            <div className="flex items-center justify-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Full State(s)
-            </div>
-            <p className="text-xs mt-1 opacity-75">All cities in selected states</p>
-          </button>
-        </div>
-      </div>
-
-      {/* Job Name */}
-      <div className="glass-card p-6 mb-6">
-        <label className="block text-sm font-medium text-dashboard-text mb-2">Job Name <span className="text-red-500">*</span></label>
-        <input type="text" value={jobName} onChange={(e) => setJobName(e.target.value)} placeholder="e.g., 'California Restaurants Q1 2024'" className="apple-input w-full py-3" />
-      </div>
-
-      {/* Search Term */}
-      <div className="glass-card p-6 mb-6">
-        <label className="block text-sm font-medium text-dashboard-text mb-2">Business Type / Search Term <span className="text-red-500">*</span></label>
-        <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="e.g., 'Restaurants', 'Dentists', 'Gyms', 'Coffee Shops'" className="apple-input w-full py-3" />
-        <p className="mt-2 text-xs text-dashboard-text-muted">Enter the type of business you want to find (uses Google Maps search)</p>
-        
-        {/* Cache Toggle */}
-        <div className="mt-4 flex items-center gap-3">
-          <input
-            type="checkbox"
-            id="useCache"
-            checked={useCache}
-            onChange={(e) => setUseCache(e.target.checked)}
-            className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent cursor-pointer"
-          />
-          <label htmlFor="useCache" className="text-sm text-dashboard-text cursor-pointer">Enable Caching</label>
-          <div className="relative">
-            <button
-              type="button"
-              onMouseEnter={() => setShowCacheTooltip(true)}
-              onMouseLeave={() => setShowCacheTooltip(false)}
-              className="w-5 h-5 rounded-full bg-dashboard-card border border-dashboard-border flex items-center justify-center text-xs text-dashboard-text-muted hover:bg-dashboard-border transition-colors"
-            >
-              ?
-            </button>
-            {showCacheTooltip && (
-              <div className="absolute left-6 top-1/2 -translate-y-1/2 z-50 w-64 p-3 bg-dashboard-surface border border-dashboard-border rounded-lg shadow-xl text-xs text-dashboard-text-muted">
-                <p className="font-medium text-dashboard-text mb-1">What is caching?</p>
-                <p>When enabled, returns existing results instantly for cities we&apos;ve already scraped with the same search term. Only scrapes cities not in our database, saving time and money.</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Single City Mode: State + City Selection */}
-      {scrapeMode === "single_city" && (
-        <>
-          <div className="glass-card p-6 mb-6">
-            <label className="block text-sm font-medium text-dashboard-text mb-2">State <span className="text-red-500">*</span></label>
-            <SearchableSelect
-              options={states}
-              value={selectedState}
-              onChange={(v) => { setSelectedState(v); setSelectedCity(""); }}
-              placeholder="Search and select a state..."
-              loading={loadingStates}
-            />
-          </div>
-
-          {selectedState && (
-            <div className="glass-card p-6 mb-6">
-              <label className="block text-sm font-medium text-dashboard-text mb-2">City <span className="text-red-500">*</span></label>
-              <SearchableSelect
-                options={cities}
-                value={selectedCity}
-                onChange={setSelectedCity}
-                placeholder="Search and select a city..."
-                disabled={!selectedState || cities.length === 0}
-                loading={loadingCities}
-              />
-              {!loadingCities && cities.length === 0 && selectedState && (
-                <p className="mt-2 text-xs text-yellow-400">No cities found for this state. Please seed the database.</p>
-              )}
-              {cities.length > 0 && <p className="mt-2 text-xs text-dashboard-text-muted">{cities.length} cities available</p>}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Full State Mode: Multi-State Selection */}
-      {scrapeMode === "full_state" && (
-        <div className="glass-card p-6 mb-6">
-          <label className="block text-sm font-medium text-dashboard-text mb-2">Select States <span className="text-red-500">*</span></label>
-          <MultiSelectSearchable
-            options={states}
-            values={selectedStates}
-            onChange={setSelectedStates}
-            placeholder="Search and select states..."
-            loading={loadingStates}
-          />
-          {selectedStates.length > 0 && (
-            <p className="mt-2 text-xs text-dashboard-text-muted">{selectedStates.length} state{selectedStates.length > 1 ? 's' : ''} selected</p>
-          )}
-        </div>
-      )}
-
-      {/* Advanced Apify Settings (Collapsible) */}
-      <div className="glass-card mb-6 overflow-hidden">
-        <button
-          onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-          className="w-full p-6 flex items-center justify-between text-left hover:bg-dashboard-card/30 transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <svg className="w-5 h-5 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span className="text-sm font-medium text-dashboard-text">Advanced Scraper Settings</span>
-          </div>
-          <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform duration-200 ${showAdvancedSettings ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-        
-        {showAdvancedSettings && (
-          <div className="p-6 pt-0 space-y-5 border-t border-dashboard-border">
-            {/* Max Results per City */}
-            <div>
-              <label className="block text-sm font-medium text-dashboard-text mb-2">Max Results per City</label>
-              <input
-                type="number"
-                value={maxResultsPerCity}
-                onChange={(e) => setMaxResultsPerCity(e.target.value)}
-                placeholder="Leave empty for unlimited"
-                min="1"
-                className="apple-input w-full py-2"
-              />
-              <p className="mt-1 text-xs text-dashboard-text-muted">Limit results to control costs. Empty = scrape all available.</p>
-            </div>
-
-            {/* Website Filter */}
-            <div>
-              <label className="block text-sm font-medium text-dashboard-text mb-2">Website Filter</label>
-              <select
-                value={websiteFilter}
-                onChange={(e) => setWebsiteFilter(e.target.value as typeof websiteFilter)}
-                className="apple-input w-full py-2"
-              >
-                <option value="withWebsite">With Website Only</option>
-                <option value="allPlaces">All Places</option>
-                <option value="withoutWebsite">Without Website Only</option>
-              </select>
-              <p className="mt-1 text-xs text-dashboard-text-muted">Filter businesses by website presence.</p>
-            </div>
-
-            {/* Skip Closed Places */}
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="skipClosed"
-                checked={skipClosedPlaces}
-                onChange={(e) => setSkipClosedPlaces(e.target.checked)}
-                className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
-              />
-              <label htmlFor="skipClosed" className="text-sm text-dashboard-text">Skip Permanently Closed Places</label>
-            </div>
-
-            {/* Reviews */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="scrapeReviews"
-                  checked={scrapeReviews}
-                  onChange={(e) => setScrapeReviews(e.target.checked)}
-                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
-                />
-                <label htmlFor="scrapeReviews" className="text-sm text-dashboard-text">Include Reviews (increases cost)</label>
-              </div>
-              {scrapeReviews && (
-                <div className="ml-7">
-                  <label className="block text-xs text-dashboard-text-muted mb-1">Max Reviews per Place</label>
-                  <input
-                    type="number"
-                    value={maxReviews}
-                    onChange={(e) => setMaxReviews(parseInt(e.target.value) || 0)}
-                    min="0"
-                    max="100"
-                    className="apple-input w-32 py-1 text-sm"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Images */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="scrapeImages"
-                  checked={scrapeImages}
-                  onChange={(e) => setScrapeImages(e.target.checked)}
-                  className="w-4 h-4 rounded border-dashboard-border bg-dashboard-card text-dashboard-accent focus:ring-dashboard-accent"
-                />
-                <label htmlFor="scrapeImages" className="text-sm text-dashboard-text">Include Images (increases cost)</label>
-              </div>
-              {scrapeImages && (
-                <div className="ml-7">
-                  <label className="block text-xs text-dashboard-text-muted mb-1">Max Images per Place</label>
-                  <input
-                    type="number"
-                    value={maxImages}
-                    onChange={(e) => setMaxImages(parseInt(e.target.value) || 0)}
-                    min="0"
-                    max="20"
-                    className="apple-input w-32 py-1 text-sm"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Language */}
-            <div>
-              <label className="block text-sm font-medium text-dashboard-text mb-2">Language</label>
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-                className="apple-input w-full py-2"
-              >
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="it">Italian</option>
-                <option value="pt">Portuguese</option>
-                <option value="ja">Japanese</option>
-                <option value="ko">Korean</option>
-                <option value="zh">Chinese</option>
-              </select>
-              <p className="mt-1 text-xs text-dashboard-text-muted">Language for search results.</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Cost Estimate */}
-      {costEstimate && (
-        <div className="glass-card p-6 mb-6 bg-yellow-500/10 border-yellow-500/30">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <p className="text-sm font-medium text-yellow-400">Estimated Cost: {formatCost(costEstimate.estimated_cost)}</p>
-                <p className="text-xs text-dashboard-text-muted mt-1">{costEstimate.num_cities} {costEstimate.num_cities === 1 ? 'city' : 'cities'} @ $0.80/city</p>
-              </div>
-            </div>
-            {loadingEstimate && <LoadingSpinner size="sm" />}
-          </div>
-        </div>
-      )}
-
-      {/* Start Button */}
-      <div className="flex gap-3 mb-6">
-        <button
-          onClick={handleStartScraping}
-          disabled={
-            creatingOrder ||
-            !jobName.trim() ||
-            !searchTerm.trim() ||
-            (scrapeMode === "single_city" && (!selectedState || !selectedCity)) ||
-            (scrapeMode === "full_state" && selectedStates.length === 0) ||
-            healthStatus?.apify_api !== "connected"
-          }
-          className="flex-1 px-6 py-3 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-        >
-          {creatingOrder ? (
-            <span className="flex items-center justify-center gap-2"><LoadingSpinner size="sm" />Starting...</span>
-          ) : (
-            `Start Scraping${costEstimate ? ` (${formatCost(costEstimate.estimated_cost)})` : ''}`
-          )}
-        </button>
-      </div>
-
-      {/* Orders History */}
-      <div className="glass-card p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-dashboard-text">Scraping Orders</h3>
-          <button onClick={loadOrders} disabled={loadingOrders} className="px-3 py-1 text-xs bg-dashboard-card hover:bg-dashboard-border rounded-lg transition-colors">{loadingOrders ? "Loading..." : "Refresh"}</button>
-        </div>
-        
-        {loadingOrders && orders.length === 0 ? (
-          <div className="flex justify-center items-center py-8"><LoadingSpinner size="sm" /></div>
-        ) : orders.length === 0 ? (
-          <p className="text-dashboard-text-muted text-center py-8">No scraping orders yet. Start a new scrape above.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-dashboard-border">
-              <thead style={{ background: "rgba(13, 15, 18, 0.5)" }}>
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Job Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Mode / Location</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Search Term</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Progress</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody style={{ background: "rgba(13, 15, 18, 0.3)" }} className="divide-y divide-dashboard-border">
-                {orders.map((order) => (
-                  <tr key={order.id} onClick={(e) => handleRowClick(order, e)} className={`transition-colors ${order.status === "completed" ? "hover:bg-dashboard-card/50 cursor-pointer" : ""}`} title={order.status === "completed" ? "Click to preview results" : undefined}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text">{order.job_name || order.id.slice(0, 8)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
-                      <div>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${order.scrape_mode === "full_state" ? "bg-blue-500/20 text-blue-400" : "bg-[#22c55e]/20 text-[#22c55e]"}`}>
-                          {order.scrape_mode === "full_state" ? "Full State" : "Single City"}
-                        </span>
-                        <p className="mt-1 text-xs">{order.states?.join(", ") || "-"}{order.city ? `, ${order.city}` : ''}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-dashboard-text max-w-[150px] truncate">{order.search_term}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`text-xs font-medium ${order.status === "completed" ? "text-[#22c55e]" : order.status === "processing" ? "text-yellow-400" : order.status === "pending" ? "text-blue-400" : order.status === "failed" ? "text-red-400" : "text-dashboard-text-muted"}`}>
-                        {order.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
-                      {order.status === "completed" ? (
-                        <div className="flex items-center gap-2">
-                          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                          <span className="text-[#22c55e]">{order.results_count.toLocaleString()} results</span>
-                        </div>
-                      ) : order.status === "failed" ? (
-                        <div className="flex flex-col gap-1">
-                          <span className="text-red-400">Failed</span>
-                          {order.error_message && <span className="text-xs text-red-400/70 max-w-[200px] truncate" title={order.error_message}>{order.error_message}</span>}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2 min-w-[120px]">
-                            <div className="flex-1 bg-dashboard-card rounded-full h-2 overflow-hidden"><div className="bg-dashboard-accent h-2 rounded-full transition-all duration-500 ease-out" style={{ width: `${order.progress_percentage || 5}%` }} /></div>
-                            <span className="text-xs text-dashboard-text-muted w-8">{order.progress_percentage || 0}%</span>
-                          </div>
-                          <span className="text-xs text-dashboard-text-muted">{order.completed_cities}/{order.total_cities} cities</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center gap-3">
-                        {order.status === "completed" && <button onClick={() => handleDownloadResults(order.id)} disabled={downloadingOrderId === order.id} className="px-3 py-1.5 bg-dashboard-accent text-white text-xs rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50">{downloadingOrderId === order.id ? "Downloading..." : "Download CSV"}</button>}
-                        {deleteConfirmOrderId === order.id ? (
-                          <button onClick={() => handleDeleteOrder(order.id)} className="text-red-400 hover:text-red-300 transition-colors text-xs">Confirm Delete</button>
-                        ) : (
-                          <button onClick={() => handleDeleteOrder(order.id)} className="text-dashboard-text-muted hover:text-red-400 transition-colors text-xs">Delete</button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* FAQ Section */}
-      <div className="glass-card p-6">
-        <h3 className="text-lg font-semibold text-dashboard-text mb-4">Frequently Asked Questions</h3>
-        <div className="space-y-2">
-          {[
-            { q: "What is the Google Maps Scraper?", a: "The Google Maps Scraper uses Apify to extract business data from Google Maps. You can search for businesses by type and location to build targeted lead lists with websites, phone numbers, and more." },
-            { q: "What's the difference between Single City and Full State?", a: "Single City mode scrapes one city (~$0.80). Full State mode (admin only) scrapes ALL cities in selected states concurrently, which is faster but more expensive." },
-            { q: "What data is extracted?", a: "Each result includes: business name, website URL, phone number, full address, city, state, postal code, rating, review count, and category." },
-            { q: "Why only businesses with websites?", a: "We filter for businesses WITH websites because that's the most valuable data for outreach. This also reduces costs since we're not paying for businesses we can't contact." },
-            { q: "How long does scraping take?", a: "Single city: typically 2-5 minutes. Full state: depends on the number of cities, but we run up to 100 cities concurrently for maximum speed." },
-          ].map((faq, idx) => (
-            <div key={idx} className="border-b border-dashboard-border last:border-0">
-              <button onClick={() => setOpenFaq(openFaq === idx ? null : idx)} className="w-full flex items-center justify-between py-3 text-left">
-                <span className="text-sm font-medium text-dashboard-text">{faq.q}</span>
-                <svg className={`w-5 h-5 text-dashboard-text-muted transition-transform ${openFaq === idx ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-              </button>
-              {openFaq === idx && <p className="pb-3 text-sm text-dashboard-text-muted">{faq.a}</p>}
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Error Modal */}
+      <ErrorModal
+        isOpen={errorModalOpen}
+        onClose={() => setErrorModalOpen(false)}
+        title="Error"
+        message={error || "An error occurred"}
+      />
     </div>
   );
 }
