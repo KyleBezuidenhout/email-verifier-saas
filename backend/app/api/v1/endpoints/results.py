@@ -8,7 +8,7 @@ import io
 import re
 import uuid
 
-from app.db.session import get_db
+from app.db.session import get_db, SessionLocal
 from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
@@ -129,16 +129,24 @@ def download_results(
     safe_filename = re.sub(r'[^\w\s-]', '', filename or '').strip()[:50] or "results"
 
     # Pass 1: collect all distinct extra_data keys for consistent CSV headers
+    # Cast to jsonb explicitly — the DB column may be json despite the model declaring JSONB
     extra_keys_rows = db.execute(text(
-        "SELECT DISTINCT jsonb_object_keys(extra_data) FROM leads "
+        "SELECT DISTINCT jsonb_object_keys(extra_data::jsonb) FROM leads "
         "WHERE job_id = :jid AND is_final_result = TRUE "
-        "AND extra_data IS NOT NULL AND extra_data != '{}'::jsonb "
+        "AND extra_data IS NOT NULL AND extra_data::text != '{}' "
         "ORDER BY 1"
     ), {"jid": str(job_uuid)}).fetchall()
     extra_keys = [r[0] for r in extra_keys_rows]
 
-    base_query = db.query(Lead).filter(Lead.job_id == job_uuid, Lead.is_final_result == True)
-    base_query = _apply_lead_filters(base_query, status_filter, mx)
+    # Build filter kwargs to replay inside the generator's own session.
+    # The request-scoped db session (from get_db) is closed when this function
+    # returns, before StreamingResponse starts iterating the generator.
+    filter_status = status_filter
+    filter_mx = mx
+    job_uuid_str = str(job_uuid)
+
+    # Release request-scoped session — generator opens its own below
+    db.close()
 
     def _get_display_status(lead):
         if lead.verification_tag == "valid-catchall":
@@ -150,26 +158,36 @@ def download_results(
         return provider.capitalize()
 
     def generate_csv():
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(["First Name", "Last Name", "Website", "Email", "Status", "MX Type"] + extra_keys)
-        yield buf.getvalue()
+        stream_db = SessionLocal()
+        try:
+            q = stream_db.query(Lead).filter(
+                Lead.job_id == job_uuid_str,
+                Lead.is_final_result == True,
+            )
+            q = _apply_lead_filters(q, filter_status, filter_mx)
 
-        for lead in base_query.yield_per(500):
             buf = io.StringIO()
             writer = csv.writer(buf)
-            row = [
-                lead.first_name or "",
-                lead.last_name or "",
-                lead.domain or "",
-                lead.email or "",
-                _get_display_status(lead),
-                _get_mx_display(lead),
-            ]
-            for key in extra_keys:
-                row.append((lead.extra_data or {}).get(key, ""))
-            writer.writerow(row)
+            writer.writerow(["First Name", "Last Name", "Website", "Email", "Status", "MX Type"] + extra_keys)
             yield buf.getvalue()
+
+            for lead in q.yield_per(500):
+                buf = io.StringIO()
+                writer = csv.writer(buf)
+                row = [
+                    lead.first_name or "",
+                    lead.last_name or "",
+                    lead.domain or "",
+                    lead.email or "",
+                    _get_display_status(lead),
+                    _get_mx_display(lead),
+                ]
+                for key in extra_keys:
+                    row.append((lead.extra_data or {}).get(key, ""))
+                writer.writerow(row)
+                yield buf.getvalue()
+        finally:
+            stream_db.close()
 
     return StreamingResponse(
         generate_csv(),
