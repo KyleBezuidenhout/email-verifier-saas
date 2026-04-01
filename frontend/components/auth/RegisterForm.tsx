@@ -234,7 +234,7 @@ export function RegisterForm() {
       <button
         type="submit"
         disabled={loading || !acceptTerms}
-        className="px-4 py-2 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+        className="w-full px-4 py-2 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
       >
         {loading ? <LoadingSpinner size="sm" /> : "Create account"}
       </button>
