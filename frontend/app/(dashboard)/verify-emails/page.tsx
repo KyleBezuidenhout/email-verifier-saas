@@ -288,7 +288,7 @@ export default function VerifyEmailsPage() {
               <button
                 onClick={handleSingleVerify}
                 disabled={singleLoading || !singleEmail.trim()}
-                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 h-[42px]"
+                className="px-4 py-2 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 h-[42px]"
               >
                 {singleLoading && <LoadingSpinner size="sm" />}
                 <span>{singleLoading ? "Verifying..." : "Verify Email"}</span>

@@ -1,3 +1,5 @@
+"use client";
+
 export function LoadingSpinner({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   const sizes = {
     sm: "w-4 h-4",
@@ -7,9 +9,7 @@ export function LoadingSpinner({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
 
   return (
     <div
-      className={`${sizes[size]} border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin`}
+      className={`${sizes[size]} border-2 border-dashboard-border border-t-dashboard-accent rounded-full animate-spin`}
     />
   );
 }
-
-

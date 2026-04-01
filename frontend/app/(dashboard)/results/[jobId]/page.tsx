@@ -5,14 +5,11 @@ import { useParams } from "next/navigation";
 import { Lead, Job } from "@/types";
 import { apiClient } from "@/lib/api";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
-import { formatDate } from "@/lib/utils";
-import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 
 export default function ResultsPage() {
   const params = useParams();
   const jobId = params.jobId as string;
-  const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,6 +17,7 @@ export default function ResultsPage() {
   const [statusFilters, setStatusFilters] = useState<string[]>(["all"]); // ["all"] or ["valid", "catchall", "invalid"]
   const [mxFilters, setMxFilters] = useState<string[]>([]); // Empty = all MX, or ["outlook", "google", "other"]
   const [verifyingCatchalls, setVerifyingCatchalls] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -110,21 +108,7 @@ export default function ResultsPage() {
         return mxFilters.includes(provider);
       });
 
-  // Valid leads include both regular valid and catchall-verified/valid-catchall
-  const validLeads = leads.filter((l) => 
-    l.verification_status === "valid" || 
-    l.verification_tag === "catchall-verified" || 
-    l.verification_tag === "valid-catchall"
-  );
-  // Catchall leads that haven't been verified yet
-  const catchallLeads = leads.filter((l) => 
-    l.verification_status === "catchall" && 
-    l.verification_tag !== "catchall-verified" && 
-    l.verification_tag !== "valid-catchall"
-  );
-  const notFoundLeads = leads.filter((l) => l.verification_status === "invalid" || l.verification_status === "not_found");
-  
-  // Extract unique extra column names from all leads
+  // Extract unique extra column names from loaded leads (for table headers)
   const extraColumns = useMemo(() => {
     const cols = new Set<string>();
     leads.forEach(lead => {
@@ -132,92 +116,33 @@ export default function ResultsPage() {
         Object.keys(lead.extra_data).forEach(key => cols.add(key));
       }
     });
-    return Array.from(cols).sort(); // Sort alphabetically for consistent ordering
+    return Array.from(cols).sort();
   }, [leads]);
   
-  // Calculate counts for display in stat blocks (show totals, not filtered)
-  // These show the total counts regardless of other filters
-  const validCount = leads.filter((l) => 
-    l.verification_status === "valid" || 
-    l.verification_tag === "catchall-verified" || 
-    l.verification_tag === "valid-catchall"
-  ).length;
-  const catchallCount = leads.filter((l) => 
-    l.verification_status === "catchall" && 
-    l.verification_tag !== "catchall-verified" && 
-    l.verification_tag !== "valid-catchall"
-  ).length;
-  const notFoundCount = leads.filter((l) => 
-    l.verification_status === "invalid" || l.verification_status === "not_found"
-  ).length;
-  
-  // Check if user can verify catchalls (job has catchall leads)
-  const canVerifyCatchalls = catchallLeads.length > 0;
-  
-  const totalVerified = validLeads.length; // Only count verified emails (includes valid-catchall)
-  const totalCost = job ? (job.cost_in_credits || 0) * 0.1 : 0;
-  const costPerEmail = totalVerified > 0 ? totalCost / totalVerified : 0;
-  const competitorCost = totalVerified * 0.50; // Competitors charge $0.50 per email
-  const savings = competitorCost - totalCost;
-  
-  const processingTime = job && job.completed_at && job.created_at
-    ? Math.round((new Date(job.completed_at).getTime() - new Date(job.created_at).getTime()) / 1000 / 60)
-    : 0;
+  // Stat block counts derived from job fields (accurate totals, not limited by preview)
+  const validCount = job?.valid_emails_found ?? 0;
+  const catchallCount = job?.catchall_emails_found ?? 0;
+  const notFoundCount = (job?.total_leads ?? 0) - validCount - catchallCount;
+  const canVerifyCatchalls = catchallCount > 0;
 
   // Limit preview to 10 rows for performance
   const PREVIEW_LIMIT = 10;
   const previewLeads = filteredLeads.slice(0, PREVIEW_LIMIT);
-  const hasMoreLeads = filteredLeads.length > PREVIEW_LIMIT;
 
-  const downloadCSV = () => {
-    // Build headers: standard columns + extra columns from CSV
-    const standardHeaders = ["First Name", "Last Name", "Website", "Email", "Status", "MX Type"];
-    const headers = [...standardHeaders, ...extraColumns];
-    
-    // Helper to escape CSV values (handle commas, quotes, newlines)
-    const escapeCSV = (value: string) => {
-      if (!value) return "";
-      if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-        return `"${value.replace(/"/g, '""')}"`;
-      }
-      return value;
-    };
-    
-    const csv = [
-      headers.map(escapeCSV).join(","),
-      ...filteredLeads.map((lead) => {
-        const mxType = getProviderFromMX(lead.mx_record, lead.mx_provider);
-        const mxTypeDisplay = mxType.charAt(0).toUpperCase() + mxType.slice(1); // Capitalize first letter
-        
-        // Standard values
-        const standardValues = [
-          lead.first_name,
-          lead.last_name,
-          lead.domain,
-          lead.email,
-          lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status,
-          mxTypeDisplay,
-        ];
-        
-        // Extra column values
-        const extraValues = extraColumns.map(col => lead.extra_data?.[col] || "");
-        
-        return [...standardValues, ...extraValues].map(escapeCSV).join(",");
-      }),
-    ].join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
+  const handleDownload = () => {
+    if (downloading) return;
+    setDownloading(true);
     const baseName = job?.job_name?.trim()
       ? job.job_name.trim().replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "_").slice(0, 50)
       : jobId;
-    const filterSuffix = !statusFilters.includes("all") && statusFilters.length > 0 
-      ? `-${statusFilters.join("-")}` 
-      : "";
-    a.download = `results-${baseName}${filterSuffix}.csv`;
-    a.click();
+    const statusParam = !statusFilters.includes("all") && statusFilters.length > 0 ? statusFilters : undefined;
+    const url = apiClient.getDownloadUrl(jobId, {
+      status: statusParam,
+      mx: mxFilters.length > 0 ? mxFilters : undefined,
+      filename: `results-${baseName}`,
+    });
+    window.location.href = url;
+    setTimeout(() => setDownloading(false), 3000);
   };
 
   if (loading) {
@@ -347,7 +272,7 @@ export default function ResultsPage() {
             {/* Left side - Description and Download */}
             <div className="flex flex-col gap-2">
               <div className="text-sm text-dashboard-text-muted">
-                Showing <span className="font-medium text-dashboard-text">{previewLeads.length}</span> of <span className="font-medium text-dashboard-text">{filteredLeads.length}</span>
+                Showing <span className="font-medium text-dashboard-text">{previewLeads.length}</span> of <span className="font-medium text-dashboard-text">{job.total_leads.toLocaleString()}</span>
                 {!statusFilters.includes("all") && statusFilters.length > 0 && (
                   <span> {statusFilters.join(" + ")}</span>
                 )}
@@ -356,10 +281,11 @@ export default function ResultsPage() {
               </div>
               <div className="flex space-x-2">
                 <button
-                  onClick={downloadCSV}
-                  className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
+                  onClick={handleDownload}
+                  disabled={downloading || filteredLeads.length === 0}
+                  className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Download
+                  {downloading ? "Downloading..." : "Download"}
                 </button>
               </div>
             </div>
@@ -527,16 +453,16 @@ export default function ResultsPage() {
           </table>
         </div>
 
-        {/* Show message when there are more leads than the preview limit */}
-        {hasMoreLeads && (
+        {filteredLeads.length > PREVIEW_LIMIT && (
           <div className="mt-4 p-4 glass-card-hover text-center">
             <p className="text-dashboard-text-muted text-sm">
-              Showing {PREVIEW_LIMIT} of {filteredLeads.length} results. 
+              Showing {PREVIEW_LIMIT} of {job.total_leads.toLocaleString()} results.
               <button
-                onClick={downloadCSV}
-                className="ml-2 text-dashboard-accent hover:underline font-medium"
+                onClick={handleDownload}
+                disabled={downloading}
+                className="ml-2 text-dashboard-accent hover:underline font-medium disabled:opacity-50"
               >
-                Download CSV
+                {downloading ? "Downloading..." : "Download CSV"}
               </button>
               {" "}to view all results.
             </p>

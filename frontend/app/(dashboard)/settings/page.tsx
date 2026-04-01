@@ -119,10 +119,9 @@ export default function SettingsPage() {
         </div>
 
         <div className="border-t border-dashboard-border pt-6">
-          <h2 className="text-lg font-medium text-dashboard-text mb-4">Email Notifications</h2>
           <div className="flex items-center justify-between">
             <div className="flex-1 pr-4">
-              <p className="text-sm text-dashboard-text font-medium">Job completion emails</p>
+              <p className="text-lg font-medium text-dashboard-text">Job completion emails</p>
               <p className="text-sm text-dashboard-text-muted mt-1">
                 Receive an email notification when your job finishes processing.
               </p>
@@ -131,7 +130,7 @@ export default function SettingsPage() {
               type="button"
               onClick={handleToggleNotifications}
               disabled={updatingNotifications}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-dashboard-dark disabled:opacity-50 ${
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-dashboard-dark disabled:opacity-50 disabled:bg-black ${
                 emailNotificationsEnabled ? "bg-primary" : "bg-gray-600"
               }`}
               aria-pressed={emailNotificationsEnabled}
@@ -146,26 +145,30 @@ export default function SettingsPage() {
         </div>
 
         <div className="border-t border-dashboard-border pt-6">
-          <h2 className="text-lg font-medium text-dashboard-text mb-4">Reset password</h2>
-          <p className="text-sm text-dashboard-text-muted mb-4">
-            Click the button below, and we&apos;ll send you an email to change your password.
-          </p>
-          <button
-            type="button"
-            onClick={handleSendPasswordReset}
-            disabled={sendingReset || !user?.email}
-            className="text-red-500 hover:underline disabled:opacity-50 flex items-center space-x-2 disabled:cursor-not-allowed"
-          >
-            {sendingReset && <LoadingSpinner size="sm" />}
-            <span>Reset</span>
-          </button>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-medium text-dashboard-text mb-2">Reset password</h2>
+              <p className="text-sm text-dashboard-text-muted">
+                Click the button below, and we&apos;ll send you an email to change your password.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleSendPasswordReset}
+              disabled={sendingReset || !user?.email}
+              className="px-4 py-2 border border-[rgb(229,72,77)] text-[rgb(229,72,77)] bg-transparent rounded-lg hover:bg-[rgb(229,72,77)]/10 transition-colors disabled:opacity-50 flex items-center space-x-2 disabled:cursor-not-allowed"
+            >
+              {sendingReset && <LoadingSpinner size="sm" />}
+              <span>Reset</span>
+            </button>
+          </div>
         </div>
 
         <div className="border-t border-dashboard-border pt-6">
           <button
             onClick={handleLogout}
             disabled={loading}
-            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 flex items-center space-x-2 transition-colors"
+            className="px-4 py-2 border border-[rgb(229,72,77)] text-[rgb(229,72,77)] bg-transparent rounded-lg hover:bg-[rgb(229,72,77)]/10 disabled:opacity-50 flex items-center space-x-2 transition-colors"
           >
             {loading && <LoadingSpinner size="sm" />}
             <span>Logout</span>
@@ -173,7 +176,7 @@ export default function SettingsPage() {
         </div>
 
         {message && (
-          <div className="badge-info px-4 py-3 rounded-lg text-sm">
+          <div className="text-sm text-dashboard-text-muted">
             {message}
           </div>
         )}

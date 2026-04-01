@@ -552,7 +552,7 @@ export default function SalesNavScraperPage() {
           </div>
           <button
             onClick={() => setShowAuthModal(true)}
-            className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors text-sm font-medium"
+            className="px-4 py-2 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors text-sm font-medium"
           >
             {linkedinCookie.trim() ? "Update Cookie" : "Add Custom Cookie"}
           </button>
@@ -646,7 +646,7 @@ export default function SalesNavScraperPage() {
         <button
           onClick={handleStartScraping}
           disabled={!isUrlFormatValid || creatingOrder}
-          className="flex-1 px-6 py-3 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+          className="flex-1 px-6 py-3 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
         >
           {creatingOrder ? (
             <span className="flex items-center justify-center gap-2">
@@ -775,7 +775,7 @@ export default function SalesNavScraperPage() {
                           <button
                             onClick={() => handleDownloadCSV(order.id)}
                             disabled={downloadingOrderId === order.id}
-                            className="px-3 py-1.5 bg-dashboard-accent text-white text-xs rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50"
+                            className="px-3 py-1.5 border border-dashboard-accent text-dashboard-accent bg-transparent text-xs rounded-lg hover:bg-dashboard-accent/10 transition-colors disabled:opacity-50"
                           >
                             {downloadingOrderId === order.id ? "Downloading..." : "Download CSV"}
                           </button>
@@ -811,7 +811,7 @@ export default function SalesNavScraperPage() {
             },
             {
               q: "Can I scrape multiple URLs?",
-              a: "Yes, you can create multiple orders. Each order processes one Sales Navigator URL. You can have multiple orders running concurrently.",
+              a: "Yes, you can create multiple orders. Each order processes one Sales Navigator URL.",
             },
           ].map((faq, idx) => (
             <div key={idx} className="border-b border-dashboard-border last:border-0">

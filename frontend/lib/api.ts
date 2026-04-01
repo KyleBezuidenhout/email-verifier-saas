@@ -386,7 +386,17 @@ class ApiClient {
 
   // Results endpoints
   async getResults(jobId: string): Promise<Lead[]> {
-    return this.request<Lead[]>(`/api/v1/results/${jobId}`);
+    return this.request<Lead[]>(`/api/v1/results/${jobId}?limit=100`);
+  }
+
+  getDownloadUrl(jobId: string, opts: { status?: string[]; mx?: string[]; filename?: string }): string {
+    const token = this.getToken();
+    if (!token) throw new Error("Not authenticated");
+    const params = new URLSearchParams({ token });
+    if (opts.status?.length) params.set("status", opts.status.join(","));
+    if (opts.mx?.length) params.set("mx", opts.mx.join(","));
+    if (opts.filename) params.set("filename", opts.filename);
+    return `${this.baseUrl}/api/v1/results/${jobId}/download?${params}`;
   }
 
   async verifyCatchalls(jobId: string): Promise<{ verified_count: number; message: string; total_catchalls: number; errors?: string[] }> {
