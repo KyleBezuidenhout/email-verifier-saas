@@ -115,4 +115,4 @@ async def apify_webhook(request: Request):
         raise HTTPException(status_code=500, detail="Failed to queue webhook")
     except Exception as e:
         logger.error(f"Error processing Apify webhook: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error. Please try again later.")

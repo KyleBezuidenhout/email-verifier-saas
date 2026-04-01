@@ -741,16 +741,16 @@ export default function WebsiteScraperPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
-                        className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        className={`text-xs font-medium ${
                           job.status === "completed"
-                            ? "bg-green-500/20 text-green-400"
+                            ? "text-[#22c55e]"
                             : job.status === "processing"
-                            ? "bg-yellow-500/20 text-yellow-400"
+                            ? "text-yellow-400"
                             : job.status === "pending"
-                            ? "bg-blue-500/20 text-blue-400"
+                            ? "text-blue-400"
                             : job.status === "failed"
-                            ? "bg-red-500/20 text-red-400"
-                            : "bg-gray-500/20 text-gray-400"
+                            ? "text-red-400"
+                            : "text-dashboard-text-muted"
                         }`}
                       >
                         {job.status}
@@ -762,7 +762,7 @@ export default function WebsiteScraperPage() {
                           <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
-                          <span className="text-green-400">100%</span>
+                          <span className="text-[#22c55e]">100%</span>
                         </div>
                       ) : job.status === "failed" ? (
                         <div className="flex flex-col gap-1">

@@ -284,16 +284,16 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
-                  item.type === "scrape" ? "bg-purple-500/20 text-purple-400" : "bg-blue-500/20 text-blue-400"
+                <span className={`text-[10px] font-medium ${
+                  item.type === "scrape" ? "text-purple-400" : "text-blue-400"
                 }`}>
                   {item.type === "scrape" ? "Scrape" : "Verify"}
                 </span>
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                  item.status === "completed" ? "badge-success" :
-                  item.status === "processing" || item.status === "initialization" || item.status === "scraping" || item.status === "segmenting" ? "badge-warning" :
-                  item.status === "failed" ? "bg-red-500/20 text-red-400" :
-                  "badge-info"
+                <span className={`text-xs font-medium ${
+                  item.status === "completed" ? "text-[#22c55e]" :
+                  item.status === "processing" || item.status === "initialization" || item.status === "scraping" || item.status === "segmenting" ? "text-yellow-400" :
+                  item.status === "failed" ? "text-red-400" :
+                  "text-dashboard-text-muted"
                 }`}>
                   {item.status === "initialization" || item.status === "scraping" || item.status === "segmenting" ? "processing" : item.status === "waiting" ? "queued" : item.status}
                 </span>

@@ -97,18 +97,18 @@ export default function ScrapeHistoryPage() {
     });
   };
 
-  const getStatusBadgeClass = (status: string) => {
+  const getStatusTextClass = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-500/20 text-green-400 border border-green-500/30";
+        return "text-[#22c55e]";
       case "processing":
-        return "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30";
+        return "text-yellow-400";
       case "failed":
-        return "bg-red-500/20 text-red-400 border border-red-500/30";
+        return "text-red-400";
       case "pending":
-        return "bg-blue-500/20 text-blue-400 border border-blue-500/30";
+        return "text-blue-400";
       default:
-        return "bg-gray-500/20 text-gray-400 border border-gray-500/30";
+        return "text-dashboard-text-muted";
     }
   };
 
@@ -230,7 +230,7 @@ export default function ScrapeHistoryPage() {
                       {order.status === "failed" && order.failure_reason ? (
                         <div className="relative group inline-flex items-center gap-1.5">
                           <span
-                            className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(order.status)}`}
+                            className={`text-xs font-medium ${getStatusTextClass(order.status)}`}
                           >
                             {order.status}
                           </span>
@@ -246,7 +246,7 @@ export default function ScrapeHistoryPage() {
                         </div>
                       ) : (
                         <span
-                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(order.status)}`}
+                          className={`text-xs font-medium ${getStatusTextClass(order.status)}`}
                         >
                           {order.status}
                         </span>

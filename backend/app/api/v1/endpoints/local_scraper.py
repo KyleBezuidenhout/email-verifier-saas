@@ -155,7 +155,7 @@ def list_states(db: Session = Depends(get_db)):
         return StateListResponse(states=states)
     except Exception as e:
         logger.error(f"Error listing states: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error. Please try again later.")
 
 
 @router.get("/cities/{state}", response_model=CityListResponse)
@@ -177,7 +177,7 @@ def list_cities(
         )
     except Exception as e:
         logger.error(f"Error listing cities for {state}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error. Please try again later.")
 
 
 @router.post("/estimate", response_model=CostEstimateResponse)
@@ -216,7 +216,7 @@ def estimate_cost(
         )
     except Exception as e:
         logger.error(f"Error estimating cost: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error. Please try again later.")
 
 
 @router.post("/orders", response_model=GoogleMapsScraperOrderResponse)
@@ -400,8 +400,8 @@ def create_order(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error creating order: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error creating order: {e}")
+        raise HTTPException(status_code=500, detail="Error. Please try again later.")
 
 
 @router.get("/orders", response_model=GoogleMapsScraperOrderListResponse)
@@ -430,8 +430,8 @@ def list_orders(
             total=total,
         )
     except Exception as e:
-        logger.error(f"Error listing orders: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error listing orders: {e}")
+        raise HTTPException(status_code=500, detail="Error. Please try again later.")
 
 
 @router.get("/orders/{order_id}", response_model=GoogleMapsScraperOrderResponse)

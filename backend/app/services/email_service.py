@@ -27,9 +27,9 @@ def send_password_reset_email(to_email: str, reset_token: str) -> bool:
         <style>
             body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
             .container {{ max-width: 480px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
-            h1 {{ color: #ffffff; font-size: 22px; margin: 0 0 16px; }}
+            h1 {{ color: #0099FF; font-size: 22px; margin: 0 0 16px; }}
             p {{ color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px; }}
-            .btn {{ display: inline-block; padding: 12px 32px; background-color: #0099FF; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; }}
+            .btn {{ display: inline-block; padding: 12px 32px; background-color: transparent; color: #0099FF !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; border: 1px solid #0099FF; }}
             .link-text {{ color: #666; font-size: 12px; word-break: break-all; }}
             .footer {{ margin-top: 32px; padding-top: 16px; border-top: 1px solid #222; }}
             .footer p {{ color: #555; font-size: 12px; }}
@@ -85,9 +85,9 @@ def send_verification_email(to_email: str, verification_token: str) -> bool:
         <style>
             body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
             .container {{ max-width: 480px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
-            h1 {{ color: #ffffff; font-size: 22px; margin: 0 0 16px; }}
+            h1 {{ color: #0099FF; font-size: 22px; margin: 0 0 16px; }}
             p {{ color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px; }}
-            .btn {{ display: inline-block; padding: 12px 32px; background-color: #0099FF; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; }}
+            .btn {{ display: inline-block; padding: 12px 32px; background-color: transparent; color: #0099FF !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; border: 1px solid #0099FF; }}
             .link-text {{ color: #666; font-size: 12px; word-break: break-all; }}
             .footer {{ margin-top: 32px; padding-top: 16px; border-top: 1px solid #222; }}
             .footer p {{ color: #555; font-size: 12px; }}
@@ -154,7 +154,7 @@ def send_support_email(
             .meta-value {{ color: #ccc; font-size: 13px; }}
             .message-box {{ padding: 20px; background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; }}
             .message-box p {{ color: #ddd; font-size: 14px; line-height: 1.7; margin: 0; white-space: pre-wrap; }}
-            .badge {{ display: inline-block; padding: 3px 10px; background-color: #0099FF22; color: #0099FF; border-radius: 4px; font-size: 12px; font-weight: 600; }}
+            .badge {{ display: inline-block; padding: 3px 10px; background-color: transparent; color: #0099FF; border-radius: 4px; font-size: 12px; font-weight: 600; border: 1px solid #0099FF; }}
         </style>
     </head>
     <body>

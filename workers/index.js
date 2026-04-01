@@ -45,33 +45,29 @@ async function sendJobCompletionEmail(userEmail, jobType, jobId, results) {
   }
 
   const jobTypeDisplay = jobType === 'enrichment' ? 'Enrichment' : 'Verification';
-  const subject = `✅ ${jobTypeDisplay} complete: ${results.validEmails} valid emails found`;
+  const subject = `${jobTypeDisplay} complete: ${results.validEmails} valid emails found`;
   
   const htmlContent = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #0077cc 0%, #0099ff 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
-        <h2 style="margin: 0; font-size: 22px;">🎉 Your Job is Complete!</h2>
-      </div>
-      <div style="background: #f8fafc; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
-        <p style="color: #475569; font-size: 16px; margin-top: 0;">Great news! Your <strong>${jobTypeDisplay.toLowerCase()}</strong> job has finished processing.</p>
-        
-        <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
-          <h3 style="margin: 0 0 12px 0; color: #1e293b; font-size: 16px;">📊 Results Summary</h3>
-          <ul style="list-style: none; padding: 0; margin: 0; color: #475569;">
-            <li style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">✅ Valid emails: <strong>${results.validEmails}</strong></li>
-            <li style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">⚠️ Catchall emails: <strong>${results.catchallEmails}</strong></li>
-            <li style="padding: 8px 0;">📊 Total processed: <strong>${results.totalLeads}</strong></li>
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; padding: 40px 20px;">
+      <div style="background-color: #141414; border: 1px solid #222; border-radius: 12px; padding: 32px;">
+        <h2 style="margin: 0 0 16px 0; font-size: 22px; color: #0099FF;">Your Job is Complete!</h2>
+        <p style="color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">Great news! Your <strong style="color: #ccc;">${jobTypeDisplay.toLowerCase()}</strong> job has finished processing.</p>
+
+        <div style="background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <h3 style="margin: 0 0 12px 0; color: #ffffff; font-size: 16px;">Results Summary</h3>
+          <ul style="list-style: none; padding: 0; margin: 0; color: #999;">
+            <li style="padding: 8px 0; border-bottom: 1px solid #2a2a2a;">Valid emails: <strong style="color: #ccc;">${results.validEmails}</strong></li>
+            <li style="padding: 8px 0; border-bottom: 1px solid #2a2a2a;">Catchall emails: <strong style="color: #ccc;">${results.catchallEmails}</strong></li>
+            <li style="padding: 8px 0;">Total processed: <strong style="color: #ccc;">${results.totalLeads}</strong></li>
           </ul>
         </div>
-        
-        <a href="${APP_URL}/sales-nav-scraper" 
-           style="display: inline-block; background: linear-gradient(135deg, #0077cc 0%, #0099ff 100%); 
-                  color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; 
-                  font-weight: 600; font-size: 15px;">
-          View & Download Results →
+
+        <a href="${APP_URL}/results/${jobId}"
+           style="display: inline-block; background-color: transparent; color: #0099FF; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; border: 1px solid #0099FF;">
+          View & Download Results
         </a>
-        
-        <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; margin-bottom: 0;">
+
+        <p style="color: #555; font-size: 12px; margin-top: 24px; margin-bottom: 0;">
           Job ID: ${jobId.substring(0, 8)}...
         </p>
       </div>
@@ -112,27 +108,20 @@ async function sendJobFailureEmail(userEmail, jobType, jobId, failureReason) {
   const subject = `Your ${jobTypeDisplay} job failed`;
 
   const htmlContent = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
-        <h2 style="margin: 0; font-size: 22px;">Job Failed</h2>
-      </div>
-      <div style="background: #f8fafc; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
-        <p style="color: #475569; font-size: 16px; margin-top: 0;">
-          Unfortunately, your <strong>${jobTypeDisplay.toLowerCase()}</strong> job could not be completed.
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; padding: 40px 20px;">
+      <div style="background-color: #141414; border: 1px solid #222; border-radius: 12px; padding: 32px;">
+        <h2 style="margin: 0 0 16px 0; font-size: 22px; color: #ef4444;">Job Failed</h2>
+        <p style="color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">
+          Unfortunately, your <strong style="color: #ccc;">${jobTypeDisplay.toLowerCase()}</strong> job could not be completed.
         </p>
-        <div style="background: #fef2f2; padding: 16px 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #fecaca;">
-          <p style="margin: 0; color: #991b1b; font-size: 14px;"><strong>Reason:</strong> ${failureReason}</p>
-        </div>
-        <p style="color: #475569; font-size: 14px;">
+        <p style="color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">
           You can retry the job from your dashboard. If the problem persists, please contact support.
         </p>
         <a href="${APP_URL}"
-           style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                  color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px;
-                  font-weight: 600; font-size: 15px;">
+           style="display: inline-block; background-color: transparent; color: #0099FF; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; border: 1px solid #0099FF;">
           Go to Dashboard
         </a>
-        <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; margin-bottom: 0;">
+        <p style="color: #555; font-size: 12px; margin-top: 24px; margin-bottom: 0;">
           Job ID: ${jobId.substring(0, 8)}...
         </p>
       </div>
@@ -175,18 +164,16 @@ async function sendDailyLimitAdminEmail(service, detail) {
   if (!transporter) return false;
 
   const htmlContent = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
-        <h2 style="margin: 0; font-size: 22px;">Daily Limit Reached</h2>
-      </div>
-      <div style="background: #f8fafc; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
-        <p style="color: #475569; font-size: 16px; margin-top: 0;">
-          <strong>${service}</strong> has exhausted its daily capacity.
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; padding: 40px 20px;">
+      <div style="background-color: #141414; border: 1px solid #222; border-radius: 12px; padding: 32px;">
+        <h2 style="margin: 0 0 16px 0; font-size: 22px; color: #f59e0b;">Daily Limit Reached</h2>
+        <p style="color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">
+          <strong style="color: #ccc;">${service}</strong> has exhausted its daily capacity.
         </p>
-        <div style="background: #fffbeb; padding: 16px 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #fde68a;">
-          <p style="margin: 0; color: #92400e; font-size: 14px;">${detail}</p>
+        <div style="background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
+          <p style="margin: 0; color: #f59e0b; font-size: 14px;">${detail}</p>
         </div>
-        <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; margin-bottom: 0;">
+        <p style="color: #555; font-size: 12px; margin-top: 24px; margin-bottom: 0;">
           Timestamp: ${new Date().toISOString()}
         </p>
       </div>

@@ -105,7 +105,7 @@ async def test_email(request: TestEmailRequest):
         print(f"Error in test-email endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error verifying email: {str(e)}"
+            detail="Error. Please try again later."
         )
     finally:
         await mailtester.close()

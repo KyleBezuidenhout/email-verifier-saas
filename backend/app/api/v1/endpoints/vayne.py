@@ -126,7 +126,8 @@ def check_linkedin_auth(
     try:
         return get_vayne_client().check_linkedin_auth()
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"check_linkedin_auth failed: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.patch("/auth", response_model=LinkedInAuthStatus)
@@ -138,7 +139,8 @@ def update_linkedin_auth(
     try:
         return get_vayne_client().update_linkedin_session(payload.session_cookie)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"update_linkedin_session failed: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.get("/credits", response_model=CreditsResponse)
@@ -149,7 +151,8 @@ def get_credits(
     try:
         return get_vayne_client().get_credits()
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"get_credits failed: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.get("/daily-usage")
@@ -269,7 +272,8 @@ def validate_url(
     try:
         return get_vayne_client().validate_url(payload.url)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"validate_url failed: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.post("/url-check", response_model=UrlValidationResponse)
@@ -290,11 +294,11 @@ def url_check(payload: UrlCheckRequest):
             "suggestion": None
         }
     except Exception as e:
-        logger.error(f"URL check failed: {str(e)}")
+        logger.error(f"URL check failed: {e}")
         return {
-            "is_valid": False,  # Use 'is_valid' to match frontend VayneUrlCheck type
+            "is_valid": False,
             "url": payload.sales_nav_url,
-            "error": str(e),
+            "error": "Error. Please try again later.",
             "suggestion": "Please check the URL and try again"
         }
 
@@ -353,8 +357,8 @@ def create_order(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error creating order: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error creating order: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.get("/orders")
@@ -400,8 +404,8 @@ def list_orders(
             "total": total,
         }
     except Exception as e:
-        logger.error(f"Error listing orders: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error listing orders: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.get("/orders/{order_id}", response_model=OrderStatusResponse)
@@ -427,8 +431,8 @@ def get_order(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting order: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error getting order: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.get("/orders/{order_id}/poll-status")
@@ -518,8 +522,7 @@ def poll_order_status(
                 "from_database": False,
             }
         except Exception as vayne_error:
-            logger.error(f"Failed to poll Vayne API for order {order_id}: {str(vayne_error)}")
-            # Fall back to database status if Vayne API fails
+            logger.error(f"Failed to poll API for order {order_id}: {vayne_error}")
             return {
                 "order_id": str(order.id),
                 "vayne_order_id": order.vayne_order_id,
@@ -529,13 +532,13 @@ def poll_order_status(
                 "leads_qualified": getattr(order, 'leads_qualified', 0) or 0,
                 "progress_percentage": 0,
                 "from_database": True,
-                "error": str(vayne_error),
+                "error": "Error. Please try again later.",
             }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error polling order status: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error polling order status: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.delete("/orders/{order_id}")
@@ -571,8 +574,8 @@ def delete_order(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error deleting order: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error deleting order: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.post("/orders/{order_id}/cancel")
@@ -618,8 +621,8 @@ def cancel_order(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error cancelling order: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error cancelling order: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.get("/orders/{order_id}/download")
@@ -671,8 +674,8 @@ def download_order_csv(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error downloading order CSV: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error downloading order CSV: {e}")
+        raise HTTPException(status_code=500, detail="Error. Please try again later.")
 
 
 @router.post("/webhook")
@@ -686,8 +689,8 @@ async def webhook(
         logger.info(f"Webhook received: {body}")
         return {"status": "received"}
     except Exception as e:
-        logger.error(f"Webhook error: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Webhook error: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.post("/webhook/n8n-csv-callback")
@@ -784,5 +787,5 @@ async def n8n_csv_callback(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"N8N callback error: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"N8N callback error: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")

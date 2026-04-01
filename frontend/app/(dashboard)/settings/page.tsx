@@ -154,50 +154,11 @@ export default function SettingsPage() {
             type="button"
             onClick={handleSendPasswordReset}
             disabled={sendingReset || !user?.email}
-            className="btn-primary disabled:opacity-50 flex items-center space-x-2"
+            className="text-red-500 hover:underline disabled:opacity-50 flex items-center space-x-2 disabled:cursor-not-allowed"
           >
             {sendingReset && <LoadingSpinner size="sm" />}
-            <span>Reset Password</span>
+            <span>Reset</span>
           </button>
-        </div>
-
-        <div className="border-t border-dashboard-border pt-6">
-          <h2 className="text-lg font-medium text-dashboard-text mb-4">API Key</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-dashboard-text-muted mb-2">
-                Your API Key
-              </label>
-              <div className="flex space-x-2">
-                <input
-                  type="text"
-                  value={user?.api_key || ""}
-                  readOnly
-                  className="flex-1 apple-input font-mono text-sm"
-                />
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(user?.api_key || "");
-                    setMessage("API key copied to clipboard");
-                  }}
-                  className="btn-secondary"
-                >
-                  Copy
-                </button>
-              </div>
-              <p className="mt-2 text-sm text-dashboard-text-muted">
-                Use this API key to authenticate API requests. Include it in the <code className="px-1 py-0.5 bg-dashboard-card rounded text-xs">X-API-Key</code> header or as a Bearer token.
-              </p>
-            </div>
-            <button
-              onClick={handleRegenerateApiKey}
-              disabled={regenerating}
-              className="btn-secondary disabled:opacity-50 flex items-center space-x-2"
-            >
-              {regenerating && <LoadingSpinner size="sm" />}
-              <span>Regenerate API Key</span>
-            </button>
-          </div>
         </div>
 
         <div className="border-t border-dashboard-border pt-6">

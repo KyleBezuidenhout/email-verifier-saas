@@ -26,7 +26,7 @@ export function formatFileSize(bytes: number): string {
 export function getStatusColor(status: string): string {
   switch (status) {
     case "completed":
-      return "bg-green-500/20 text-green-400 border border-green-500/30";
+      return "bg-[#22c55e]/20 text-[#22c55e] border border-[#22c55e]/30";
     case "processing":
       return "bg-[#0099FF]/20 text-[#0099FF] border border-[#0099FF]/30";
     case "pending":

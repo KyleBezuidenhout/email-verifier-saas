@@ -79,32 +79,28 @@ def send_scraping_completion_email(user_email: str, order_id: str, results: dict
     leads_found = results.get("leads_found", 0)
     leads_qualified = results.get("leads_qualified", 0)
     
-    subject = f"✅ Scraping complete: {leads_found} leads found"
+    subject = f"Scraping complete: {leads_found} leads found"
     
     html_content = f"""
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
-        <h2 style="margin: 0; font-size: 22px;">🎉 Your Scraping Job is Complete!</h2>
-      </div>
-      <div style="background: #f8fafc; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none;">
-        <p style="color: #475569; font-size: 16px; margin-top: 0;">Great news! Your scraping job "<strong>{job_name}</strong>" has finished.</p>
-        
-        <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
-          <h3 style="margin: 0 0 12px 0; color: #1e293b; font-size: 16px;">📊 Results Summary</h3>
-          <ul style="list-style: none; padding: 0; margin: 0; color: #475569;">
-            <li style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">👥 Leads found: <strong>{leads_found}</strong></li>
-            <li style="padding: 8px 0;">✅ Qualified leads: <strong>{leads_qualified}</strong></li>
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; padding: 40px 20px;">
+      <div style="background-color: #141414; border: 1px solid #222; border-radius: 12px; padding: 32px;">
+        <h2 style="margin: 0 0 16px 0; font-size: 22px; color: #0099FF;">Your Scraping Job is Complete!</h2>
+        <p style="color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">Great news! Your scraping job "<strong style="color: #ccc;">{job_name}</strong>" has finished.</p>
+
+        <div style="background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <h3 style="margin: 0 0 12px 0; color: #ffffff; font-size: 16px;">Results Summary</h3>
+          <ul style="list-style: none; padding: 0; margin: 0; color: #999;">
+            <li style="padding: 8px 0; border-bottom: 1px solid #2a2a2a;">Leads found: <strong style="color: #ccc;">{leads_found}</strong></li>
+            <li style="padding: 8px 0;">Qualified leads: <strong style="color: #ccc;">{leads_qualified}</strong></li>
           </ul>
         </div>
-        
-        <a href="{APP_URL}/sales-nav-scraper" 
-           style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                  color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; 
-                  font-weight: 600; font-size: 15px;">
-          View & Download Leads →
+
+        <a href="{APP_URL}/sales-nav-scraper"
+           style="display: inline-block; background-color: transparent; color: #0099FF; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; border: 1px solid #0099FF;">
+          View & Download Leads
         </a>
-        
-        <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; margin-bottom: 0;">
+
+        <p style="color: #555; font-size: 12px; margin-top: 24px; margin-bottom: 0;">
           Order ID: {order_id[:8]}...
         </p>
       </div>

@@ -221,9 +221,10 @@ async def upload_csv(
         csv_reader = csv.DictReader(io.StringIO(csv_content))
         rows = list(csv_reader)
     except Exception as e:
+        logger.error(f"Failed to parse CSV: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to parse CSV: {str(e)}"
+            detail="Error. Please try again later."
         )
     
     if not rows:
@@ -329,10 +330,10 @@ async def upload_csv(
     except Exception as e:
         db.delete(job)
         db.commit()
-        logger.error(f"❌ Failed to upload to R2: {str(e)}")
+        logger.error(f"Failed to upload to R2: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload file: {str(e)}"
+            detail="Error. Please try again later."
         )
     
     # Queue job for processing
@@ -404,8 +405,8 @@ def list_jobs(
             total=total,
         )
     except Exception as e:
-        logger.error(f"Error listing website scraper jobs: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error listing website scraper jobs: {e}")
+        raise HTTPException(status_code=400, detail="Error. Please try again later.")
 
 
 @router.get("/jobs/{job_id}", response_model=WebsiteScraperJobResponse)

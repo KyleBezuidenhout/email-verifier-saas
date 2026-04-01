@@ -54,7 +54,7 @@ export function QuickStats({ jobs }: QuickStatsProps) {
       
       <div className="glass-card-hover p-4">
         <div className="text-sm text-dashboard-text-muted">Uptime</div>
-        <div className="text-2xl font-bold text-green-400 mt-1">
+        <div className="text-2xl font-bold text-[#22c55e] mt-1">
           99.9%
         </div>
         <div className="text-xs text-dashboard-text-muted mt-1">guaranteed</div>

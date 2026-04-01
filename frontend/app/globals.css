@@ -145,7 +145,7 @@
 
   /* Badge variations */
   .badge-success {
-    @apply bg-apple-success/20 text-apple-success border border-apple-success/30;
+    @apply bg-[#22c55e]/20 text-[#22c55e] border border-[#22c55e]/30;
   }
 
   .badge-warning {

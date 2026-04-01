@@ -472,16 +472,16 @@ export default function ResultsPage() {
             <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
               {previewLeads.map((lead) => (
                 <tr key={lead.id} className="hover:bg-dashboard-card/50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
                     {lead.first_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
                     {lead.last_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
                     {lead.domain}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
                     {lead.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -489,7 +489,7 @@ export default function ResultsPage() {
                       <span
                         className={`text-xs font-medium ${
                           lead.verification_status === "valid" || lead.verification_tag === "valid-catchall"
-                            ? "text-green-400"
+                            ? "text-[#22c55e]"
                             : lead.verification_status === "catchall"
                             ? "text-yellow-400"
                             : "text-red-400"
@@ -503,13 +503,13 @@ export default function ResultsPage() {
                         </span>
                       )}
                       {lead.verification_tag === "valid-catchall" && (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-500/30 text-green-400 border border-green-500/50">
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-[#22c55e]/30 text-[#22c55e] border border-[#22c55e]/50">
                           Valid-Catchall
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
                     {(() => {
                       const mxType = getProviderFromMX(lead.mx_record, lead.mx_provider);
                       return mxType.charAt(0).toUpperCase() + mxType.slice(1); // Capitalize first letter
@@ -517,7 +517,7 @@ export default function ResultsPage() {
                   </td>
                   {/* Dynamic cells from extra_data */}
                   {extraColumns.map((col) => (
-                    <td key={col} className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                    <td key={col} className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
                       {lead.extra_data?.[col] || "-"}
                     </td>
                   ))}

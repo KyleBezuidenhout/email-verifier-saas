@@ -199,7 +199,7 @@ export default function GetCreditsPage() {
                       <div className="text-dashboard-text font-semibold">1× Enrichment / Verification</div>
                       <div className="text-dashboard-text-muted text-sm">
                         {isTrialPlan ? "= 0.5 Credits" : (
-                          <span className="text-green-400 font-medium">Free (Uncapped)</span>
+                          <span className="text-[#22c55e] font-medium">Free (Uncapped)</span>
                         )}
                       </div>
                     </div>

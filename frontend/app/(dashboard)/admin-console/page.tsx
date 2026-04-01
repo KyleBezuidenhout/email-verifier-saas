@@ -478,7 +478,7 @@ export default function AdminConsolePage() {
               {/* Summary counters */}
               <div className="grid grid-cols-3 gap-4 mb-6">
                 <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold text-green-400">{fairshareStatus.active_job_count}</div>
+                  <div className="text-2xl font-bold text-[#22c55e]">{fairshareStatus.active_job_count}</div>
                   <div className="text-xs text-dashboard-text-muted mt-1">Active Jobs</div>
                 </div>
                 <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
@@ -499,7 +499,7 @@ export default function AdminConsolePage() {
                     {fairshareStatus.active_jobs.map((job) => (
                       <div key={job.job_id} className="flex items-center justify-between bg-dashboard-card/30 rounded-lg px-4 py-2 text-sm">
                         <div className="flex items-center gap-3">
-                          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                          <span className="w-2 h-2 bg-[#22c55e] rounded-full animate-pulse" />
                           <span className="text-dashboard-text">{job.user_email}</span>
                           <span className="text-dashboard-text-muted text-xs">({job.job_type})</span>
                         </div>
@@ -577,7 +577,7 @@ export default function AdminConsolePage() {
                 <h2 className="text-lg font-semibold text-dashboard-text mb-4">Sales Nav Jobs</h2>
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-green-400">{salesNavActive.length}</div>
+                    <div className="text-2xl font-bold text-[#22c55e]">{salesNavActive.length}</div>
                     <div className="text-xs text-dashboard-text-muted mt-1">Active</div>
                   </div>
                   <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
@@ -593,7 +593,7 @@ export default function AdminConsolePage() {
                       {salesNavActive.map((job) => (
                         <div key={job.id} className="flex items-center justify-between bg-dashboard-card/30 rounded-lg px-4 py-2 text-sm">
                           <div className="flex items-center gap-3">
-                            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                            <span className="w-2 h-2 bg-[#22c55e] rounded-full animate-pulse" />
                             <span className="text-dashboard-text">{job.client.email}</span>
                           </div>
                           <div className="flex items-center gap-4">
@@ -640,7 +640,7 @@ export default function AdminConsolePage() {
                 <h2 className="text-lg font-semibold text-dashboard-text mb-4">Catchall Verification Jobs</h2>
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-green-400">{catchallActive.length}</div>
+                    <div className="text-2xl font-bold text-[#22c55e]">{catchallActive.length}</div>
                     <div className="text-xs text-dashboard-text-muted mt-1">Active</div>
                   </div>
                   <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
@@ -656,7 +656,7 @@ export default function AdminConsolePage() {
                       {catchallActive.map((job) => (
                         <div key={job.id} className="flex items-center justify-between bg-dashboard-card/30 rounded-lg px-4 py-2 text-sm">
                           <div className="flex items-center gap-3">
-                            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                            <span className="w-2 h-2 bg-[#22c55e] rounded-full animate-pulse" />
                             <span className="text-dashboard-text">{job.client.email}</span>
                           </div>
                           <div className="flex items-center gap-4">
@@ -664,7 +664,7 @@ export default function AdminConsolePage() {
                               {job.processed_leads}/{job.total_leads} emails
                             </span>
                             {job.valid_emails_found > 0 && (
-                              <span className="text-green-400 text-xs">{job.valid_emails_found} valid</span>
+                              <span className="text-[#22c55e] text-xs">{job.valid_emails_found} valid</span>
                             )}
                           </div>
                         </div>
@@ -754,7 +754,7 @@ export default function AdminConsolePage() {
               </button>
             </div>
             {creditMessage && (
-              <div className={`mt-4 px-4 py-2 rounded-lg ${creditMessage.type === "success" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
+              <div className={`mt-4 px-4 py-2 rounded-lg ${creditMessage.type === "success" ? "bg-[#22c55e]/10 text-[#22c55e]" : "bg-red-500/10 text-red-400"}`}>
                 {creditMessage.text}
               </div>
             )}
@@ -825,7 +825,7 @@ export default function AdminConsolePage() {
                                 onChange={(e) => setCustomPriceValue(e.target.value)}
                                 placeholder="0.0015"
                               />
-                              <button onClick={() => handleCustomPriceSubmit(client.id)} className="text-green-400 hover:text-green-300 text-xs">Save</button>
+                              <button onClick={() => handleCustomPriceSubmit(client.id)} className="text-[#22c55e] hover:text-[#16a34a] text-xs">Save</button>
                               <button onClick={() => setEditingCustomPriceClientId(null)} className="text-red-400 hover:text-red-300 text-xs">×</button>
                             </div>
                           ) : (
@@ -864,7 +864,7 @@ export default function AdminConsolePage() {
                           <button
                             onClick={() => handleMaxJobsUpdate(client.id)}
                             disabled={maxJobsLoading}
-                            className="text-green-400 hover:text-green-300 text-xs"
+                            className="text-[#22c55e] hover:text-[#16a34a] text-xs"
                           >
                             {maxJobsLoading ? "..." : "Save"}
                           </button>
@@ -880,7 +880,7 @@ export default function AdminConsolePage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right text-dashboard-text">{client.stats.total_jobs}</td>
-                    <td className="px-4 py-3 text-right text-green-400">{client.stats.total_valid_emails}</td>
+                    <td className="px-4 py-3 text-right text-[#22c55e]">{client.stats.total_valid_emails}</td>
                     <td className="px-4 py-3 text-dashboard-text-muted text-sm">
                       {new Date(client.created_at).toLocaleDateString()}
                     </td>
@@ -985,14 +985,14 @@ export default function AdminConsolePage() {
                     <td className="px-4 py-3 text-right text-dashboard-text">
                       {isSalesNav ? (job.processed_leads || job.total_leads || "--") : job.total_leads}
                     </td>
-                    <td className="px-4 py-3 text-right text-green-400">
+                    <td className="px-4 py-3 text-right text-[#22c55e]">
                       {isSalesNav ? "--" : job.valid_emails_found}
                     </td>
                     <td className="px-4 py-3 text-right text-yellow-400">
                       {isSalesNav ? "--" : job.catchall_emails_found}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`font-medium ${!isSalesNav && isCompleted ? 'text-green-400' : 'text-dashboard-text-muted'}`}>
+                      <span className={`font-medium ${!isSalesNav && isCompleted ? 'text-[#22c55e]' : 'text-dashboard-text-muted'}`}>
                         {hitRateDisplay}
                       </span>
                     </td>
@@ -1090,7 +1090,7 @@ export default function AdminConsolePage() {
                   critical: { bg: 'bg-red-500/20', text: 'text-red-400', glow: 'shadow-red-500/50' },
                   warning: { bg: 'bg-orange-500/20', text: 'text-orange-400', glow: 'shadow-orange-500/50' },
                   moderate: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', glow: 'shadow-yellow-500/50' },
-                  healthy: { bg: 'bg-green-500/20', text: 'text-green-400', glow: 'shadow-green-500/50' }
+                  healthy: { bg: 'bg-[#22c55e]/20', text: 'text-[#22c55e]', glow: 'shadow-[#22c55e]/50' }
                 };
                 
                 const colors = healthColors[healthStatus];
@@ -1254,7 +1254,7 @@ export default function AdminConsolePage() {
                         {hasError ? (
                           <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full">ERROR</span>
                         ) : (
-                          <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">OK</span>
+                          <span className="text-xs bg-[#22c55e]/20 text-[#22c55e] px-2 py-0.5 rounded-full">OK</span>
                         )}
                         <span className="text-xs text-dashboard-text-muted ml-auto">Key {key.key_index}</span>
                       </div>
@@ -1377,7 +1377,7 @@ export default function AdminConsolePage() {
 // Helper Components
 function StatCard({ title, value, subtitle, color }: { title: string; value: number; subtitle?: string; color?: "green" | "blue" }) {
   const colorClasses = {
-    green: "text-green-400",
+    green: "text-[#22c55e]",
     blue: "text-dashboard-accent",
   };
 
@@ -1394,7 +1394,7 @@ function StatCard({ title, value, subtitle, color }: { title: string; value: num
 
 function StatusBadge({ status }: { status: string }) {
   const statusClasses: Record<string, string> = {
-    completed: "bg-green-500/20 text-green-400",
+    completed: "bg-[#22c55e]/20 text-[#22c55e]",
     processing: "bg-blue-500/20 text-blue-400",
     pending: "bg-yellow-500/20 text-yellow-400",
     queued: "bg-yellow-500/20 text-yellow-400",

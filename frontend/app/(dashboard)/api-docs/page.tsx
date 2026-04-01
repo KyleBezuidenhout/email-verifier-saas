@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { apiClient } from "@/lib/api";
 
 interface Endpoint {
   method: "GET" | "POST" | "PUT" | "DELETE";
@@ -239,7 +241,7 @@ const categories = Array.from(new Set(endpoints.map((e) => e.category)));
 
 function getMethodColor(method: string) {
   switch (method) {
-    case "GET": return "bg-green-500/20 text-green-400 border-green-500/30";
+    case "GET": return "bg-[#22c55e]/20 text-[#22c55e] border-[#22c55e]/30";
     case "POST": return "bg-blue-500/20 text-blue-400 border-blue-500/30";
     case "PUT": return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
     case "DELETE": return "bg-red-500/20 text-red-400 border-red-500/30";
@@ -258,7 +260,7 @@ function getMethodDot(method: string) {
 }
 
 function getStatusColor(status: number) {
-  if (status >= 200 && status < 300) return "text-green-400";
+  if (status >= 200 && status < 300) return "text-[#22c55e]";
   if (status >= 400 && status < 500) return "text-yellow-400";
   return "text-red-400";
 }
@@ -338,17 +340,49 @@ function generateMarkdownExport() {
 // ─── Page Component ──────────────────────────────────────────────────────────
 
 export default function ApiDocsPage() {
-  const { user } = useAuth();
-  const [activeEndpointIdx, setActiveEndpointIdx] = useState(0);
+  const { user, refreshUser } = useAuth();
+  const [activeEndpointIdx, setActiveEndpointIdx] = useState<number | null>(null);
+  const [activeSection, setActiveSection] = useState<"overview" | "endpoints">("overview");
   const [tryItOutModal, setTryItOutModal] = useState<string | null>(null);
   const [tryItOutStates, setTryItOutStates] = useState<Record<string, TryItOutState>>({});
-  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [regenerating, setRegenerating] = useState(false);
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const overviewRef = useRef<HTMLDivElement>(null);
 
   const apiKey = user?.api_key || "<your-api-key>";
 
   const contentRef = useRef<HTMLDivElement>(null);
 
+  const handleRegenerateApiKey = async () => {
+    if (!confirm("Are you sure you want to regenerate your API key? The old key will no longer work.")) {
+      return;
+    }
+    setRegenerating(true);
+    try {
+      const response = await apiClient.regenerateApiKey();
+      if (response.api_key) {
+        await refreshUser();
+        alert("API key regenerated successfully!");
+      } else {
+        alert("Failed to regenerate API key");
+      }
+    } catch (error) {
+      alert("Failed to regenerate API key: " + (error instanceof Error ? error.message : "Unknown error"));
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const scrollToOverview = () => {
+    setActiveSection("overview");
+    setActiveEndpointIdx(null);
+    if (overviewRef.current && contentRef.current) {
+      contentRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
   const scrollToEndpoint = (idx: number) => {
+    setActiveSection("endpoints");
     setActiveEndpointIdx(idx);
     const ep = endpoints[idx];
     const id = getEndpointId(ep, idx);
@@ -491,13 +525,22 @@ export default function ApiDocsPage() {
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            const idx = endpoints.findIndex((ep, i) => getEndpointId(ep, i) === entry.target.id);
-            if (idx !== -1) setActiveEndpointIdx(idx);
+            if (entry.target.id === "overview") {
+              setActiveSection("overview");
+              setActiveEndpointIdx(null);
+            } else {
+              const idx = endpoints.findIndex((ep, i) => getEndpointId(ep, i) === entry.target.id);
+              if (idx !== -1) {
+                setActiveSection("endpoints");
+                setActiveEndpointIdx(idx);
+              }
+            }
           }
         }
       },
       { root, rootMargin: "-10% 0px -70% 0px" }
     );
+    if (overviewRef.current) observer.observe(overviewRef.current);
     Object.values(sectionRefs.current).forEach((el) => {
       if (el) observer.observe(el);
     });
@@ -544,6 +587,26 @@ export default function ApiDocsPage() {
 
         {/* API Reference nav */}
         <nav className="flex-1 overflow-y-auto px-4 pb-4">
+          {/* Overview section */}
+          <div className="mb-6">
+            <h3 className="text-xs font-semibold text-dashboard-text-muted uppercase tracking-wide px-4 mb-2">Overview</h3>
+            <div className="space-y-1">
+              <button
+                onClick={() => scrollToOverview()}
+                className={`w-full flex items-center gap-2.5 px-4 py-2 rounded-lg text-left transition-colors ${
+                  activeSection === "overview"
+                    ? "bg-dashboard-accent/10 text-dashboard-accent"
+                    : "text-dashboard-text-muted hover:bg-dashboard-card hover:text-dashboard-text"
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm font-medium">Quick Start</span>
+              </button>
+            </div>
+          </div>
+
           {categories.map((cat) => (
             <div key={cat} className="mb-6">
               <h3 className="text-xs font-semibold text-dashboard-text-muted uppercase tracking-wide px-4 mb-2">{cat}</h3>
@@ -610,20 +673,48 @@ export default function ApiDocsPage() {
             </p>
           </div>
 
-          {/* API Key Card */}
-          <div className="glass-card p-4 mb-10 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="text-sm font-medium text-dashboard-text-muted shrink-0">Your API Key:</span>
-              <span className="text-sm text-dashboard-accent font-medium truncate">{user?.api_key || "Sign in to see your key"}</span>
+          {/* ─── Overview Section ─── */}
+          <div ref={overviewRef} id="overview" className="mb-12">
+            <div className="mb-6">
+              <h2 className="text-sm font-semibold text-dashboard-accent">Overview</h2>
             </div>
-            {user?.api_key && (
-              <button
-                onClick={() => copyToClipboard(user.api_key || "")}
-                className="btn-secondary text-sm px-3 py-1.5 shrink-0"
-              >
-                Copy
-              </button>
-            )}
+
+            {/* API Key Section */}
+            <div className="glass-card p-6 mb-10">
+              <h2 className="text-lg font-medium text-dashboard-text mb-4">API Key</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-dashboard-text-muted mb-2">
+                    Your API Key
+                  </label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={user?.api_key || ""}
+                      readOnly
+                      className="flex-1 apple-input font-mono text-sm"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(user?.api_key || "")}
+                      className="btn-secondary"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <p className="mt-2 text-sm text-dashboard-text-muted">
+                    Use this API key to authenticate API requests. Include it in the <code className="px-1 py-0.5 bg-dashboard-card rounded text-xs">X-API-Key</code> header or as a Bearer token.
+                  </p>
+                </div>
+                <button
+                  onClick={handleRegenerateApiKey}
+                  disabled={regenerating || !user?.api_key}
+                  className="btn-secondary disabled:opacity-50 flex items-center space-x-2"
+                >
+                  {regenerating && <LoadingSpinner size="sm" />}
+                  <span>Regenerate API Key</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* ─── Endpoint Sections ─── */}
@@ -737,7 +828,7 @@ export default function ApiDocsPage() {
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-semibold text-dashboard-text">Response</span>
-                              <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-green-500/20 text-green-400">200</span>
+                              <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-[#22c55e]/20 text-[#22c55e]">200</span>
                             </div>
                             <button
                               onClick={() => copyToClipboard(responseStr)}

@@ -627,7 +627,7 @@ async def upload_file(
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload file: {str(e)}"
+            detail="Error. Please try again later."
         )
 
     # Queue job for enrichment (RPUSH for FIFO ordering)
@@ -765,11 +765,12 @@ async def upload_verify_file(
             job.input_file_path = input_file_path
             db.commit()
         except Exception as e:
+            print(f"R2 upload failed for verify-upload (large): {e}")
             db.delete(job)
             db.commit()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to upload file: {str(e)}"
+                detail="Error. Please try again later."
             )
 
         try:
@@ -868,11 +869,12 @@ async def upload_verify_file(
         job.input_file_path = input_file_path
         db.commit()
     except Exception as e:
+        print(f"R2 upload failed for verify-upload (small): {e}")
         db.delete(job)
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload file: {str(e)}"
+            detail="Error. Please try again later."
         )
     
     leads_to_create = []
@@ -969,7 +971,7 @@ async def verify_single_email(
         print(f"Error verifying email {email}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error verifying email: {str(e)}"
+            detail="Error. Please try again later."
         )
     finally:
         await mailtester.close()
@@ -1011,7 +1013,7 @@ def get_jobs(
         traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch jobs: {str(e)}"
+            detail="Error. Please try again later."
         )
 
 
@@ -1218,15 +1220,15 @@ async def verify_catchalls(
             raise
         except Exception as e:
             error_msg = str(e)
-            # Check if it's a 402 error and provide better message
+            print(f"Failed to create catchall list: {error_msg}")
             if "402" in error_msg or "Insufficient credits" in error_msg or "Payment Required" in error_msg:
                 raise HTTPException(
                     status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail=f"Insufficient credits in your OmniVerifier account. You need at least {len(emails_list)} credits to verify {len(emails_list)} catchall emails. Please add credits to your OmniVerifier account and try again."
+                    detail=f"Insufficient credits to verify {len(emails_list)} catchall emails. Please add credits and try again."
                 )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to create catchall list: {error_msg}"
+                detail="Error. Please try again later."
             )
         
         # Step 2: Add emails to list IMMEDIATELY (batch add)
@@ -1236,20 +1238,22 @@ async def verify_catchalls(
             await verifier.add_emails_to_list(list_id, emails_list)
             print(f"Successfully added emails to list {list_id}")
         except Exception as e:
-            errors.append(f"Failed to add emails to list: {str(e)}")
+            print(f"Failed to add emails to catchall list {list_id}: {e}")
+            errors.append(f"Failed to add emails to list")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to add emails to list: {str(e)}"
+                detail="Error. Please try again later."
             )
         
         # Step 3: Start list processing
         try:
             await verifier.start_list(list_id)
         except Exception as e:
-            errors.append(f"Failed to start list: {str(e)}")
+            print(f"Failed to start catchall list {list_id}: {e}")
+            errors.append(f"Failed to start verification")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to start list: {str(e)}"
+                detail="Error. Please try again later."
             )
         
         # Step 4: Poll for status until complete (max 5 minutes)
@@ -1294,16 +1298,17 @@ async def verify_catchalls(
         if not status_completed:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Catchall verification did not complete in time"
+                detail="Error. Please try again later."
             )
         
         # Step 5: Get results
         try:
             results = await verifier.get_list_results(list_id)
         except Exception as e:
+            print(f"Failed to get catchall results for list {list_id}: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to get results: {str(e)}"
+                detail="Error. Please try again later."
             )
         
         # Step 6: Parse results and update leads
@@ -1364,10 +1369,11 @@ async def verify_catchalls(
     except HTTPException:
         raise
     except Exception as e:
-        errors.append(f"Unexpected error: {str(e)}")
+        print(f"Unexpected error during catchall verification for job {job_id}: {e}")
+        errors.append("Unexpected error during verification")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error during catchall verification: {str(e)}"
+            detail="Error. Please try again later."
         )
     finally:
         await verifier.close()
@@ -1510,9 +1516,10 @@ def debug_queue_status(
             "queue_name": "email-verification",
         }
     except Exception as e:
+        print(f"Debug queue-status Redis error: {e}")
         return {
             "redis_connected": False,
-            "error": str(e),
+            "error": "Error. Please try again later.",
         }
 
 
@@ -1604,9 +1611,10 @@ async def upload_catchall_file(
         job.input_file_path = input_file_path
         db.commit()
     except Exception as e:
+        print(f"R2 upload failed for catchall-upload: {e}")
         db.delete(job)
         db.commit()
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error. Please try again later.")
 
     # Create Lead records, preserving all extra CSV columns
     leads_to_create = []

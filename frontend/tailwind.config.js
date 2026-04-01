@@ -30,7 +30,7 @@ module.exports = {
           'accent': '#0099FF',        // Vibrant Blue - Primary actions
           'text': '#F5F5F7',          // Off-White - Primary text and icons
           'text-muted': '#6B7280',    // Secondary/muted text
-          'success': '#34C759',       // Standard Green - Success states
+          'success': '#22c55e',       // Standard Green - Success states (matches rgb(34, 197, 94))
           'warning': '#FF9500',       // Orange for warnings
           'error': '#FF3B30',         // System Red for errors
         },

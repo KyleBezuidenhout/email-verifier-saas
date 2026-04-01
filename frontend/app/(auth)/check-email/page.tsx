@@ -49,7 +49,7 @@ function CheckEmailContent() {
       )}
 
       {resent ? (
-        <p className="text-sm text-green-400">A new verification email has been sent.</p>
+        <p className="text-sm text-[#22c55e]">A new verification email has been sent.</p>
       ) : (
         <button
           onClick={handleResend}

@@ -117,7 +117,7 @@ def create_checkout_session(
         logger.error(f"Stripe error creating checkout: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Payment service error: {str(e)}"
+            detail="Error. Please try again later."
         )
 
 

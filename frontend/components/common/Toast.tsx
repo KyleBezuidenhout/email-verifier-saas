@@ -20,7 +20,7 @@ export function Toast({ message, type, onClose, duration = 5000 }: ToastProps) {
   }, [duration, onClose]);
 
   const styles = {
-    success: "bg-green-500/10 border-green-500/20 text-green-400",
+    success: "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
     error: "bg-red-500/10 border-red-500/20 text-red-400",
     warning: "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
     info: "bg-[#0099FF]/10 border-[#0099FF]/20 text-[#0099FF]",

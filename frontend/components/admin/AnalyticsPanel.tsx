@@ -187,7 +187,7 @@ export function AnalyticsPanel({ clients }: Props) {
           <ClientSelector clients={clients} value={clientId} onChange={setClientId} />
           {data?.cached_at && (
             <span className="text-xs text-dashboard-text-muted flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-apple-success inline-block" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] inline-block" />
               Refreshed {timeAgo(data.cached_at)}
             </span>
           )}

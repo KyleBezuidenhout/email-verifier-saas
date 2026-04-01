@@ -239,7 +239,7 @@ export default function VerifyCatchallsPage() {
             <p className="text-sm text-dashboard-text-muted">
               Valid (Deliverable)
             </p>
-            <p className="text-2xl font-bold text-green-400">
+            <p className="text-2xl font-bold text-[#22c55e]">
               {totalValid.toLocaleString()}
             </p>
           </div>

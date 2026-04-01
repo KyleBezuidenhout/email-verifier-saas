@@ -82,8 +82,8 @@ export default function PaymentSuccessPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="glass-card p-8 max-w-md w-full text-center">
         {/* Success Icon */}
-        <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6 animate-bounce">
-          <Check className="w-10 h-10 text-green-400" />
+        <div className="w-20 h-20 rounded-full bg-[#22c55e]/20 flex items-center justify-center mx-auto mb-6 animate-bounce">
+          <Check className="w-10 h-10 text-[#22c55e]" />
         </div>
 
         <h1 className="text-3xl font-bold text-dashboard-text mb-2">Payment Successful!</h1>
@@ -97,7 +97,7 @@ export default function PaymentSuccessPage() {
           </div>
           <div className="flex justify-between items-center">
             <span className="text-dashboard-text-muted">Credits Added</span>
-            <span className="text-green-400 font-semibold">+{paymentDetails?.credits_purchased.toLocaleString()}</span>
+            <span className="text-[#22c55e] font-semibold">+{paymentDetails?.credits_purchased.toLocaleString()}</span>
           </div>
           <div className="border-t border-dashboard-border pt-4">
             <div className="flex justify-between items-center">

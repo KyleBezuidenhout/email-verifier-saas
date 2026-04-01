@@ -621,7 +621,8 @@ def get_api_key_usage(
                 "updated_at": data.get("updated_at"),
             }
     except Exception as e:
-        omni_credits = {"error": str(e)}
+        print(f"Failed to fetch OmniVerifier credits from Redis: {e}")
+        omni_credits = {"error": "Error. Please try again later."}
     
     return {
         "mailtester_keys": keys_usage,
@@ -651,12 +652,13 @@ def get_vayne_stats(
                 "error": None,
             })
         except Exception as e:
+            print(f"Failed to fetch stats for key {idx + 1}: {e}")
             keys_data.append({
                 "key_index": idx + 1,
                 "key_preview": masked,
                 "credit_available": 0,
                 "daily_limit_leads": 0,
-                "error": str(e),
+                "error": "Error. Please try again later.",
             })
 
     return {
@@ -793,8 +795,9 @@ def get_fairshare_status(
             "waiting_room_jobs": waiting_room_jobs,
         }
     except Exception as e:
+        print(f"Error fetching fair-share status: {e}")
         return {
-            "error": str(e),
+            "error": "Error. Please try again later.",
             "active_job_count": 0,
             "queued_job_count": 0,
             "waiting_room_count": 0,

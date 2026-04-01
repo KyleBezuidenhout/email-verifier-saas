@@ -207,7 +207,20 @@ export default function FindValidEmailsPage() {
       setSingleLastName("");
       setSingleWebsite("");
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Enrichment failed";
+      let errorMessage = "Enrichment failed";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === "object" && err !== null) {
+        // Handle cases where error is an object with a message or detail property
+        const errorObj = err as Record<string, unknown>;
+        if (typeof errorObj.detail === "string") {
+          errorMessage = errorObj.detail;
+        } else if (typeof errorObj.message === "string") {
+          errorMessage = errorObj.message;
+        } else {
+          errorMessage = JSON.stringify(err);
+        }
+      }
       setUploadError(errorMessage);
     } finally {
       setSingleLoading(false);
@@ -313,12 +326,6 @@ export default function FindValidEmailsPage() {
         {uploadMode === 'file' ? (
           // File Upload Mode
           <>
-            <div className="glass-card-hover p-4">
-              <p className="text-sm text-dashboard-text-muted">
-                <strong className="text-dashboard-text">Note:</strong> CSV must include a <strong>website</strong>, <strong>first name</strong>, and <strong>last name</strong> column.
-              </p>
-            </div>
-
             {uploadError && (
               <div className="badge-error px-4 py-3 rounded-lg text-sm">
                 {uploadError}
@@ -399,12 +406,6 @@ export default function FindValidEmailsPage() {
         ) : (
           // Single Enrichment Mode
           <>
-            <div className="glass-card-hover p-4">
-              <p className="text-sm text-dashboard-text-muted">
-                <strong className="text-dashboard-text">Note:</strong> Enter a <strong>website</strong>, <strong>first name</strong>, and <strong>last name</strong> to find a valid email.
-              </p>
-            </div>
-
             {uploadError && (
               <div className="badge-error px-4 py-3 rounded-lg text-sm">
                 {uploadError}
@@ -412,23 +413,22 @@ export default function FindValidEmailsPage() {
             )}
 
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-dashboard-text mb-2">
-                  Website <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={singleWebsite}
-                  onChange={(e) => setSingleWebsite(e.target.value)}
-                  placeholder="e.g., example.com or https://example.com"
-                  className="apple-input w-full"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
+              <div className="flex items-end gap-3">
+                <div className="flex-[2]">
                   <label className="block text-sm font-medium text-dashboard-text mb-2">
-                    First Name
+                    Website <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={singleWebsite}
+                    onChange={(e) => setSingleWebsite(e.target.value)}
+                    placeholder="e.g., example.com"
+                    className="apple-input w-full"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-dashboard-text mb-2">
+                    First Name <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"
@@ -438,9 +438,9 @@ export default function FindValidEmailsPage() {
                     className="apple-input w-full"
                   />
                 </div>
-                <div>
+                <div className="flex-1">
                   <label className="block text-sm font-medium text-dashboard-text mb-2">
-                    Last Name
+                    Last Name <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"
@@ -450,13 +450,10 @@ export default function FindValidEmailsPage() {
                     className="apple-input w-full"
                   />
                 </div>
-              </div>
-
-              <div className="flex justify-end pt-4">
                 <button
                   onClick={handleSingleEnrich}
                   disabled={singleLoading || !singleWebsite.trim()}
-                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 h-[42px]"
                 >
                   {singleLoading && <LoadingSpinner size="sm" />}
                   <span>{singleLoading ? "Enriching..." : "Find Email"}</span>
@@ -493,23 +490,13 @@ export default function FindValidEmailsPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-dashboard-text-muted">Status:</span>
                     <span className={`font-medium ${
-                      singleResult.status === 'valid' ? 'text-green-400' :
+                      singleResult.status === 'valid' ? 'text-[#22c55e]' :
                       singleResult.status === 'catchall' ? 'text-yellow-400' :
                       'text-red-400'
                     }`}>
                       {singleResult.status}
                     </span>
                   </div>
-                  {singleResult.status === 'catchall' && (
-                    <p className="text-sm text-yellow-400/80 mt-2">
-                      This recipient's email could bounce, run this email through a catchall verifier before you send them an email.
-                    </p>
-                  )}
-                  {singleResult.status === 'valid' && (
-                    <p className="text-sm text-green-400/80 mt-2">
-                      This recipient's email is valid. It is safe to send emails to them.
-                    </p>
-                  )}
                 </div>
               </div>
             )}

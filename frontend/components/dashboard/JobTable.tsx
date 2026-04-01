@@ -10,9 +10,10 @@ interface JobTableProps {
   jobs: Job[];
   onDelete: (jobId: string) => void;
   onCancel?: (jobId: string) => void;
+  hitRateHeader?: string;
 }
 
-export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
+export function JobTable({ jobs, onDelete, onCancel, hitRateHeader = "% found" }: JobTableProps) {
   const router = useRouter();
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [catchallWarning, setCatchallWarning] = useState<{ jobId: string; action: "cancel" | "delete" } | null>(null);
@@ -81,7 +82,7 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                 Progress
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
-                Hit Rate
+                {hitRateHeader}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                 Actions
@@ -95,13 +96,21 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
               const isCompleted = job.status === "completed";
               const isEnrichment = job.job_type === "enrichment";
               let hitRateDisplay = "--";
-              
+              let hitRateValue = 0;
+
               if (isCompleted && job.total_leads > 0) {
-                const rawHitRate = isEnrichment
+                hitRateValue = isEnrichment
                   ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100)
                   : ((job.valid_emails_found) / job.total_leads * 100);
-                hitRateDisplay = `${Math.min(rawHitRate, 100).toFixed(1)}%`;
+                hitRateDisplay = `${Math.min(hitRateValue, 100).toFixed(1)}%`;
               }
+
+              // Determine hit rate color based on percentage
+              const getHitRateColor = (value: number): string => {
+                if (value <= 40) return '#E5484D';      // Red for ≤40%
+                if (value <= 60) return '#F5A623';    // Orange for 41-60%
+                return '#22C55E';                     // Green for 61%+
+              };
               
               return (
               <tr 
@@ -109,13 +118,13 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                 className="hover:bg-dashboard-card/50 transition-colors cursor-pointer"
                 onClick={(e) => handleRowClick(job.id, e)}
               >
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-dashboard-text">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono" style={{ color: '#C8D2DC' }}>
                   <div className="flex items-center gap-2">
-                    <span 
+                    <span
                       title={job.job_name || job.id}
                       className="cursor-default"
                     >
-                      {job.job_name 
+                      {job.job_name
                         ? (job.job_name.length > 15 ? `${job.job_name.slice(0, 15)}...` : job.job_name)
                         : `${job.id.slice(0, 8)}...`
                       }
@@ -130,27 +139,27 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                   {formatDate(job.created_at)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
+                <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
                   {job.total_leads}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span
-                    className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      job.status === "completed" ? "badge-success" :
-                      job.status === "processing" ? "badge-warning" :
-                      job.status === "failed" ? "badge-error" :
-                      job.status === "cancelled" ? "badge-info" :
-                      job.status === "waiting_for_csv" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" :
-                      "badge-info"
+                    className={`text-xs font-medium ${
+                      job.status === "completed" ? "text-[#22c55e]" :
+                      job.status === "processing" ? "text-yellow-400" :
+                      job.status === "failed" ? "text-red-400" :
+                      job.status === "cancelled" ? "text-dashboard-text-muted" :
+                      job.status === "waiting_for_csv" ? "text-yellow-400" :
+                      "text-dashboard-text-muted"
                     }`}
                   >
                     {job.status === "waiting_for_csv" ? "Waiting for CSV" : job.status === "waiting" ? "queued" : job.status}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="w-full bg-dashboard-card rounded-full h-2">
+                  <div className="w-full bg-dashboard-card rounded-full h-1.5">
                     <div
-                      className="bg-dashboard-accent h-2 rounded-full transition-all"
+                      className="bg-dashboard-accent h-1.5 rounded-full transition-all"
                       style={{
                         width: `${calculateProgress(
                           job.processed_leads,
@@ -164,7 +173,7 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <span className={`font-medium ${isCompleted ? 'text-green-400' : 'text-dashboard-text-muted'}`}>
+                  <span className="font-medium" style={{ color: isCompleted ? getHitRateColor(hitRateValue) : '#6B7280' }}>
                     {hitRateDisplay}
                   </span>
                 </td>
@@ -193,7 +202,8 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                         e.stopPropagation();
                         handleDelete(job.id);
                       }}
-                      className="text-red-400 hover:text-red-300 transition-colors"
+                      className="transition-colors hover:opacity-80"
+                      style={{ color: '#E5484D' }}
                     >
                       Confirm
                     </button>
@@ -203,7 +213,8 @@ export function JobTable({ jobs, onDelete, onCancel }: JobTableProps) {
                         e.stopPropagation();
                         handleDelete(job.id);
                       }}
-                      className="text-red-400 hover:text-red-300 transition-colors"
+                      className="transition-colors hover:opacity-80"
+                      style={{ color: '#E5484D' }}
                     >
                       Delete
                     </button>

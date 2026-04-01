@@ -810,7 +810,7 @@ export default function GoogleMapsScraperPage() {
           }`}></div>
           <div>
             <p className={`text-sm font-medium ${
-              healthStatus?.apify_api === "connected" ? "text-green-400" : "text-red-400"
+              healthStatus?.apify_api === "connected" ? "text-[#22c55e]" : "text-red-400"
             }`}>
               {healthStatus?.apify_api === "connected" ? "Apify API Connected" : "Apify API Disconnected"}
             </p>
@@ -854,7 +854,7 @@ export default function GoogleMapsScraperPage() {
                     {previewData.rows.map((row, idx) => (
                       <tr key={idx} className="hover:bg-dashboard-card/30">
                         {previewData.columns.map((col) => (
-                          <td key={col} className={`px-4 py-2 text-sm whitespace-nowrap max-w-[200px] truncate ${col === 'website' ? row[col] ? 'text-blue-400' : 'text-dashboard-text-muted' : col === 'phone' ? row[col] ? 'text-green-400' : 'text-dashboard-text-muted' : 'text-dashboard-text'}`} title={row[col] || '-'}>{row[col] || '-'}</td>
+                          <td key={col} className={`px-4 py-2 text-sm whitespace-nowrap max-w-[200px] truncate ${col === 'website' ? row[col] ? 'text-blue-400' : 'text-dashboard-text-muted' : col === 'phone' ? row[col] ? 'text-[#22c55e]' : 'text-dashboard-text-muted' : 'text-dashboard-text'}`} title={row[col] || '-'}</td>
                         ))}
                       </tr>
                     ))}
@@ -1205,7 +1205,7 @@ export default function GoogleMapsScraperPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text">{order.job_name || order.id.slice(0, 8)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                       <div>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${order.scrape_mode === "full_state" ? "bg-blue-500/20 text-blue-400" : "bg-green-500/20 text-green-400"}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${order.scrape_mode === "full_state" ? "bg-blue-500/20 text-blue-400" : "bg-[#22c55e]/20 text-[#22c55e]"}`}>
                           {order.scrape_mode === "full_state" ? "Full State" : "Single City"}
                         </span>
                         <p className="mt-1 text-xs">{order.states?.join(", ") || "-"}{order.city ? `, ${order.city}` : ''}</p>
@@ -1213,7 +1213,7 @@ export default function GoogleMapsScraperPage() {
                     </td>
                     <td className="px-6 py-4 text-sm text-dashboard-text max-w-[150px] truncate">{order.search_term}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${order.status === "completed" ? "bg-green-500/20 text-green-400" : order.status === "processing" ? "bg-yellow-500/20 text-yellow-400" : order.status === "pending" ? "bg-blue-500/20 text-blue-400" : order.status === "failed" ? "bg-red-500/20 text-red-400" : "bg-gray-500/20 text-gray-400"}`}>
+                      <span className={`text-xs font-medium ${order.status === "completed" ? "text-[#22c55e]" : order.status === "processing" ? "text-yellow-400" : order.status === "pending" ? "text-blue-400" : order.status === "failed" ? "text-red-400" : "text-dashboard-text-muted"}`}>
                         {order.status}
                       </span>
                     </td>
@@ -1221,7 +1221,7 @@ export default function GoogleMapsScraperPage() {
                       {order.status === "completed" ? (
                         <div className="flex items-center gap-2">
                           <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                          <span className="text-green-400">{order.results_count.toLocaleString()} results</span>
+                          <span className="text-[#22c55e]">{order.results_count.toLocaleString()} results</span>
                         </div>
                       ) : order.status === "failed" ? (
                         <div className="flex flex-col gap-1">
