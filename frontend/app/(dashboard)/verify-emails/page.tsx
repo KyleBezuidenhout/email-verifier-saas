@@ -408,7 +408,7 @@ export default function VerifyEmailsPage() {
                 <button
                   onClick={handleUpload}
                   disabled={uploading || !isMappingValid}
-                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                  className="px-4 py-2 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                   title={!isMappingValid ? "Please map the email column first" : ""}
                 >
                   {uploading && <LoadingSpinner size="sm" />}

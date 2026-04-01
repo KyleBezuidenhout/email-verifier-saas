@@ -234,8 +234,7 @@ export function RegisterForm() {
       <button
         type="submit"
         disabled={loading || !acceptTerms}
-        className="w-full bg-[#0099FF] text-white py-2 px-4 rounded-lg hover:bg-[#0099FF]/90 focus:outline-none focus:ring-2 focus:ring-[#0099FF] focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-all"
-        style={{ boxShadow: '0 0 20px rgba(0, 153, 255, 0.2)' }}
+        className="px-4 py-2 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
       >
         {loading ? <LoadingSpinner size="sm" /> : "Create account"}
       </button>
