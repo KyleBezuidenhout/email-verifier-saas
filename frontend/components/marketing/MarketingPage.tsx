@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import Script from "next/script";
 import { LandingHeader } from "./LandingHeader";
 import { LandingFooter } from "./LandingFooter";
 import { IntegrationsShowcase } from "./IntegrationsShowcase";
@@ -164,6 +165,15 @@ const MAX_AMOUNT = 500;
 
 const faqItems = [
   {
+    question: "Do I need a LinkedIn Sales Navigator Account?",
+    answer: (
+      <>
+        <p className="mb-4">Yes - Sales Navigator is required to use BillionVerifier&apos;s scraping feature.</p>
+        <p>If you don&apos;t have one yet, contact us at support@billionverifier.io and we&apos;ll share an exclusive 75% discount to get you set up.</p>
+      </>
+    ),
+  },
+  {
     question: "What data fields are returned when I scrape a Sales Nav profile?",
     answer: (
       <>
@@ -172,15 +182,6 @@ const faqItems = [
         <p className="mb-4">First name, Last name, About, Current position, Position description, LinkedIn URL, LinkedIn ID, Location</p>
         <p className="font-semibold text-landing-heading mb-2">Company:</p>
         <p>Company name, Company LinkedIn URL, Company website, Company description, Specialities/keywords, Employee count, Industry, Year founded, HQ location, Company LinkedIn ID</p>
-      </>
-    ),
-  },
-  {
-    question: "Do I need a LinkedIn Sales Navigator Account?",
-    answer: (
-      <>
-        <p className="mb-4">Yes - Sales Navigator is required to use BillionVerifier&apos;s scraping feature.</p>
-        <p>If you don&apos;t have one yet, contact us at support@billionverifier.io and we&apos;ll share an exclusive 75% discount to get you set up.</p>
       </>
     ),
   },
@@ -731,9 +732,30 @@ export function MarketingPage() {
         {/* SECTION 4: Integrations Showcase */}
         <IntegrationsShowcase />
 
+        {/* CTA: Schedule onboarding call */}
+        <section className="bg-black py-16 relative">
+          <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
+            <div className="text-center">
+              <h3 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-[1.1] tracking-tight mb-6">Have More Questions?</h3>
+              <p className="text-lg text-zinc-400 mb-8">
+                Schedule an onboarding call with our team
+              </p>
+              <div
+                className="calendly-inline-widget rounded-lg overflow-hidden mx-auto"
+                data-url="https://calendly.com/billionverifier-support/30min?hide_event_type_details=1&hide_gdpr_banner=1&background_color=f0f4f7&primary_color=0099ff"
+                style={{ minWidth: "320px", height: "700px", maxWidth: "800px" }}
+              />
+              <Script
+                src="https://assets.calendly.com/assets/external/widget.js"
+                strategy="afterInteractive"
+              />
+            </div>
+          </div>
+        </section>
+
         {/* SECTION 5: FAQ */}
         <section className="bg-black py-24 lg:py-32 relative">
-          <div className="relative max-w-3xl mx-auto px-6 lg:px-8">
+          <div className="relative max-w-[90rem] mx-auto px-4 lg:px-6">
             {/* Section Header */}
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-[1.1] tracking-tight mb-6">
@@ -746,7 +768,7 @@ export function MarketingPage() {
             </div>
 
             {/* FAQ Items */}
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {faqItems.map((item, index) => (
                 <div
                   key={index}
@@ -758,7 +780,7 @@ export function MarketingPage() {
                 >
                   <button
                     onClick={() => toggleFaq(index)}
-                    className="w-full flex items-center justify-between p-6 text-left"
+                    className="w-full flex items-center justify-between py-4 px-5 text-left"
                   >
                     <span className="text-lg font-semibold text-white pr-4">
                       {item.question}
@@ -782,7 +804,7 @@ export function MarketingPage() {
                       openFaqIndex === index ? "max-h-[600px]" : "max-h-0"
                     }`}
                   >
-                    <div className="px-6 pb-6 text-zinc-300 leading-relaxed">
+                    <div className="px-5 pb-4 text-zinc-300 leading-relaxed">
                       {item.answer}
                     </div>
                   </div>

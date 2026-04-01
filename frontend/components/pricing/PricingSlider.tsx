@@ -25,7 +25,7 @@ function buildFeatures(plan: PlanDef): string[] {
     features.push("5,000,000+ Sales Navigator Profiles");
     features.push("Uncapped Enrichment & Verification");
     features.push("Custom pricing per 1,000 profiles");
-    features.push(plan.support);
+    features.push("Priority support");
   } else {
     features.push(`${formatSnLabel(plan.snLabel!)} Sales Navigator Profiles`);
     features.push("Uncapped Enrichment & Verification");
@@ -112,7 +112,7 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
             }
           `}</style>
           <div className="flex justify-between text-xs text-dashboard-text-muted mt-1 px-1">
-            <span>1k</span>
+            <span>5k</span>
             <span>50k</span>
             <span>100k</span>
             <span>200k</span>
@@ -240,19 +240,25 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
             {/* CTA */}
             {isCustom ? (
               <a
-                href={CUSTOM_PLAN.ctaHref}
+                href="https://calendly.com/billionverifier-support/30min"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block py-3.5 px-6 font-semibold text-center rounded-xl bg-dashboard-accent text-white hover:bg-dashboard-accent/90 transition-all shadow-lg shadow-dashboard-accent/20"
+                className="inline-flex items-center gap-2 bg-landing-accent text-landing-bg px-6 py-3 font-semibold text-sm tracking-wide glow-accent hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
               >
                 Book a Call
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
               </a>
             ) : (
               <Link
                 href={variant === "dashboard" ? "/get-credits" : selectedPlan.ctaHref}
-                className="inline-block py-3.5 px-6 font-semibold text-center rounded-xl transition-all bg-dashboard-accent text-white hover:bg-dashboard-accent/90 shadow-lg shadow-dashboard-accent/20"
+                className="inline-flex items-center gap-2 bg-landing-accent text-landing-bg px-6 py-3 font-semibold text-sm tracking-wide glow-accent hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
               >
                 {selectedPlan.id === "trial" ? "Get Free Credits" : selectedPlan.cta}
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
               </Link>
             )}
           </div>

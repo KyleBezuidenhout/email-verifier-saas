@@ -184,20 +184,7 @@ export function IntegrationsShowcase() {
   const centerY = 200;
 
   return (
-    <section className="py-24 lg:py-32 relative overflow-hidden">
-      {/* Pitch black gridded background */}
-      <div 
-        className="absolute inset-0"
-        style={{
-          backgroundColor: "#000000",
-          backgroundImage: `
-            linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)
-          `,
-          backgroundSize: "60px 60px",
-        }}
-      />
-      
+    <section className="py-24 lg:py-32 relative overflow-hidden bg-black">
       {/* Subtle gradient overlay for depth */}
       <div 
         className="absolute inset-0 pointer-events-none"
@@ -221,7 +208,7 @@ export function IntegrationsShowcase() {
             Single-Step <span className="text-landing-accent">Integration</span>
           </h2>
           <p className="text-lg md:text-xl text-landing-muted max-w-2xl mx-auto leading-relaxed">
-            Seamlessly integrate With All Your Favorite Tools
+            Integrate With All Your Favorite Tools
           </p>
         </div>
 
