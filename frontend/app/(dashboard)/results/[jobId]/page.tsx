@@ -164,8 +164,8 @@ export default function ResultsPage() {
     ? Math.round((new Date(job.completed_at).getTime() - new Date(job.created_at).getTime()) / 1000 / 60)
     : 0;
 
-  // Limit preview to 25 rows for performance
-  const PREVIEW_LIMIT = 25;
+  // Limit preview to 10 rows for performance
+  const PREVIEW_LIMIT = 10;
   const previewLeads = filteredLeads.slice(0, PREVIEW_LIMIT);
   const hasMoreLeads = filteredLeads.length > PREVIEW_LIMIT;
 

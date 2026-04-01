@@ -22,8 +22,9 @@ export default function FindValidEmailsPage() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get("jobId");
   
-  // Upload mode toggle
-  const [uploadMode, setUploadMode] = useState<'file' | 'single'>('file');
+  // Show both single and file upload sections (single first by default)
+  const [showSingleSection] = useState(true);
+  const [showFileSection] = useState(true);
 
   // File upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -289,220 +290,187 @@ export default function FindValidEmailsPage() {
         </div>
       )}
 
-      {/* Upload Mode Toggle */}
-      <div className="mb-4 flex items-center gap-2">
-        <button
-          onClick={() => {
-            setUploadMode('file');
-            setUploadError("");
-            setSingleResult(null);
-          }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            uploadMode === 'file'
-              ? 'bg-dashboard-accent text-white'
-              : 'bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text'
-          }`}
-        >
-          File Upload
-        </button>
-        <button
-          onClick={() => {
-            setUploadMode('single');
-            setUploadError("");
-            setSelectedFile(null);
-          }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            uploadMode === 'single'
-              ? 'bg-dashboard-accent text-white'
-              : 'bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text'
-          }`}
-        >
-          Single Email
-        </button>
-      </div>
+      {/* Single Email Enrichment Section */}
+      {showSingleSection && (
+        <div className="mb-8 glass-card p-6 space-y-6">
+          {uploadError && !selectedFile && (
+            <div className="badge-error px-4 py-3 rounded-lg text-sm">
+              {uploadError}
+            </div>
+          )}
 
-      {/* Upload Section */}
-      <div className="mb-8 glass-card p-6 space-y-6">
-        {uploadMode === 'file' ? (
-          // File Upload Mode
-          <>
-            {uploadError && (
-              <div className="badge-error px-4 py-3 rounded-lg text-sm">
-                {uploadError}
+          <div className="space-y-4">
+            <div className="flex items-end gap-3">
+              <div className="flex-[2]">
+                <label className="block text-sm font-medium text-dashboard-text mb-2">
+                  Website <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={singleWebsite}
+                  onChange={(e) => setSingleWebsite(e.target.value)}
+                  placeholder="e.g., example.com"
+                  className="apple-input w-full"
+                />
               </div>
-            )}
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-dashboard-text mb-2">
+                  First Name <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={singleFirstName}
+                  onChange={(e) => setSingleFirstName(e.target.value)}
+                  placeholder="e.g., John"
+                  className="apple-input w-full"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-dashboard-text mb-2">
+                  Last Name <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={singleLastName}
+                  onChange={(e) => setSingleLastName(e.target.value)}
+                  placeholder="e.g., Smith"
+                  className="apple-input w-full"
+                />
+              </div>
+              <button
+                onClick={handleSingleEnrich}
+                disabled={singleLoading || !singleWebsite.trim()}
+                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 h-[42px]"
+              >
+                {singleLoading && <LoadingSpinner size="sm" />}
+                <span>{singleLoading ? "Enriching..." : "Find Email"}</span>
+              </button>
+            </div>
+          </div>
 
-            <DropZone
-              onFileSelect={setSelectedFile}
-              selectedFile={selectedFile}
-            />
-
-            {selectedFile && (
-              <>
-                <div className="border-t border-dashboard-border pt-6">
-                  <h3 className="text-lg font-medium text-dashboard-text mb-4">
-                    File Information
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-dashboard-text-muted">File name:</span>
-                      <span className="ml-2 font-medium text-dashboard-text">{selectedFile.name}</span>
-                    </div>
-                    <div>
-                      <span className="text-dashboard-text-muted">File size:</span>
-                      <span className="ml-2 font-medium text-dashboard-text">
-                        {formatFileSize(selectedFile.size)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
-
-                {/* Job Name Input - Optional */}
-                <div className="border-t border-dashboard-border pt-6">
-                  <h3 className="text-lg font-medium text-dashboard-text mb-4">
-                    Job Name (Optional)
-                  </h3>
-                  <input
-                    type="text"
-                    value={jobName}
-                    onChange={(e) => setJobName(e.target.value)}
-                    placeholder="e.g., Q4 Tech Leads, Marketing Campaign Jan 2024"
-                    className="apple-input w-full"
-                  />
-                  <p className="mt-2 text-xs text-dashboard-text-muted">
-                    Give your job a descriptive name to easily identify it later
-                  </p>
-                </div>
-
-                <div className="flex justify-end space-x-4 pt-6 border-t border-dashboard-border">
+          {/* Single Enrichment Result */}
+          {singleResult && (
+            <div className="border-t border-dashboard-border pt-6">
+              <h3 className="text-lg font-medium text-dashboard-text mb-4">
+                Result
+              </h3>
+              <div className="glass-card-hover p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-dashboard-text-muted">Email:</span>
                   <button
-                    onClick={() => {
-                      setSelectedFile(null);
-                      setColumnMapping(null);
-                      setIsMappingValid(false);
-                      setJobName("");
-                      setUploadError("");
-                    }}
-                    className="btn-secondary"
-                    disabled={uploading}
+                    onClick={() => handleCopyEmail(singleResult.email)}
+                    className="flex items-center gap-2 font-medium text-dashboard-text cursor-pointer"
+                    title="Click to copy"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleUpload}
-                    disabled={uploading || !isMappingValid}
-                    className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                    title={!isMappingValid ? "Please map all required columns first" : ""}
-                  >
-                    {uploading && <LoadingSpinner size="sm" />}
-                    <span>{uploading ? "Uploading..." : "Upload & Verify"}</span>
+                    {singleResult.email}
+                    {copiedEmail ? (
+                      <svg className="w-4 h-4 text-dashboard-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    )}
                   </button>
                 </div>
-              </>
-            )}
-          </>
-        ) : (
-          // Single Enrichment Mode
-          <>
-            {uploadError && (
-              <div className="badge-error px-4 py-3 rounded-lg text-sm">
-                {uploadError}
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div className="flex items-end gap-3">
-                <div className="flex-[2]">
-                  <label className="block text-sm font-medium text-dashboard-text mb-2">
-                    Website <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={singleWebsite}
-                    onChange={(e) => setSingleWebsite(e.target.value)}
-                    placeholder="e.g., example.com"
-                    className="apple-input w-full"
-                  />
+                <div className="flex items-center gap-2">
+                  <span className="text-dashboard-text-muted">Status:</span>
+                  <span className={`font-medium ${
+                    singleResult.status === 'valid' ? 'text-[#22c55e]' :
+                    singleResult.status === 'catchall' ? 'text-yellow-400' :
+                    'text-red-400'
+                  }`}>
+                    {singleResult.status}
+                  </span>
                 </div>
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-dashboard-text mb-2">
-                    First Name <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={singleFirstName}
-                    onChange={(e) => setSingleFirstName(e.target.value)}
-                    placeholder="e.g., John"
-                    className="apple-input w-full"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-dashboard-text mb-2">
-                    Last Name <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={singleLastName}
-                    onChange={(e) => setSingleLastName(e.target.value)}
-                    placeholder="e.g., Smith"
-                    className="apple-input w-full"
-                  />
-                </div>
-                <button
-                  onClick={handleSingleEnrich}
-                  disabled={singleLoading || !singleWebsite.trim()}
-                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 h-[42px]"
-                >
-                  {singleLoading && <LoadingSpinner size="sm" />}
-                  <span>{singleLoading ? "Enriching..." : "Find Email"}</span>
-                </button>
               </div>
             </div>
+          )}
+        </div>
+      )}
 
-            {/* Single Enrichment Result */}
-            {singleResult && (
+      {/* File Upload Section */}
+      {showFileSection && (
+        <div className="mb-8 glass-card p-6 space-y-6">
+          {uploadError && selectedFile && (
+            <div className="badge-error px-4 py-3 rounded-lg text-sm">
+              {uploadError}
+            </div>
+          )}
+
+          <DropZone
+            onFileSelect={setSelectedFile}
+            selectedFile={selectedFile}
+          />
+
+          {selectedFile && (
+            <>
               <div className="border-t border-dashboard-border pt-6">
                 <h3 className="text-lg font-medium text-dashboard-text mb-4">
-                  Result
+                  File Information
                 </h3>
-                <div className="glass-card-hover p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-dashboard-text-muted">Email:</span>
-                    <button
-                      onClick={() => handleCopyEmail(singleResult.email)}
-                      className="flex items-center gap-2 font-medium text-dashboard-text cursor-pointer"
-                      title="Click to copy"
-                    >
-                      {singleResult.email}
-                      {copiedEmail ? (
-                        <svg className="w-4 h-4 text-dashboard-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        <svg className="w-4 h-4 text-dashboard-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      )}
-                    </button>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-dashboard-text-muted">File name:</span>
+                    <span className="ml-2 font-medium text-dashboard-text">{selectedFile.name}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-dashboard-text-muted">Status:</span>
-                    <span className={`font-medium ${
-                      singleResult.status === 'valid' ? 'text-[#22c55e]' :
-                      singleResult.status === 'catchall' ? 'text-yellow-400' :
-                      'text-red-400'
-                    }`}>
-                      {singleResult.status}
+                  <div>
+                    <span className="text-dashboard-text-muted">File size:</span>
+                    <span className="ml-2 font-medium text-dashboard-text">
+                      {formatFileSize(selectedFile.size)}
                     </span>
                   </div>
                 </div>
               </div>
-            )}
-          </>
-        )}
-      </div>
+
+              <FilePreview file={selectedFile} onMappingChange={handleMappingChange} />
+
+              {/* Job Name Input - Optional */}
+              <div className="border-t border-dashboard-border pt-6">
+                <h3 className="text-lg font-medium text-dashboard-text mb-4">
+                  Job Name (Optional)
+                </h3>
+                <input
+                  type="text"
+                  value={jobName}
+                  onChange={(e) => setJobName(e.target.value)}
+                  placeholder="e.g., Q4 Tech Leads, Marketing Campaign Jan 2024"
+                  className="apple-input w-full"
+                />
+                <p className="mt-2 text-xs text-dashboard-text-muted">
+                  Give your job a descriptive name to easily identify it later
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-4 pt-6 border-t border-dashboard-border">
+                <button
+                  onClick={() => {
+                    setSelectedFile(null);
+                    setColumnMapping(null);
+                    setIsMappingValid(false);
+                    setJobName("");
+                    setUploadError("");
+                  }}
+                  className="btn-secondary"
+                  disabled={uploading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpload}
+                  disabled={uploading || !isMappingValid}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                  title={!isMappingValid ? "Please map all required columns first" : ""}
+                >
+                  {uploading && <LoadingSpinner size="sm" />}
+                  <span>{uploading ? "Uploading..." : "Upload & Verify"}</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Job History */}
       <JobTable jobs={jobs} onDelete={handleDelete} onCancel={handleCancel} />
