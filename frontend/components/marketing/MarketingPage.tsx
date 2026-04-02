@@ -380,14 +380,19 @@ export function MarketingPage() {
                   alt="BillionVerifier dashboard — email verification results"
                   className="w-full block"
                 />
-                {/* Per-row email blur overlays */}
-                {[63, 72.5, 82, 91.5].map((top) => (
-                  <div
-                    key={top}
-                    className="absolute pointer-events-none backdrop-blur-[3px]"
-                    style={{ left: "43%", width: "22%", top: `${top}%`, height: "5%" }}
-                  />
-                ))}
+                {/* Per-row email blur overlays - 4 rows */}
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: "41%",
+                    width: "26%",
+                    top: "53%",
+                    height: "42%",
+                    backdropFilter: "blur(4px)",
+                    WebkitBackdropFilter: "blur(4px)",
+                    backgroundColor: "rgba(0,0,0,0.01)",
+                  }}
+                />
               </div>
               <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black to-transparent pointer-events-none" />
             </div>
