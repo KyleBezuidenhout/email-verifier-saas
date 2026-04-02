@@ -1,8 +1,10 @@
 import os
 import smtplib
 import logging
+import html
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +12,7 @@ GMAIL_USER = os.getenv("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
 APP_URL = os.getenv("FRONTEND_URL", os.getenv("APP_URL", "https://www.billionverifier.io"))
 SUPPORT_RECIPIENT = os.getenv("SUPPORT_RECIPIENT", "ben@superwave.io")
+SIGNUP_NOTIFICATION_RECIPIENT = os.getenv("SIGNUP_NOTIFICATION_RECIPIENT", SUPPORT_RECIPIENT or "ben@superwave.io")
 
 
 def send_password_reset_email(to_email: str, reset_token: str) -> bool:
@@ -198,4 +201,73 @@ def send_support_email(
         return True
     except Exception as e:
         logger.error(f"Failed to send support email from {user_email}: {e}")
+        return False
+
+
+def send_new_signup_notification(
+    user_email: str,
+    full_name: Optional[str] = None,
+    company_name: Optional[str] = None,
+    company_website: Optional[str] = None,
+    referral_source: Optional[str] = None,
+    daily_cold_emails: Optional[int] = None,
+    oauth_provider: Optional[str] = None,
+) -> bool:
+    """Notify backend team whenever a brand-new user account is created."""
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logger.warning("Gmail credentials not configured — cannot send signup notification email")
+        return False
+
+    safe_email = html.escape(user_email or "")
+    safe_full_name = html.escape(full_name or "Not provided")
+    safe_company_name = html.escape(company_name or "Not provided")
+    safe_company_website = html.escape(company_website or "Not provided")
+    safe_referral_source = html.escape(referral_source or "Not provided")
+    safe_daily_cold_emails = html.escape(str(daily_cold_emails) if daily_cold_emails is not None else "Not provided")
+    signup_method = f"OAuth ({oauth_provider})" if oauth_provider else "Email + Password"
+    safe_signup_method = html.escape(signup_method)
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+            .container {{ max-width: 560px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
+            h1 {{ color: #ffffff; font-size: 22px; margin: 0 0 24px; }}
+            .meta-row {{ margin-bottom: 10px; font-size: 14px; color: #ccc; }}
+            .meta-label {{ color: #666; margin-right: 8px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>New Billion Verifier Signup</h1>
+            <div class="meta-row"><span class="meta-label">Email:</span>{safe_email}</div>
+            <div class="meta-row"><span class="meta-label">Full name:</span>{safe_full_name}</div>
+            <div class="meta-row"><span class="meta-label">Company:</span>{safe_company_name}</div>
+            <div class="meta-row"><span class="meta-label">Website:</span>{safe_company_website}</div>
+            <div class="meta-row"><span class="meta-label">Referral source:</span>{safe_referral_source}</div>
+            <div class="meta-row"><span class="meta-label">Daily cold emails:</span>{safe_daily_cold_emails}</div>
+            <div class="meta-row"><span class="meta-label">Signup method:</span>{safe_signup_method}</div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"New client signup: {user_email}"
+        msg["From"] = f'"Billion Verifier" <{GMAIL_USER}>'
+        msg["To"] = SIGNUP_NOTIFICATION_RECIPIENT
+        msg["Reply-To"] = user_email
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, SIGNUP_NOTIFICATION_RECIPIENT, msg.as_string())
+
+        logger.info(f"Signup notification email sent for {user_email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send signup notification email for {user_email}: {e}")
         return False

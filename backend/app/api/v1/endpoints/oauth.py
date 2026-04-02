@@ -21,6 +21,7 @@ from app.schemas.auth import (
     BLOCKED_EMAIL_DOMAINS,
 )
 from app.api.v1.endpoints.auth import _build_user_response
+from app.services.email_service import send_new_signup_notification
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +207,15 @@ async def oauth_callback(provider: str, body: OAuthCallbackRequest, db: Session 
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    send_new_signup_notification(
+        user_email=new_user.email,
+        full_name=new_user.full_name,
+        company_name=new_user.company_name,
+        company_website=new_user.company_website,
+        referral_source=new_user.referral_source,
+        daily_cold_emails=new_user.daily_cold_emails,
+        oauth_provider=new_user.oauth_provider,
+    )
 
     access_token = create_access_token(
         data={"sub": str(new_user.id)},

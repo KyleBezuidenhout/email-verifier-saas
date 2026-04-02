@@ -15,7 +15,11 @@ from app.schemas.auth import (
     ForgotPasswordResponse,
 )
 from app.api.dependencies import get_current_user
-from app.services.email_service import send_password_reset_email, send_verification_email
+from app.services.email_service import (
+    send_password_reset_email,
+    send_verification_email,
+    send_new_signup_notification,
+)
 
 router = APIRouter()
 security = HTTPBearer()
@@ -95,6 +99,15 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     db.refresh(new_user)
 
     send_verification_email(new_user.email, token)
+    send_new_signup_notification(
+        user_email=new_user.email,
+        full_name=new_user.full_name,
+        company_name=new_user.company_name,
+        company_website=new_user.company_website,
+        referral_source=new_user.referral_source,
+        daily_cold_emails=new_user.daily_cold_emails,
+        oauth_provider=getattr(new_user, "oauth_provider", None),
+    )
 
     return RegisterPendingResponse(
         message="A verification link has been sent to your email address.",
