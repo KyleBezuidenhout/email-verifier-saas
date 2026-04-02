@@ -120,7 +120,8 @@ def clean_name_field(value: str) -> str:
     2. Remove emojis
     3. Remove leading special characters (@, ", etc.)
     4. If contains comma, take only the part before the comma
-    5. Strip whitespace
+    5. Keep only the first whitespace-delimited token
+    6. Strip whitespace
     """
     if not value:
         return ''
@@ -143,6 +144,10 @@ def clean_name_field(value: str) -> str:
     
     # Strip whitespace
     cleaned = cleaned.strip()
+
+    # Keep only the first token (hyphenated names stay intact)
+    if cleaned:
+        cleaned = cleaned.split()[0]
     
     return cleaned
 
