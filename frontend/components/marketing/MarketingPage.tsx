@@ -329,7 +329,7 @@ export function MarketingPage() {
           <div className="relative flex-1 flex flex-col items-center max-w-6xl mx-auto px-6 lg:px-8 pt-16 lg:pt-24 pb-0">
             <div className="text-center animate-fade-in-up mb-12">
               {/* Badge */}
-              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border border-landing-accent/30 bg-landing-accent/10 mb-6">
+              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border border-landing-accent/30 bg-landing-accent/10 mb-10">
                 <span className="px-2 py-0.5 rounded-full bg-landing-accent/20 text-landing-accent font-semibold text-xs">
                   Built By
                 </span>
@@ -338,16 +338,14 @@ export function MarketingPage() {
                 </span>
               </div>
 
-              <h1 className="text-4xl md:text-5xl lg:text-[64px] font-bold text-landing-heading leading-[1.08] tracking-tight mb-6">
-                Stop Renting Leads.
+              <h1 className="text-3xl md:text-4xl lg:text-[56px] font-bold text-landing-heading leading-[1.08] tracking-tight mb-10">
+                Scrape, Enrich & Verify B2B Leads.
                 <br />
-                <span className="text-landing-accent">
-                  Start Owning Your Pipeline.
-                </span>
+                <span className="text-landing-accent mt-4 block">All in One Place.</span>
               </h1>
 
-              <p className="text-lg md:text-xl text-landing-text leading-relaxed mb-10 max-w-2xl mx-auto">
-                Scraping, Enrichment, and Multi-Layer Verification In a Dedicated Engine That&apos;s Exclusively Yours.
+              <p className="text-lg md:text-xl text-landing-text leading-relaxed mb-14 max-w-2xl mx-auto">
+                Stop duct-taping five tools together. We provide outbound teams with email & company data from the world&apos;s largest B2B database.
               </p>
 
               <div className="flex items-center justify-center gap-4 flex-wrap">
@@ -402,7 +400,7 @@ export function MarketingPage() {
         </section>
 
         {/* Live Stats Counter */}
-        <section className="pt-16 lg:pt-20 pb-16 lg:pb-20 bg-black border-t border-b border-white/[0.06] flex items-center justify-center min-h-[140px]">
+        <section className="pt-10 lg:pt-12 pb-10 lg:pb-12 bg-black border-t border-b border-white/[0.06] flex items-center justify-center min-h-[140px]">
           <div className="max-w-5xl mx-auto px-6 lg:px-8 w-full">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-10 lg:gap-16 text-center items-center">
               <div className="flex flex-col items-center gap-2">
@@ -439,7 +437,7 @@ export function MarketingPage() {
             {/* Section Header */}
             <div className="text-center mb-16 lg:mb-20">
               <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-                Why Teams Switch to BillionVerifier
+                Why Teams Switch to <span className="text-landing-accent">BillionVerifier</span>
               </h2>
             </div>
 
@@ -453,7 +451,7 @@ export function MarketingPage() {
                 <div className="relative">
                   {/* Header */}
                   <h3 className="text-lg lg:text-xl font-bold text-white mb-2 tracking-tight">
-                    Quality Guarantee
+                    Bounce Rate Guarantee
                   </h3>
                   
                   {/* Description */}
@@ -506,7 +504,7 @@ export function MarketingPage() {
         <section className="relative bg-black">
           <div className="relative w-full px-6 lg:px-8 py-24 lg:py-32">
             {/* Section Header */}
-            <div className="text-center mb-16 lg:mb-24 animate-fade-in">
+            <div className="text-center mb-6 lg:mb-8 animate-fade-in">
               <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-landing-heading leading-[1.15] tracking-tight">
                 <span className="block">Built by Enterprise Senders</span>
                 <span className="block">
