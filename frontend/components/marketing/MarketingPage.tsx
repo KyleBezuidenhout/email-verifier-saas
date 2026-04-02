@@ -432,7 +432,7 @@ export function MarketingPage() {
         </section>
 
         {/* Bento Grid - Key Value Props */}
-        <section className="bg-black pt-10 lg:pt-12 pb-8 lg:pb-12 relative overflow-hidden">
+        <section className="bg-black pt-16 lg:pt-20 pb-8 lg:pb-12 relative overflow-hidden">
           <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
             {/* Section Header */}
             <div className="text-center mb-16 lg:mb-20">
@@ -681,17 +681,16 @@ export function MarketingPage() {
               <img
                 src="https://www.floqer.com/logo-dark-wb.svg"
                 alt="Floqer"
-                className="h-full w-auto object-contain grayscale brightness-200 opacity-80"
+                className="h-full w-auto object-contain grayscale opacity-100"
+                style={{ filter: 'grayscale(100%) brightness(400%)' }}
               />
             </div>
 
-            {/* Logo 2 - PlusVibe */}
+            {/* Logo 2 - Shield Funding */}
             <div className="flex items-center justify-center shrink-0 h-7 lg:h-9 mt-12">
-              <img
-                src="https://app.plusvibe.ai/v2/images/logo.svg"
-                alt="PlusVibe"
-                className="h-full w-auto object-contain grayscale brightness-150 opacity-70"
-              />
+              <span className="text-white font-bold text-lg lg:text-xl tracking-wide whitespace-nowrap">
+                SHIELD FUNDING
+              </span>
             </div>
 
             {/* Logo 3 - EPC VIP */}
@@ -699,7 +698,8 @@ export function MarketingPage() {
               <img
                 src="https://www.epcvip.com/build/images/epcvip_v2x2.png"
                 alt="EPC VIP"
-                className="h-full w-auto object-contain brightness-0 invert opacity-70"
+                className="h-full w-auto object-contain opacity-100"
+                style={{ filter: 'brightness(0) invert(1) brightness(150%)' }}
               />
             </div>
 
@@ -708,7 +708,8 @@ export function MarketingPage() {
               <img
                 src="https://www.trygravity.ai/assets/Gravity%20lockup%20white%20on%20black%20libre%20baskerville-0pJUGtNY.png"
                 alt="Gravity"
-                className="h-full w-auto object-contain brightness-0 invert opacity-70"
+                className="h-full w-auto object-contain opacity-100"
+                style={{ filter: 'brightness(0) invert(1) brightness(150%)' }}
               />
             </div>
           </div>

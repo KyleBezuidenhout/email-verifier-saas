@@ -159,7 +159,7 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
             0 0 0 1px rgba(255,255,255,0.05),
             inset 0 1px 0 rgba(255,255,255,0.15),
             inset 0 -1px 0 rgba(0,0,0,0.2),
-            0 8px 32px rgba(0,153,255,0.1)
+            0 4px 16px rgba(0,153,255,0.05)
           `,
           transform: 'translateZ(0)',
         }}
@@ -176,7 +176,7 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
         <div
           className="absolute -top-20 -right-20 w-60 h-60 pointer-events-none"
           style={{
-            background: 'radial-gradient(circle, rgba(0,153,255,0.25) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(0,153,255,0.12) 0%, transparent 70%)',
             filter: 'blur(40px)',
           }}
         />
