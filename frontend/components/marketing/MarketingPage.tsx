@@ -139,21 +139,21 @@ const howItWorksSticky = [
     number: "01",
     headline: "Filter For Your ICP",
     description:
-      "Filter by industry, title, company size, location, and dozens more - to instantly surface your ideal prospects from a database of 1.3 billion B2B profiles.",
+      "Instantly surface your ideal prospects from a database of 1.3 billion B2B profiles.",
     image: "/images/step-1-screenshot.png",
   },
   {
     number: "02",
     headline: "Extract Your Target Profiles",
     description:
-      "Submit your Sales Nav search URL and session cookie, and we'll extract your entire search at 1,000 profiles per 6 minutes.",
+      "Extract your entire search at 1,000 profiles per 6 minutes.",
     image: "/images/step-2-cookie.png",
   },
   {
     number: "03",
     headline: "Find Valid Emails",
     description:
-      "Upload your profiles and we'll find and verify over 20,000 emails per hour. We guarantee a sub 1% hard bounce rate on all emails marked as valid.",
+      "Enrich your leads with valid emails at over 20,000 emails per hour.",
     image: "/images/step-3-screenshot.png",
   },
 ];
@@ -242,7 +242,7 @@ const faqItems = [
   },
   {
     question: "Does BillionVerifier offer a Guarantee?",
-    answer: "Yes, we guarantee a sub 1% hard bounce rate on any emails marked as \"valid\".",
+    answer: "Yes, we guarantee a sub 2% hard bounce rate on any emails marked as \"valid\".",
   },
 ];
 
@@ -450,13 +450,13 @@ export function MarketingPage() {
                 
                 <div className="relative">
                   {/* Header */}
-                  <h3 className="text-lg lg:text-xl font-bold text-white mb-2 tracking-tight">
-                    Bounce Rate Guarantee
+                  <h3 className="text-lg lg:text-xl font-bold text-white mb-2 tracking-tight text-center">
+                    &lt;2%
                   </h3>
                   
                   {/* Description */}
                   <p className="text-white/70 text-sm leading-relaxed">
-                    We Guarantee a Sub 1% Hard Bounce Rate on All Emails Marked as Valid.
+                    Bounce rate guarantee, or we refund you credits.
                   </p>
                 </div>
               </div>
@@ -468,7 +468,7 @@ export function MarketingPage() {
                 
                 <div className="relative">
                   {/* Header */}
-                  <h3 className="text-lg lg:text-xl font-bold text-white mb-2 tracking-tight">
+                  <h3 className="text-lg lg:text-xl font-bold text-white mb-2 tracking-tight text-center">
                     Credits Never Expire
                   </h3>
                   
@@ -486,13 +486,13 @@ export function MarketingPage() {
                 
                 <div className="relative">
                   {/* Header */}
-                  <h3 className="text-lg lg:text-xl font-bold text-white mb-2 tracking-tight">
-                    1.3 Billion B2B Profiles
+                  <h3 className="text-lg lg:text-xl font-bold text-white mb-2 tracking-tight text-center">
+                    1.3 Billion Profiles
                   </h3>
                   
                   {/* Description */}
                   <p className="text-white/70 text-sm leading-relaxed">
-                    Filter & Extract Profile From The World&apos;s Largest B2B Database
+                    Extract Profile From The World&apos;s Largest B2B Database
                   </p>
                 </div>
               </div>
