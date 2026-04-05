@@ -91,24 +91,6 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    name: "Get More Credits",
-    href: "/get-credits",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-      </svg>
-    ),
-  },
-  {
-    name: "Payment History",
-    href: "/payment-history",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-      </svg>
-    ),
-  },
-  {
     name: "Support",
     href: "/support",
     icon: (
@@ -117,11 +99,24 @@ const navItems: NavItem[] = [
       </svg>
     ),
   },
+  {
+    name: "Get More Credits",
+    href: "/get-credits",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+      </svg>
+    ),
+  },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const bottomNavNames = new Set(["Support", "Get More Credits"]);
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || user?.is_admin);
+  const primaryNavItems = visibleNavItems.filter((item) => !bottomNavNames.has(item.name));
+  const bottomNavItems = visibleNavItems.filter((item) => bottomNavNames.has(item.name));
 
   // Get user initials for avatar
   const getInitials = (name?: string, email?: string) => {
@@ -137,6 +132,50 @@ export function Sidebar() {
 
   const handleLogoClick = () => {
     window.location.href = "https://www.billionverifier.io/";
+  };
+
+  const renderNavItem = (item: NavItem) => {
+    if (item.href === null) {
+      return (
+        <div
+          key={item.name}
+          className="flex items-center gap-3 px-4 py-3 rounded-lg text-dashboard-text-muted/50 cursor-not-allowed opacity-60"
+          title="Coming soon"
+        >
+          {item.icon}
+          <span className="text-sm">{item.name}</span>
+        </div>
+      );
+    }
+
+    const href = item.href;
+    const isActive = pathname === href || pathname?.startsWith(href + "/");
+
+    return (
+      <Link
+        key={href}
+        href={href}
+        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative ${
+          isActive
+            ? "bg-dashboard-accent/10 text-dashboard-accent font-medium border-l-2 border-dashboard-accent"
+            : "text-dashboard-text-muted hover:bg-dashboard-card hover:text-dashboard-text"
+        }`}
+      >
+        {item.icon}
+        <span className="text-sm">{item.name}</span>
+        {item.adminOnly && (
+          <svg
+            className="w-4 h-4 ml-auto text-dashboard-text-muted/50 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-label="Hidden from clients"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L6.59 6.59m7.532 7.532l3.29 3.29M3 3l18 18" />
+          </svg>
+        )}
+      </Link>
+    );
   };
 
   return (
@@ -166,81 +205,38 @@ export function Sidebar() {
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 p-4 space-y-1">
-          {navItems
-            .filter((item) => !item.adminOnly || user?.is_admin)
-            .map((item) => {
-            if (item.href === null) {
-              return (
-                <div
-                  key={item.name}
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-dashboard-text-muted/50 cursor-not-allowed opacity-60"
-                  title="Coming soon"
-                >
-                  {item.icon}
-                  <span className="text-sm">{item.name}</span>
-                </div>
-              );
-            }
-            
-            const href = item.href;
-            const isActive = pathname === href || pathname?.startsWith(href + "/");
-            return (
+        <nav className="flex-1 p-4 flex flex-col">
+          <div className="space-y-1">
+            {primaryNavItems.map(renderNavItem)}
+
+            {/* Admin Console - Only visible to admins */}
+            {user?.is_admin && (
               <Link
-                key={href}
-                href={href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative ${
-                  isActive
-                    ? "bg-dashboard-accent/10 text-dashboard-accent font-medium border-l-2 border-dashboard-accent"
-                    : "text-dashboard-text-muted hover:bg-dashboard-card hover:text-dashboard-text"
+                href="/admin-console"
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative mt-4 border-t border-dashboard-border pt-4 ${
+                  pathname === "/admin-console"
+                    ? "bg-red-500/10 text-red-400 font-medium border-l-2 border-red-400"
+                    : "text-red-400/70 hover:bg-red-500/10 hover:text-red-400"
                 }`}
               >
-                {item.icon}
-                <span className="text-sm">{item.name}</span>
-                {item.adminOnly && (
-                  <svg
-                    className="w-4 h-4 ml-auto text-dashboard-text-muted/50 shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    title="Hidden from clients"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L6.59 6.59m7.532 7.532l3.29 3.29M3 3l18 18" />
-                  </svg>
-                )}
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                <span className="text-sm">Admin Console</span>
               </Link>
-            );
-          })}
+            )}
+          </div>
 
-          {/* Admin Console - Only visible to admins */}
-          {user?.is_admin && (
-            <Link
-              href="/admin-console"
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative mt-4 border-t border-dashboard-border pt-4 ${
-                pathname === "/admin-console"
-                  ? "bg-red-500/10 text-red-400 font-medium border-l-2 border-red-400"
-                  : "text-red-400/70 hover:bg-red-500/10 hover:text-red-400"
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-              <span className="text-sm">Admin Console</span>
-            </Link>
-          )}
+          <div className="mt-auto pt-6 space-y-1">
+            {bottomNavItems.map(renderNavItem)}
+          </div>
         </nav>
 
         {/* Credit Balance & User Profile Section */}
         {user && (
           <div className="p-4 border-t border-dashboard-border">
-            {/* Plan & Credit Balance */}
-            <div className="mb-3 px-3 py-2 rounded-lg bg-dashboard-accent/10 border border-dashboard-accent/20 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-dashboard-text-muted">Plan</span>
-                <span className="text-xs font-semibold text-dashboard-accent capitalize">
-                  {user.plan === "trial" ? "Trial" : user.plan?.replace("_", " ") || "Trial"}
-                </span>
-              </div>
+            {/* Credit Balance */}
+            <div className="mb-3 px-3 py-2 rounded-lg bg-dashboard-accent/10 border border-dashboard-accent/20">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <svg className="w-4 h-4 text-dashboard-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">

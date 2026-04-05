@@ -3,13 +3,35 @@
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function Header() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showMenu) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+
+    const autoCloseTimer = window.setTimeout(() => {
+      setShowMenu(false);
+    }, 10000);
+
+    document.addEventListener("mousedown", handleOutsideClick);
+
+    return () => {
+      window.clearTimeout(autoCloseTimer);
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [showMenu]);
 
   const handleLogout = async () => {
     await logout();
@@ -73,7 +95,7 @@ export function Header() {
           </svg>
         </Link>
 
-        <div className="relative">
+        <div ref={menuRef} className="relative">
           <button
             onClick={() => setShowMenu(!showMenu)}
             className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-dashboard-card transition-colors"

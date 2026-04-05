@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { apiClient } from "@/lib/api";
@@ -97,14 +98,14 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-dashboard-text-muted">
                 Email
               </label>
-              <p className="mt-1 text-sm text-dashboard-text">{user?.email}</p>
+              <p className="mt-1 text-base text-dashboard-text">{user?.email}</p>
             </div>
             {user?.company_name && (
               <div>
                 <label className="block text-sm font-medium text-dashboard-text-muted">
                   Company Name
                 </label>
-                <p className="mt-1 text-sm text-dashboard-text">
+                <p className="mt-1 text-base text-dashboard-text">
                   {user.company_name}
                 </p>
               </div>
@@ -113,7 +114,7 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-dashboard-text-muted">
                 Credits
               </label>
-              <p className="mt-1 text-sm text-dashboard-text">{user?.credits || 0}</p>
+              <p className="mt-1 text-base text-dashboard-text">{user?.credits || 0}</p>
             </div>
           </div>
         </div>
@@ -162,6 +163,22 @@ export default function SettingsPage() {
               <span>Reset</span>
             </button>
           </div>
+        </div>
+
+        <div className="border-t border-dashboard-border pt-6">
+          <h2 className="text-lg font-medium text-dashboard-text mb-2">Billing</h2>
+          <p className="text-sm text-dashboard-text-muted mb-4">
+            View your invoices and payment activity.
+          </p>
+          <Link
+            href="/payment-history"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-dashboard-accent/10 text-dashboard-accent border border-dashboard-accent/20 hover:bg-dashboard-accent/20 transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            </svg>
+            <span>Payment History</span>
+          </Link>
         </div>
 
         <div className="border-t border-dashboard-border pt-6">
