@@ -143,7 +143,7 @@ def verify_webhook(body: str, headers: dict) -> dict:
     Raises Exception if verification fails.
     """
     secret = settings.WHOP_WEBHOOK_SECRET
-    wh = Webhook(base64.b64encode(secret.encode()))
+    wh = Webhook(base64.b64encode(secret.encode()).decode('ascii'))
     payload = wh.verify(body, headers)
     if isinstance(payload, str):
         payload = json.loads(payload)
