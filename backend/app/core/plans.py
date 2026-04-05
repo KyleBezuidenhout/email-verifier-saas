@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Optional
 
 PLAN_NAMES = [
-    "trial", "basic", "starter", "business", "business_plus",
+    "trial", "test", "basic", "starter", "business", "business_plus",
     "agency", "agency_plus", "enterprise", "custom",
 ]
 
@@ -26,6 +26,15 @@ PLANS = {
         "monthly_price": 0,
         "yearly_price": 0,
         "sn_label": 2000,
+        "support": "Email Support",
+    },
+    "test": {
+        "credit_price": Decimal("0.005"),
+        "sn_cost": Decimal("1"),
+        "enrichment_cost": Decimal("0"),
+        "monthly_price": 5,
+        "yearly_price": 50,
+        "sn_label": 1_000,
         "support": "Email Support",
     },
     "basic": {
@@ -133,6 +142,7 @@ TOPUP_CREDIT_RATE = Decimal("0.005")
 # Maps Whop plan_id -> (internal_plan_name, billing_interval)
 WHOP_PLAN_MAP = {
     # Monthly plans (live)
+    "plan_sb5AjBy8y7x9P":  ("test", "monthly"),
     "plan_umRQyYI3wpbHI":  ("basic", "monthly"),
     "plan_rv5pWEfhAojcc":  ("starter", "monthly"),
     "plan_MwGQg04mxi2KG":  ("business", "monthly"),
@@ -149,6 +159,8 @@ REVERSE_PLAN_MAP = {v: k for k, v in WHOP_PLAN_MAP.items()}
 # Yearly entries equal the MONTHLY amount — yearly subscribers receive
 # 12 monthly drips (one per ~30 days) rather than all credits upfront.
 PLAN_CREDITS = {
+    ("test", "monthly"):           1_000,
+    ("test", "yearly"):            1_000,
     ("basic", "monthly"):         50_000,
     ("basic", "yearly"):          50_000,
     ("starter", "monthly"):       100_000,
