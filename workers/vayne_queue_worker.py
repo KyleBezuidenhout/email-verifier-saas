@@ -15,12 +15,25 @@ Key design decisions:
   - Daily limit checks use SELECT ... FOR UPDATE to serialize per-user.
   - When all Vayne keys are daily-exhausted, orders stay queued (not failed)
     and an admin email is sent once per day.
-  - Crash recovery on startup: detect and resume monitoring orphaned orders.
-  - Stuck order timeout: orders active > 24h are failed with refund.
+
+Crash recovery:
+  - SIGTERM/SIGINT: graceful shutdown via is_shutting_down flag. Orders stay
+    in Postgres and auto-resume on restart (no Redis re-queueing needed).
+  - Startup recovery (with distributed Redis lock):
+    * fail_stuck_vayne_orders: 24h hard timeout on active orders.
+    * fail_stale_heartbeat_orders: ~10min heartbeat timeout.
+    * fix_orphaned_queued_orders: refund queued orders with credits_charged > 0.
+    * get_active_slots: resume monitor_slot for in-flight orders.
+  - Idempotent process_queued_order: skips credit deduction if credits_charged > 0.
+  - Periodic orphan sweep: re-attaches monitor_slot for active DB orders with
+    no matching asyncio task (handles crashed/cancelled tasks).
+  - monitor_slot file_url safety net: completes order if n8n wrote file_url
+    but failed to set status = 'completed'.
 """
 
 import asyncio
 import os
+import signal
 import sys
 import time
 import smtplib
@@ -110,6 +123,9 @@ GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 APP_URL = os.getenv("APP_URL", "https://www.billionverifier.io")
 
 VAYNE_ACTIVE_STATUSES = ('pending', 'initialization', 'scraping', 'segmenting')
+STALE_HEARTBEAT_MINUTES = 10
+
+is_shutting_down = False
 
 
 def log(message: str, level: str = "info"):
@@ -152,7 +168,7 @@ def send_scraping_completion_email(user_email: str, order_id: str, results: dict
     job_name = targeting or f"Order {order_id[:8]}"
     leads_found = results.get("leads_found", 0)
 
-    subject = f"Scraping complete: {leads_found} leads found"
+    subject = f"Scraping complete: ~{leads_found:,} estimated leads"
 
     html_content = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; padding: 40px 20px;">
@@ -161,7 +177,7 @@ def send_scraping_completion_email(user_email: str, order_id: str, results: dict
         <p style="color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">Great news! Your scraping job "<strong style="color: #ccc;">{job_name}</strong>" has finished.</p>
         <div style="background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; margin: 20px 0;">
           <h3 style="margin: 0 0 12px 0; color: #ffffff; font-size: 16px;">Results Summary</h3>
-          <p style="margin: 0; padding: 8px 0; color: #999;">Leads found: <strong style="color: #ccc;">{leads_found}</strong></p>
+          <p style="margin: 0; padding: 8px 0; color: #999;">Estimated leads: <strong style="color: #ccc;">~{leads_found:,}</strong></p>
         </div>
         <a href="{APP_URL}/sales-nav-scraper"
            style="display: inline-block; background-color: transparent; color: #0099FF; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; border: 1px solid #0099FF;">
@@ -373,6 +389,93 @@ def fail_stuck_vayne_orders(db):
         log(f"Failed {len(stuck_orders)} stuck order(s)", "info")
 
 
+def fail_stale_heartbeat_orders(db):
+    """Fail orders whose heartbeat stopped updating (worker died mid-monitor).
+
+    Uses last_heartbeat instead of created_at for faster detection (~10min vs 24h).
+    Only targets orders that HAVE a heartbeat (were being actively monitored).
+    """
+    result = db.execute(text(f"""
+        UPDATE vayne_orders
+        SET status = 'failed',
+            failure_reason = 'Order lost worker heartbeat for over {STALE_HEARTBEAT_MINUTES} minutes. Please retry.'
+        WHERE status IN {repr(VAYNE_ACTIVE_STATUSES)}
+        AND vayne_order_id IS NOT NULL
+        AND last_heartbeat IS NOT NULL
+        AND last_heartbeat < NOW() - INTERVAL '{STALE_HEARTBEAT_MINUTES} minutes'
+        RETURNING id, user_id, credits_charged
+    """))
+    stale_orders = result.fetchall()
+
+    for order in stale_orders:
+        order_id = order.id
+        if order.credits_charged and order.credits_charged > 0:
+            db.execute(
+                text("UPDATE users SET credits = credits + :amt WHERE id = :uid"),
+                {"amt": order.credits_charged, "uid": str(order.user_id)}
+            )
+            db.execute(
+                text("UPDATE vayne_orders SET credits_charged = 0 WHERE id = :oid"),
+                {"oid": str(order_id)}
+            )
+            log(f"Refunded {order.credits_charged} credits for stale-heartbeat order {order_id}", "info")
+
+        try:
+            user_info = db.execute(text("""
+                SELECT u.email, vo.targeting
+                FROM users u JOIN vayne_orders vo ON u.id = vo.user_id
+                WHERE vo.id = :oid
+            """), {"oid": str(order_id)}).fetchone()
+            if user_info:
+                send_job_failure_email(
+                    user_email=user_info[0],
+                    job_type="Sales Nav Scraping",
+                    job_name=user_info[1] or "Untitled Order",
+                    failure_reason=f"Order lost worker heartbeat. Please retry.",
+                    job_id=str(order_id),
+                )
+        except Exception:
+            pass
+
+        log(f"Failed stale-heartbeat order {order_id}", "error")
+
+    if stale_orders:
+        db.commit()
+        log(f"Failed {len(stale_orders)} stale-heartbeat order(s)", "info")
+
+
+def fix_orphaned_queued_orders(db):
+    """Refund credits for queued orders that were charged but never submitted to Vayne.
+
+    This happens when the worker crashes between credit deduction (Step 4) and
+    create_order (Step 5). The order stays queued with credits_charged > 0 and
+    vayne_order_id = NULL. We refund and reset so the next pickup can charge fresh.
+    """
+    result = db.execute(text("""
+        SELECT id, credits_charged, user_id FROM vayne_orders
+        WHERE status = 'queued'
+        AND credits_charged > 0
+        AND vayne_order_id IS NULL
+        AND created_at < NOW() - INTERVAL '1 hour'
+    """))
+    orphaned = result.fetchall()
+
+    for order in orphaned:
+        db.execute(
+            text("UPDATE users SET credits = credits + :amt WHERE id = :uid"),
+            {"amt": order.credits_charged, "uid": str(order.user_id)}
+        )
+        db.execute(
+            text("UPDATE vayne_orders SET credits_charged = 0 WHERE id = :oid"),
+            {"oid": str(order.id)}
+        )
+        log(f"Refunded {order.credits_charged} credits for orphaned queued order {order.id}", "info")
+
+    if orphaned:
+        db.commit()
+        log(f"Fixed {len(orphaned)} orphaned queued order(s)", "info")
+
+
 # ---------------------------------------------------------------------------
 # URL normalization
 # ---------------------------------------------------------------------------
@@ -494,6 +597,14 @@ async def process_queued_order(order_row, slot_idx: int, client: VayneClient) ->
     db = SessionLocal()
     try:
         log(f"[Slot {slot_idx}] Processing queued order {order_id}", "info")
+
+        # --- Crash recovery: skip if already submitted to Vayne ---
+        fresh = db.execute(text(
+            "SELECT credits_charged, vayne_order_id FROM vayne_orders WHERE id = :oid"
+        ), {"oid": str(order_id)}).fetchone()
+        if fresh and fresh.vayne_order_id:
+            log(f"[Slot {slot_idx}] Order {order_id} already submitted (vayne_order_id={fresh.vayne_order_id}), skipping to monitor", "info")
+            return "submitted"
 
         normalized_url = normalize_sales_nav_url(order_row.sales_nav_url)
         if normalized_url != order_row.sales_nav_url:
@@ -625,46 +736,55 @@ async def process_queued_order(order_row, slot_idx: int, client: VayneClient) ->
         finally:
             db2.close()
 
-        # --- Step 4: Atomic credit deduction ---
-        user_result = db.execute(
-            text("SELECT email, credits FROM users WHERE id = :user_id"),
-            {"user_id": str(order_row.user_id)}
-        )
-        user = user_result.fetchone()
-        if not user:
-            mark_order_failed(db, order_id, "User account not found.")
-            return "failed"
+        # --- Step 4: Atomic credit deduction (idempotent — skips if already charged) ---
+        fresh_order = db.execute(text(
+            "SELECT credits_charged FROM vayne_orders WHERE id = :oid"
+        ), {"oid": str(order_id)}).fetchone()
+        already_charged = fresh_order and fresh_order.credits_charged and fresh_order.credits_charged > 0
 
-        is_admin = user.email == ADMIN_EMAIL
-        if not is_admin and estimated_leads > 0:
-            deduct_result = db.execute(text("""
-                UPDATE users
-                SET credits = credits - :amount
-                WHERE id = :user_id AND credits >= :amount
-                RETURNING credits
-            """), {"amount": estimated_leads, "user_id": str(order_row.user_id)})
-            deduct_row = deduct_result.fetchone()
-
-            if deduct_row is None:
-                db.rollback()
-                current_credits = db.execute(
-                    text("SELECT credits FROM users WHERE id = :uid"),
-                    {"uid": str(order_row.user_id)}
-                ).fetchone()
-                credits_have = current_credits.credits if current_credits else 0
-                mark_order_failed(
-                    db, order_id,
-                    f"Insufficient credits. You have {credits_have:,} credits but this job requires ~{estimated_leads:,}. Please top up your account."
-                )
+        if already_charged:
+            log(f"[Slot {slot_idx}] Order {order_id} already charged {fresh_order.credits_charged} credits (crash recovery), skipping deduction", "info")
+            estimated_leads = fresh_order.credits_charged
+        else:
+            user_result = db.execute(
+                text("SELECT email, credits FROM users WHERE id = :user_id"),
+                {"user_id": str(order_row.user_id)}
+            )
+            user = user_result.fetchone()
+            if not user:
+                mark_order_failed(db, order_id, "User account not found.")
                 return "failed"
 
-            db.execute(text(
-                "UPDATE vayne_orders SET credits_charged = :amount WHERE id = :order_id"
-            ), {"amount": estimated_leads, "order_id": str(order_id)})
-            db.commit()
-            log(f"Charged {estimated_leads} credits to {user.email} (remaining: {deduct_row.credits})", "success")
-        else:
-            log(f"Admin user or 0 estimated leads - skipping credit deduction", "info")
+            is_admin = user.email == ADMIN_EMAIL
+            if not is_admin and estimated_leads > 0:
+                deduct_result = db.execute(text("""
+                    UPDATE users
+                    SET credits = credits - :amount
+                    WHERE id = :user_id AND credits >= :amount
+                    RETURNING credits
+                """), {"amount": estimated_leads, "user_id": str(order_row.user_id)})
+                deduct_row = deduct_result.fetchone()
+
+                if deduct_row is None:
+                    db.rollback()
+                    current_credits = db.execute(
+                        text("SELECT credits FROM users WHERE id = :uid"),
+                        {"uid": str(order_row.user_id)}
+                    ).fetchone()
+                    credits_have = current_credits.credits if current_credits else 0
+                    mark_order_failed(
+                        db, order_id,
+                        f"Insufficient credits. You have {credits_have:,} credits but this job requires ~{estimated_leads:,}. Please top up your account."
+                    )
+                    return "failed"
+
+                db.execute(text(
+                    "UPDATE vayne_orders SET credits_charged = :amount WHERE id = :order_id"
+                ), {"amount": estimated_leads, "order_id": str(order_id)})
+                db.commit()
+                log(f"Charged {estimated_leads} credits to {user.email} (remaining: {deduct_row.credits})", "success")
+            else:
+                log(f"Admin user or 0 estimated leads - skipping credit deduction", "info")
 
         # --- Step 5: Create the scraping order ---
         try:
@@ -736,41 +856,66 @@ async def monitor_slot(slot_idx: int, order_row):
     db = SessionLocal()
     try:
         while True:
-            status = check_order_status(db, order_id)
+            if is_shutting_down:
+                log(f"[Slot {slot_idx}] Shutdown requested, exiting monitor for {order_id}", "info")
+                return
 
-            if status == "completed":
+            row = db.execute(text("""
+                SELECT status, file_url, estimated_leads
+                FROM vayne_orders WHERE id = :oid
+            """), {"oid": str(order_id)}).fetchone()
+
+            if row is None:
+                log(f"[Slot {slot_idx}] Order {order_id} not found, freeing slot", "info")
+                return
+
+            if row.status == "completed":
                 log(f"[Slot {slot_idx}] Order {order_id} completed", "success")
-                try:
-                    row = db.execute(text("""
-                        SELECT u.email, vo.targeting, vo.estimated_leads,
-                               u.id as user_id, u.plan, u.credits
-                        FROM users u
-                        JOIN vayne_orders vo ON u.id = vo.user_id
-                        WHERE vo.id = :order_id
-                    """), {"order_id": str(order_id)}).fetchone()
-                    if row:
-                        send_scraping_completion_email(
-                            user_email=row[0],
-                            order_id=str(order_id),
-                            results={"leads_found": row[2] or 0},
-                            targeting=row[1],
-                        )
-                        _check_credit_usage_alert(str(row[3]), row[0], row[4] or "trial", float(row[5] or 0))
-                except Exception as email_error:
-                    log(f"Failed to send notification email: {email_error}", "error")
+                _send_monitor_completion_email(db, order_id)
                 return
 
-            if status in ("failed", "cancelled", "deleted", None):
-                label = status or "not found"
-                log(f"[Slot {slot_idx}] Order {order_id} {label}, freeing slot", "info")
+            if row.status in ("failed", "cancelled", "deleted"):
+                log(f"[Slot {slot_idx}] Order {order_id} {row.status}, freeing slot", "info")
                 return
 
-            # Still active — update heartbeat and wait
+            # Safety net: n8n wrote file_url but didn't set status to completed
+            if row.file_url:
+                log(f"[Slot {slot_idx}] file_url detected for {order_id} but status={row.status}, completing", "info")
+                db.execute(text("""
+                    UPDATE vayne_orders SET status = 'completed', completed_at = NOW()
+                    WHERE id = :oid AND status NOT IN ('completed', 'failed', 'cancelled', 'deleted')
+                """), {"oid": str(order_id)})
+                db.commit()
+                _send_monitor_completion_email(db, order_id)
+                return
+
             update_heartbeat(db, order_id)
-            log(f"[Slot {slot_idx}] Order {order_id} status: {status}, waiting {ACTIVE_CHECK_INTERVAL}s...", "wait")
+            log(f"[Slot {slot_idx}] Order {order_id} status: {row.status}, waiting {ACTIVE_CHECK_INTERVAL}s...", "wait")
             await asyncio.sleep(ACTIVE_CHECK_INTERVAL)
     finally:
         db.close()
+
+
+def _send_monitor_completion_email(db, order_id: UUID):
+    """Send completion email and credit usage alert after an order finishes."""
+    try:
+        row = db.execute(text("""
+            SELECT u.email, vo.targeting, vo.estimated_leads,
+                   u.id as user_id, u.plan, u.credits
+            FROM users u
+            JOIN vayne_orders vo ON u.id = vo.user_id
+            WHERE vo.id = :order_id
+        """), {"order_id": str(order_id)}).fetchone()
+        if row:
+            send_scraping_completion_email(
+                user_email=row[0],
+                order_id=str(order_id),
+                results={"leads_found": row[2] or 0},
+                targeting=row[1],
+            )
+            _check_credit_usage_alert(str(row[3]), row[0], row[4] or "trial", float(row[5] or 0))
+    except Exception as email_error:
+        log(f"Failed to send notification email: {email_error}", "error")
 
 
 # ---------------------------------------------------------------------------
@@ -804,9 +949,22 @@ async def process_and_monitor_slot(slot_idx: int, client: VayneClient, order_row
 # ---------------------------------------------------------------------------
 
 async def main():
+    global is_shutting_down
+
     log("Vayne Queue Worker starting (slot-based concurrency)...", "info")
     log(f"Queue poll interval: {QUEUE_POLL_INTERVAL}s", "info")
     log(f"Active order check interval: {ACTIVE_CHECK_INTERVAL}s", "info")
+
+    # --- Graceful shutdown via SIGTERM/SIGINT ---
+    loop = asyncio.get_running_loop()
+
+    def _request_shutdown():
+        global is_shutting_down
+        is_shutting_down = True
+        log("Received shutdown signal, finishing current work...", "info")
+
+    loop.add_signal_handler(signal.SIGTERM, _request_shutdown)
+    loop.add_signal_handler(signal.SIGINT, _request_shutdown)
 
     vayne_clients = get_vayne_clients()
     num_slots = len(vayne_clients)
@@ -818,11 +976,22 @@ async def main():
     active_tasks: Dict[int, asyncio.Task] = {}
     last_stuck_check = time.time()
 
-    # --- Startup crash recovery ---
+    # --- Startup crash recovery (with distributed lock) ---
+    lock_acquired = False
+    try:
+        lock_acquired = redis_client.set("vayne_crash_recovery_lock", str(os.getpid()), nx=True, ex=60)
+    except Exception as lock_err:
+        log(f"Failed to acquire recovery lock: {lock_err}", "error")
+
     db = SessionLocal()
     try:
-        log("Running startup crash recovery...", "info")
-        fail_stuck_vayne_orders(db)
+        if lock_acquired:
+            log("Running startup crash recovery (lock acquired)...", "info")
+            fail_stuck_vayne_orders(db)
+            fail_stale_heartbeat_orders(db)
+            fix_orphaned_queued_orders(db)
+        else:
+            log("Another worker holds the recovery lock, skipping crash recovery", "info")
 
         active_slots = get_active_slots(db)
         for slot_idx, order in active_slots.items():
@@ -839,7 +1008,7 @@ async def main():
         db.close()
 
     # --- Main loop ---
-    while True:
+    while not is_shutting_down:
         try:
             # Clean up completed tasks
             for slot_idx in list(active_tasks):
@@ -850,12 +1019,30 @@ async def main():
                         log(f"[Slot {slot_idx}] Task error: {task_err}", "error")
                     del active_tasks[slot_idx]
 
-            # Periodic stuck order check + low-capacity alert
+            # Re-attach monitoring for active DB orders with no asyncio task (orphan sweep)
+            try:
+                db = SessionLocal()
+                try:
+                    db_active = get_active_slots(db)
+                    for slot_idx, order in db_active.items():
+                        if slot_idx not in active_tasks and slot_idx < num_slots:
+                            log(f"[Slot {slot_idx}] Re-attaching monitor for orphaned active order {order.id}", "info")
+                            active_tasks[slot_idx] = asyncio.create_task(
+                                monitor_slot(slot_idx, order)
+                            )
+                finally:
+                    db.close()
+            except Exception as sweep_err:
+                log(f"Orphan sweep error: {sweep_err}", "error")
+
+            # Periodic stuck/stale order check + low-capacity alert
             now = time.time()
             if now - last_stuck_check > STUCK_CHECK_INTERVAL_MINUTES * 60:
                 db = SessionLocal()
                 try:
                     fail_stuck_vayne_orders(db)
+                    fail_stale_heartbeat_orders(db)
+                    fix_orphaned_queued_orders(db)
                 finally:
                     db.close()
                 try:
@@ -872,9 +1059,11 @@ async def main():
                 db = SessionLocal()
                 try:
                     queued_orders = get_queued_orders(db, limit=free_slot_count)
-                    best = None  # cached per poll cycle; invalidated when a slot becomes busy
+                    best = None
 
                     for order in queued_orders:
+                        if is_shutting_down:
+                            break
                         if len(busy_slots) >= num_slots:
                             break
 
@@ -903,20 +1092,19 @@ async def main():
                             process_and_monitor_slot(slot_idx, client, order)
                         )
                         busy_slots.add(slot_idx)
-                        best = None  # slot set changed — re-evaluate on next iteration
+                        best = None
                 finally:
                     db.close()
 
             await asyncio.sleep(QUEUE_POLL_INTERVAL)
 
-        except KeyboardInterrupt:
-            log("Worker shutting down...", "info")
-            break
         except Exception as e:
             log(f"Error in main loop: {e}", "error")
             import traceback
             traceback.print_exc()
             await asyncio.sleep(5)
+
+    log("Shutdown complete, exiting main loop", "info")
 
 
 if __name__ == "__main__":
