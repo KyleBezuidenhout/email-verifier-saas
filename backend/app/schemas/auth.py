@@ -63,6 +63,10 @@ class UserResponse(BaseModel):
     catchall_verifier_api_key: Optional[str] = None
     is_active: bool
     is_admin: bool = False
+    subscription_status: str = "none"
+    billing_interval: str = "monthly"
+    billing_period_end: Optional[str] = None
+    manage_url: Optional[str] = None
     email_verified: bool = True
     oauth_provider: Optional[str] = None
     created_at: str

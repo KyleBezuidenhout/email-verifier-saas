@@ -2,6 +2,7 @@ import os
 import smtplib
 import logging
 import html
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
@@ -270,4 +271,219 @@ def send_new_signup_notification(
         return True
     except Exception as e:
         logger.error(f"Failed to send signup notification email for {user_email}: {e}")
+        return False
+
+
+def send_downgrade_notification_email(to_email: str, plan_name: str = "trial") -> bool:
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logger.warning("Gmail credentials not configured — cannot send downgrade notification email")
+        return False
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+            .container {{ max-width: 480px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
+            h1 {{ color: #0099FF; font-size: 22px; margin: 0 0 16px; }}
+            p {{ color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px; }}
+            .btn {{ display: inline-block; padding: 12px 32px; background-color: transparent; color: #0099FF !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; border: 1px solid #0099FF; }}
+            .footer {{ margin-top: 32px; padding-top: 16px; border-top: 1px solid #222; }}
+            .footer p {{ color: #555; font-size: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Your subscription has been downgraded</h1>
+            <p>After multiple failed payment attempts, your Billion Verifier subscription has been moved to the <strong style="color: #ccc;">{html.escape(plan_name)}</strong> plan.</p>
+            <p>On this plan you will be charged <strong style="color: #ccc;">0.5 credits per email</strong> processed through verification and enrichment.</p>
+            <p>If you'd like to re-subscribe to a plan with included credits, click below.</p>
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="https://www.billionverifier.io/get-credits" class="btn">Get More Credits</a>
+            </p>
+            <div class="footer">
+                <p>If you believe this is an error, please contact support.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Your Billion Verifier subscription has been downgraded"
+        msg["From"] = f'"Billion Verifier" <{GMAIL_USER}>'
+        msg["To"] = to_email
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, to_email, msg.as_string())
+
+        logger.info(f"Downgrade notification email sent to {to_email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send downgrade notification email to {to_email}: {e}")
+        return False
+
+
+def send_unmatched_payment_alert(payment_id: str, amount: str, user_email_attempted: str) -> bool:
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logger.warning("Gmail credentials not configured — cannot send unmatched payment alert")
+        return False
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+            .container {{ max-width: 560px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
+            h1 {{ color: #f59e0b; font-size: 22px; margin: 0 0 24px; }}
+            .meta-row {{ margin-bottom: 10px; font-size: 14px; color: #ccc; }}
+            .meta-label {{ color: #666; margin-right: 8px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Unmatched Payment — Manual Action Required</h1>
+            <div class="meta-row"><span class="meta-label">Payment ID:</span>{html.escape(payment_id)}</div>
+            <div class="meta-row"><span class="meta-label">Amount:</span>{html.escape(amount)}</div>
+            <div class="meta-row"><span class="meta-label">Attempted email match:</span>{html.escape(user_email_attempted)}</div>
+            <div class="meta-row"><span class="meta-label">Timestamp:</span>{timestamp}</div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "[BillionVerifier] Unmatched payment - manual action required"
+        msg["From"] = f'"Billion Verifier" <{GMAIL_USER}>'
+        msg["To"] = SUPPORT_RECIPIENT
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, SUPPORT_RECIPIENT, msg.as_string())
+
+        logger.info(f"Unmatched payment alert sent for payment {payment_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send unmatched payment alert for payment {payment_id}: {e}")
+        return False
+
+
+def send_dispute_alert(user_email: str, payment_id: str, amount: str, membership_id: str) -> bool:
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logger.warning("Gmail credentials not configured — cannot send dispute alert")
+        return False
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+            .container {{ max-width: 560px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
+            h1 {{ color: #ef4444; font-size: 22px; margin: 0 0 24px; }}
+            .meta-row {{ margin-bottom: 10px; font-size: 14px; color: #ccc; }}
+            .meta-label {{ color: #666; margin-right: 8px; }}
+            .warning-box {{ padding: 16px 20px; background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; margin-top: 20px; }}
+            .warning-box p {{ margin: 0; color: #ef4444; font-size: 13px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Payment Dispute Received</h1>
+            <div class="meta-row"><span class="meta-label">User email:</span>{html.escape(user_email)}</div>
+            <div class="meta-row"><span class="meta-label">Payment ID:</span>{html.escape(payment_id)}</div>
+            <div class="meta-row"><span class="meta-label">Amount:</span>{html.escape(amount)}</div>
+            <div class="meta-row"><span class="meta-label">Membership ID:</span>{html.escape(membership_id)}</div>
+            <div class="meta-row"><span class="meta-label">Timestamp:</span>{timestamp}</div>
+            <div class="warning-box">
+                <p>This user's account has been automatically frozen pending dispute resolution.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "[BillionVerifier] Payment dispute received"
+        msg["From"] = f'"Billion Verifier" <{GMAIL_USER}>'
+        msg["To"] = SUPPORT_RECIPIENT
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, SUPPORT_RECIPIENT, msg.as_string())
+
+        logger.info(f"Dispute alert sent for payment {payment_id} (user: {user_email})")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send dispute alert for payment {payment_id}: {e}")
+        return False
+
+
+def send_credit_usage_alert_email(to_email: str, plan_name: str, credits_used: int, credits_total: int) -> bool:
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logger.warning("Gmail credentials not configured — cannot send credit usage alert email")
+        return False
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+            .container {{ max-width: 480px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
+            h1 {{ color: #f59e0b; font-size: 22px; margin: 0 0 16px; }}
+            p {{ color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px; }}
+            .btn {{ display: inline-block; padding: 12px 32px; background-color: transparent; color: #0099FF !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; border: 1px solid #0099FF; }}
+            .footer {{ margin-top: 32px; padding-top: 16px; border-top: 1px solid #222; }}
+            .footer p {{ color: #555; font-size: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>You've used 90% of your plan credits</h1>
+            <p>You've used <strong style="color: #ccc;">{credits_used:,}</strong> of <strong style="color: #ccc;">{credits_total:,}</strong> credits on your <strong style="color: #ccc;">{html.escape(plan_name)}</strong> plan.</p>
+            <p>If you'd like to upgrade your plan or top up credits to avoid any interruption, click below.</p>
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="https://www.billionverifier.io/get-credits" class="btn">Get More Credits</a>
+            </p>
+            <div class="footer">
+                <p>You're receiving this email because your credit usage exceeded 90%.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "You've used 90% of your plan credits"
+        msg["From"] = f'"Billion Verifier" <{GMAIL_USER}>'
+        msg["To"] = to_email
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, to_email, msg.as_string())
+
+        logger.info(f"Credit usage alert email sent to {to_email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send credit usage alert email to {to_email}: {e}")
         return False

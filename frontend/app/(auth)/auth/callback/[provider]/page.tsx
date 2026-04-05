@@ -48,7 +48,9 @@ export default function OAuthCallbackPage() {
         if (!user.company_website) {
           router.replace("/onboarding");
         } else {
-          router.replace("/sales-nav-scraper");
+          const redirect = localStorage.getItem("bv_post_auth_redirect") || "/sales-nav-scraper";
+          localStorage.removeItem("bv_post_auth_redirect");
+          router.replace(redirect);
         }
       } catch (err) {
         if (key) sessionStorage.removeItem(key);
@@ -72,18 +74,8 @@ export default function OAuthCallbackPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black py-12 px-4 relative">
-        <div
-          className="fixed inset-0 pointer-events-none"
-          style={{
-            backgroundImage: `
-              linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)
-            `,
-            backgroundSize: "60px 60px",
-          }}
-        />
-        <div className="max-w-md w-full space-y-6 relative z-10">
+      <div className="min-h-screen flex items-center justify-center bg-black py-12 px-4">
+        <div className="max-w-md w-full space-y-6">
           <div className="glass-surface py-8 px-6 text-center space-y-4">
             <div className="w-12 h-12 mx-auto bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center">
               <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

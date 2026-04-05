@@ -289,6 +289,37 @@ ENRICHMENT_QUEUE = "enrichment-job-creation"
 DEFAULT_VERIFICATION_QUEUE = "simple-email-verification-queue"
 
 
+def _check_credit_usage_alert(user_id: str, user_email: str, plan: str, credits_remaining: float):
+    """Send 90% credit usage alert once per billing cycle for paid plan users."""
+    if plan == "trial" or plan == "custom":
+        return
+    from app.core.plans import PLAN_CREDITS
+    monthly_credits = PLAN_CREDITS.get((plan, "monthly"), 0)
+    yearly_credits = PLAN_CREDITS.get((plan, "yearly"), 0)
+    plan_credits = max(monthly_credits, yearly_credits) or monthly_credits
+    if plan_credits <= 0:
+        return
+
+    credits_used = plan_credits - credits_remaining
+    if credits_used < 0:
+        credits_used = 0
+    usage_pct = credits_used / plan_credits
+    if usage_pct < 0.9:
+        return
+
+    alert_key = f"credit_alert:90pct:{user_id}"
+    already_sent = redis_client.set(alert_key, "1", nx=True, ex=86400 * 35)
+    if not already_sent:
+        return
+
+    try:
+        from email_utils import send_credit_usage_alert
+        send_credit_usage_alert(user_email, plan, credits_used, plan_credits)
+        logger.info(f"Sent 90% credit usage alert to {user_email}")
+    except Exception as e:
+        logger.error(f"Failed to send credit usage alert to {user_email}: {e}")
+
+
 def get_verification_queue_for_user(db, user_id) -> str:
     """
     Get the verification queue name for a user.
@@ -697,6 +728,8 @@ def process_enrichment_job(job_id: str) -> bool:
             logger.error(f"Failed to queue job {job_id} for verification: {e}")
             pass
         
+        _check_credit_usage_alert(str(user.id), user.email, getattr(user, 'plan', 'trial') or 'trial', float(user.credits))
+        
         return True
         
     except Exception as e:
@@ -885,6 +918,10 @@ def process_verification_job(job_id: str) -> bool:
             job.status = "failed"
             db.commit()
             return False
+        
+        user = db.query(User).filter(User.id == job.user_id).first()
+        if user:
+            _check_credit_usage_alert(str(user.id), user.email, getattr(user, 'plan', 'trial') or 'trial', float(user.credits))
         
         return True
         

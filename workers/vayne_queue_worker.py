@@ -68,6 +68,38 @@ SessionLocal = sessionmaker(bind=engine)
 
 redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 
+
+def _check_credit_usage_alert(user_id: str, user_email: str, plan: str, credits_remaining: float):
+    """Send 90% credit usage alert once per billing cycle for paid plan users."""
+    if plan == "trial" or plan == "custom":
+        return
+    from app.core.plans import PLAN_CREDITS
+    monthly_credits = PLAN_CREDITS.get((plan, "monthly"), 0)
+    yearly_credits = PLAN_CREDITS.get((plan, "yearly"), 0)
+    plan_credits = max(monthly_credits, yearly_credits) or monthly_credits
+    if plan_credits <= 0:
+        return
+
+    credits_used = plan_credits - credits_remaining
+    if credits_used < 0:
+        credits_used = 0
+    usage_pct = credits_used / plan_credits
+    if usage_pct < 0.9:
+        return
+
+    alert_key = f"credit_alert:90pct:{user_id}"
+    already_sent = redis_client.set(alert_key, "1", nx=True, ex=86400 * 35)
+    if not already_sent:
+        return
+
+    try:
+        from email_utils import send_credit_usage_alert
+        send_credit_usage_alert(user_email, plan, credits_used, plan_credits)
+        log(f"Sent 90% credit usage alert to {user_email}")
+    except Exception as e:
+        log(f"Failed to send credit usage alert to {user_email}: {e}", "error")
+
+
 QUEUE_POLL_INTERVAL = settings.VAYNE_QUEUE_WORKER_POLL_INTERVAL          # 30 seconds
 ACTIVE_CHECK_INTERVAL = settings.VAYNE_QUEUE_WORKER_ACTIVE_CHECK_INTERVAL  # 60 seconds
 STUCK_ORDER_TIMEOUT_HOURS = 24
@@ -710,7 +742,8 @@ async def monitor_slot(slot_idx: int, order_row):
                 log(f"[Slot {slot_idx}] Order {order_id} completed", "success")
                 try:
                     row = db.execute(text("""
-                        SELECT u.email, vo.targeting, vo.estimated_leads
+                        SELECT u.email, vo.targeting, vo.estimated_leads,
+                               u.id as user_id, u.plan, u.credits
                         FROM users u
                         JOIN vayne_orders vo ON u.id = vo.user_id
                         WHERE vo.id = :order_id
@@ -722,6 +755,7 @@ async def monitor_slot(slot_idx: int, order_row):
                             results={"leads_found": row[2] or 0},
                             targeting=row[1],
                         )
+                        _check_credit_usage_alert(str(row[3]), row[0], row[4] or "trial", float(row[5] or 0))
                 except Exception as email_error:
                     log(f"Failed to send notification email: {email_error}", "error")
                 return

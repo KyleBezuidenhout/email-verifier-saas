@@ -24,6 +24,7 @@ export function Header() {
   const getPageTitle = () => {
     const pathMap: Record<string, string> = {
       "/dashboard": "Dashboard",
+      "/get-credits": "Get More Credits",
       "/find-valid-emails": "Find Valid Emails",
       "/sales-nav-scraper": "Sales Nav Scraper",
       "/verify-emails": "Verify Emails",

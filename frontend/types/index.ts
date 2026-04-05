@@ -11,10 +11,30 @@ export interface User {
   catchall_verifier_api_key?: string;
   is_active: boolean;
   is_admin?: boolean;
+  subscription_status?: string;
+  billing_interval?: string;
+  billing_period_end?: string | null;
+  manage_url?: string | null;
   email_verified?: boolean;
   email_notifications_enabled?: boolean;
   oauth_provider?: string;
   created_at: string;
+}
+
+export interface PaymentHistoryItem {
+  id: string;
+  event_type: string;
+  amount_dollars: number;
+  credits_delta: number;
+  old_balance: number;
+  new_balance: number;
+  plan_name: string | null;
+  created_at: string;
+}
+
+export interface PaymentHistoryResponse {
+  items: PaymentHistoryItem[];
+  total: number;
 }
 
 export interface OAuthAuthorizeResponse {

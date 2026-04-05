@@ -173,7 +173,7 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(vayne.router, prefix="/api/v1/vayne", tags=["vayne"])
 # Vayne direct router - provides /api/vayne endpoints (without /v1) for frontend compatibility
 app.include_router(vayne_direct.router, prefix="/api/vayne", tags=["vayne-direct"])
-# Payments router - Stripe checkout for credit top-up
+# Payments router - Whop subscriptions, top-ups, webhooks, billing portal
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 # Google Maps Scraper router - scraping via Apify compass/crawler-google-places
 app.include_router(local_scraper.router, prefix="/api/v1/local-scraper", tags=["local-scraper"])
@@ -227,6 +227,8 @@ async def startup_tasks():
         from migrate_add_oauth_columns import run_migration as migrate_oauth_columns
         from migrate_add_vayne_daily_reset import run_migration as migrate_vayne_daily_reset
         from migrate_add_plan_billing import run_migration as migrate_plan_billing
+        from migrate_add_whop_billing import run_migration as migrate_whop_billing
+        from migrate_add_yearly_drip import run_migration as migrate_yearly_drip
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -258,6 +260,8 @@ async def startup_tasks():
         migrate_oauth_columns()
         migrate_vayne_daily_reset()
         migrate_plan_billing()
+        migrate_whop_billing()
+        migrate_yearly_drip()
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)

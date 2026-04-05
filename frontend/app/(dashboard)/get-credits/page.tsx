@@ -1,40 +1,157 @@
 "use client";
 
+import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { getPlanById, formatCredits } from "@/lib/plans";
+import { getPlanById } from "@/lib/plans";
 import { CreditsPlanGrid } from "@/components/pricing/CreditsPlanGrid";
+import { apiClient } from "@/lib/api";
+
+const glassCardStyle = {
+  background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(13,15,18,0.6) 100%)",
+  backdropFilter: "blur(24px) saturate(180%)",
+  WebkitBackdropFilter: "blur(24px) saturate(180%)",
+  border: "1px solid rgba(255,255,255,0.06)",
+  boxShadow: `
+    0 25px 50px -12px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(255,255,255,0.05),
+    inset 0 1px 0 rgba(255,255,255,0.15),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 4px 16px rgba(0,153,255,0.05)
+  `,
+} as const;
 
 export default function GetCreditsPage() {
   const { user } = useAuth();
+  const [topUpAmount, setTopUpAmount] = useState(50);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const CREDIT_PRICE = 0.005;
 
   const userPlan = user?.plan || "trial";
   const planDef = getPlanById(userPlan);
 
+  const creditsFromTopUp = Math.floor(topUpAmount / CREDIT_PRICE);
+  const minAmount = 10;
+  const maxAmount = 500;
+
+  const handlePurchase = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await apiClient.createTopupCheckout(topUpAmount);
+      window.location.href = response.checkout_url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create checkout session");
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen">
-      {/* Plan Banner */}
-      <div className="px-6 lg:px-8 py-8 border-b border-dashboard-border">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold text-dashboard-text">Get More Credits</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="px-4 py-2 rounded-full text-sm font-semibold bg-dashboard-accent/10 text-dashboard-accent border border-dashboard-accent/20">
-              {planDef?.name ?? "Trial"} Plan
-            </span>
-            {user && (
-              <span className="text-dashboard-text-muted text-sm">
-                {formatCredits(user.credits)} credits
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* PRICING PLANS SECTION */}
       <section className="px-6 lg:px-8 py-16">
         <div className="max-w-7xl mx-auto">
-          <CreditsPlanGrid currentPlanId={userPlan} />
+          {/* Universal Policy Statement */}
+          <p className="text-center text-white text-lg font-medium mb-12">
+            All plans include uncapped enrichment & verification. Credits never expire.
+          </p>
+          <CreditsPlanGrid
+            currentPlanId={userPlan}
+            subscriptionStatus={user?.subscription_status}
+            manageUrl={user?.manage_url}
+          />
+        </div>
+      </section>
+
+      {/* TOP UP SECTION */}
+      <section className="px-6 lg:px-8 py-16 border-t border-dashboard-border">
+        <div className="max-w-4xl mx-auto">
+          {/* Section Header */}
+          <div className="text-center mb-10">
+            <h2 className="text-3xl md:text-4xl font-bold text-dashboard-text mb-4">
+              Top Up
+            </h2>
+            <p className="text-dashboard-text-muted text-lg">
+              Make a one-time credit purchase to top up your account.
+            </p>
+          </div>
+
+          {/* Top Up Card */}
+          <div
+            className="relative p-6 lg:p-8 rounded-2xl overflow-hidden"
+            style={glassCardStyle}
+          >
+            {/* Decorative gradient */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-dashboard-accent/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+
+            <div className="relative">
+              {/* Amount Display */}
+              <div className="text-center mb-8">
+                <div className="text-5xl font-bold text-dashboard-text mb-2">
+                  ${topUpAmount.toLocaleString()}
+                </div>
+                <div className="text-dashboard-accent font-semibold text-lg">
+                  = {creditsFromTopUp.toLocaleString()} Credits
+                </div>
+              </div>
+
+              {/* Slider */}
+              <div className="relative mb-8 max-w-md mx-auto">
+                <input
+                  type="range"
+                  min={minAmount}
+                  max={maxAmount}
+                  step={5}
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(Number(e.target.value))}
+                  className="w-full h-3 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #0099FF 0%, #0099FF ${((topUpAmount - minAmount) / (maxAmount - minAmount)) * 100}%, #1E2228 ${((topUpAmount - minAmount) / (maxAmount - minAmount)) * 100}%, #1E2228 100%)`,
+                  }}
+                />
+                <div className="flex justify-between text-xs text-dashboard-text-muted mt-2">
+                  <span>${minAmount}</span>
+                  <span>${maxAmount}</span>
+                </div>
+              </div>
+
+              {/* Price Info */}
+              <div className="text-center mb-6">
+                <p className="text-dashboard-text-muted text-sm">
+                  Price per credit: <span className="text-dashboard-text">${CREDIT_PRICE.toFixed(3)}</span>
+                </p>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm text-center max-w-md mx-auto">
+                  {error}
+                </div>
+              )}
+
+              {/* Purchase Button */}
+              <div className="text-center">
+                <button
+                  onClick={handlePurchase}
+                  disabled={isLoading}
+                  className="inline-flex items-center justify-center border border-dashboard-accent text-dashboard-accent bg-transparent hover:bg-dashboard-accent/10 transition-colors font-semibold py-4 px-8 rounded-lg text-base disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Redirecting...
+                    </span>
+                  ) : (
+                    `Purchase ${creditsFromTopUp.toLocaleString()} Credits`
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </div>

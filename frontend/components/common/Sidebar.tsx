@@ -93,10 +93,18 @@ const navItems: NavItem[] = [
   {
     name: "Get More Credits",
     href: "/get-credits",
-    adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Payment History",
+    href: "/payment-history",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
       </svg>
     ),
   },
@@ -225,8 +233,14 @@ export function Sidebar() {
         {/* Credit Balance & User Profile Section */}
         {user && (
           <div className="p-4 border-t border-dashboard-border">
-            {/* Credit Balance */}
-            <div className="mb-3 px-3 py-2 rounded-lg bg-dashboard-accent/10 border border-dashboard-accent/20">
+            {/* Plan & Credit Balance */}
+            <div className="mb-3 px-3 py-2 rounded-lg bg-dashboard-accent/10 border border-dashboard-accent/20 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-dashboard-text-muted">Plan</span>
+                <span className="text-xs font-semibold text-dashboard-accent capitalize">
+                  {user.plan === "trial" ? "Trial" : user.plan?.replace("_", " ") || "Trial"}
+                </span>
+              </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <svg className="w-4 h-4 text-dashboard-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">

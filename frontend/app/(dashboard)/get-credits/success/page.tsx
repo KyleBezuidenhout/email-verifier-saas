@@ -15,22 +15,21 @@ interface PaymentDetails {
 
 export default function PaymentSuccessPage() {
   const searchParams = useSearchParams();
-  const sessionId = searchParams.get("session_id");
+  const paymentId = searchParams.get("payment_id") || searchParams.get("session_id");
   
   const [loading, setLoading] = useState(true);
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!sessionId) {
-      setError("No session ID found");
+    if (!paymentId) {
       setLoading(false);
       return;
     }
 
     const verifyPayment = async () => {
       try {
-        const details = await apiClient.verifyCheckoutSession(sessionId);
+        const details = await apiClient.verifyPaymentSession(paymentId);
         setPaymentDetails(details);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to verify payment");
@@ -40,7 +39,7 @@ export default function PaymentSuccessPage() {
     };
 
     verifyPayment();
-  }, [sessionId]);
+  }, [paymentId]);
 
   if (loading) {
     return (
@@ -68,7 +67,7 @@ export default function PaymentSuccessPage() {
             If you were charged, your credits will be added automatically. Please check your dashboard or contact support if credits aren&apos;t showing.
           </p>
           <Link
-            href="/dashboard"
+            href="/find-valid-emails"
             className="inline-block px-6 py-3 bg-dashboard-accent text-white font-semibold rounded-xl hover:bg-dashboard-accent/90 transition-all"
           >
             Go to Dashboard
@@ -81,36 +80,39 @@ export default function PaymentSuccessPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="glass-card p-8 max-w-md w-full text-center">
-        {/* Success Icon */}
         <div className="w-20 h-20 rounded-full bg-[#22c55e]/20 flex items-center justify-center mx-auto mb-6 animate-bounce">
           <Check className="w-10 h-10 text-[#22c55e]" />
         </div>
 
         <h1 className="text-3xl font-bold text-dashboard-text mb-2">Payment Successful!</h1>
-        <p className="text-dashboard-text-muted mb-8">Your credits have been added to your account.</p>
+        <p className="text-dashboard-text-muted mb-8">
+          {paymentDetails ? "Your credits have been added to your account." : "Your payment has been processed successfully."}
+        </p>
 
-        {/* Payment Details */}
-        <div className="glass-card p-6 mb-8 text-left space-y-4">
-          <div className="flex justify-between items-center">
-            <span className="text-dashboard-text-muted">Amount Paid</span>
-            <span className="text-dashboard-text font-semibold">${paymentDetails?.amount_dollars}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-dashboard-text-muted">Credits Added</span>
-            <span className="text-[#22c55e] font-semibold">+{paymentDetails?.credits_purchased.toLocaleString()}</span>
-          </div>
-          <div className="border-t border-dashboard-border pt-4">
+        {paymentDetails && (
+          <div className="glass-card p-6 mb-8 text-left space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-dashboard-text-muted">New Balance</span>
-              <span className="text-dashboard-accent font-bold text-xl">{paymentDetails?.current_credits.toLocaleString()} credits</span>
+              <span className="text-dashboard-text-muted">Amount Paid</span>
+              <span className="text-dashboard-text font-semibold">${paymentDetails.amount_dollars}</span>
+            </div>
+            {paymentDetails.credits_purchased > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-dashboard-text-muted">Credits Added</span>
+                <span className="text-[#22c55e] font-semibold">+{paymentDetails.credits_purchased.toLocaleString()}</span>
+              </div>
+            )}
+            <div className="border-t border-dashboard-border pt-4">
+              <div className="flex justify-between items-center">
+                <span className="text-dashboard-text-muted">Current Balance</span>
+                <span className="text-dashboard-accent font-bold text-xl">{paymentDetails.current_credits.toLocaleString()} credits</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Action Buttons */}
         <div className="space-y-3">
           <Link
-            href="/dashboard"
+            href="/find-valid-emails"
             className="block w-full px-6 py-3 bg-dashboard-accent text-white font-semibold rounded-xl hover:bg-dashboard-accent/90 transition-all"
           >
             Go to Dashboard
@@ -126,5 +128,3 @@ export default function PaymentSuccessPage() {
     </div>
   );
 }
-
-

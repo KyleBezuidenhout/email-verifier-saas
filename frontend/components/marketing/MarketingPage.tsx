@@ -378,16 +378,16 @@ export function MarketingPage() {
                   alt="BillionVerifier dashboard — email verification results"
                   className="w-full block"
                 />
-                {/* Per-row email blur overlays - 4 rows */}
+                {/* Blur overlay covering all 4 email values */}
                 <div
                   className="absolute pointer-events-none"
                   style={{
-                    left: "41%",
-                    width: "26%",
-                    top: "53%",
-                    height: "42%",
-                    backdropFilter: "blur(4px)",
-                    WebkitBackdropFilter: "blur(4px)",
+                    left: "38%",
+                    width: "19%",
+                    top: "62%",
+                    height: "37%",
+                    backdropFilter: "blur(5px)",
+                    WebkitBackdropFilter: "blur(5px)",
                     backgroundColor: "rgba(0,0,0,0.01)",
                   }}
                 />
@@ -456,7 +456,7 @@ export function MarketingPage() {
                   
                   {/* Description */}
                   <p className="text-white/70 text-sm leading-relaxed">
-                    Bounce rate guarantee, or we refund you credits.
+                    Bounce rate guarantee, or we refund your credits.
                   </p>
                 </div>
               </div>
@@ -719,7 +719,7 @@ export function MarketingPage() {
         <section id="pricing" className="py-24 lg:py-32 relative scroll-mt-20 bg-black">
           <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
             {/* Header */}
-            <div className="text-center mb-12">
+            <div className="text-center mb-20">
               <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4">
                 Wholesale Pricing
               </h2>

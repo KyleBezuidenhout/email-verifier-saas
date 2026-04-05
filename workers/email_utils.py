@@ -192,3 +192,45 @@ def send_admin_credit_exhaustion_email(service: str, detail: str) -> bool:
     """
 
     return _send_html_email(ADMIN_EMAIL, subject, html)
+
+
+# ---------------------------------------------------------------------------
+# Client-facing: credit usage alert
+# ---------------------------------------------------------------------------
+
+def send_credit_usage_alert(
+    user_email: str,
+    plan_name: str,
+    credits_used: int,
+    credits_total: int,
+) -> bool:
+    """Notify a client that they've used 90% of their plan credits."""
+    subject = "You've used 90% of your plan credits"
+
+    pct = round(credits_used / credits_total * 100) if credits_total else 0
+
+    html = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; padding: 40px 20px;">
+      <div style="background-color: #141414; border: 1px solid #222; border-radius: 12px; padding: 32px;">
+        <h2 style="margin: 0 0 16px 0; font-size: 22px; color: #f59e0b;">Credit Usage Alert</h2>
+        <p style="color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">
+          You've used <strong style="color: #ccc;">{pct}%</strong> of your credits on
+          the <strong style="color: #ccc;">{plan_name}</strong> plan
+          — <strong style="color: #ccc;">{credits_used:,}</strong> of
+          <strong style="color: #ccc;">{credits_total:,}</strong>.
+        </p>
+        <p style="color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">
+          To avoid any interruption, consider upgrading your plan or topping up credits.
+        </p>
+
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="https://www.billionverifier.io/get-credits"
+             style="display: inline-block; background-color: transparent; color: #0099FF; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; border: 1px solid #0099FF;">
+            Get More Credits
+          </a>
+        </div>
+      </div>
+    </div>
+    """
+
+    return _send_html_email(user_email, subject, html)

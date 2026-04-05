@@ -27,6 +27,7 @@ import {
   AnalyticsResponse,
   OAuthAuthorizeResponse,
   ForgotPasswordResponse,
+  PaymentHistoryResponse,
 } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.billionverifier.io";
@@ -868,23 +869,38 @@ class ApiClient {
   }
 
   // ============================================
-  // PAYMENT ENDPOINTS (Stripe)
+  // PAYMENT ENDPOINTS (Whop)
   // ============================================
 
-  async createCheckoutSession(amountDollars: number): Promise<{ checkout_url: string; session_id: string }> {
+  async createSubscriptionCheckout(planName: string, interval: string = "monthly"): Promise<{ checkout_url: string }> {
     return this.request("/api/v1/payments/create-checkout", {
+      method: "POST",
+      body: JSON.stringify({ plan_name: planName, interval }),
+    });
+  }
+
+  async createTopupCheckout(amountDollars: number): Promise<{ checkout_url: string }> {
+    return this.request("/api/v1/payments/create-topup", {
       method: "POST",
       body: JSON.stringify({ amount_dollars: amountDollars }),
     });
   }
 
-  async verifyCheckoutSession(sessionId: string): Promise<{
+  async getBillingPortalUrl(): Promise<{ url: string }> {
+    return this.request("/api/v1/payments/billing-portal");
+  }
+
+  async getPaymentHistory(limit = 50, offset = 0): Promise<PaymentHistoryResponse> {
+    return this.request(`/api/v1/payments/history?limit=${limit}&offset=${offset}`);
+  }
+
+  async verifyPaymentSession(paymentId: string): Promise<{
     payment_status: string;
     amount_dollars: number;
     credits_purchased: number;
     current_credits: number;
   }> {
-    return this.request(`/api/v1/payments/verify-session/${sessionId}`);
+    return this.request(`/api/v1/payments/verify-session/${paymentId}`);
   }
 
   async downloadVayneOrderCSVFile(orderId: string): Promise<void> {

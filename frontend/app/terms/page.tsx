@@ -136,13 +136,13 @@ export default function TermsPage() {
 
               <h3 className="text-xl font-semibold text-landing-heading mb-3">5.2 Subscriptions</h3>
               <p className="text-landing-text leading-relaxed mb-4">
-                Paid subscriptions are available on monthly or annual billing cycles. Annual subscriptions are billed in advance for the full year. Subscriptions automatically renew unless cancelled before the renewal date.
+                Paid subscriptions are available on monthly or annual billing cycles. Annual subscriptions are billed in advance for the full year. Subscriptions automatically renew unless cancelled before the renewal date. <strong>Uncapped enrichment and verification is included only with active paid subscription plans.</strong> <strong>Credits never expire</strong> and remain in your account even if you cancel your subscription.
               </p>
 
               <h3 className="text-xl font-semibold text-landing-heading mb-3">5.3 No Refunds Policy</h3>
               <div className="bg-[#161A1F] border border-landing-accent/30 p-4 rounded-lg">
                 <p className="text-landing-text">
-                  <strong className="text-landing-accent">All sales are final.</strong> We do not offer refunds for subscription fees, unused credits, or any other charges. By purchasing a subscription or credits, you acknowledge and accept this no-refund policy. If you cancel your subscription, you will retain access to the Service until the end of your current billing period.
+                  <strong className="text-landing-accent">All sales are final.</strong> We do not offer refunds for subscription fees, unused credits, or any other charges. By purchasing a subscription or credits, you acknowledge and accept this no-refund policy. <strong>Credits never expire</strong> and remain available in your account even if you cancel your subscription.
                 </p>
               </div>
             </section>
@@ -185,7 +185,7 @@ export default function TermsPage() {
               </h2>
               <h3 className="text-xl font-semibold text-landing-heading mb-3">7.1 Termination by You</h3>
               <p className="text-landing-text leading-relaxed mb-4">
-                You may terminate your account at any time through your account settings or by contacting support. Upon termination, you will lose access to the Service at the end of your current billing period.
+                You may terminate your account at any time through your account settings or by contacting support. Upon cancellation of your subscription, you will continue to have access to use your remaining credits, as <strong>credits never expire</strong>. You may continue using the Service on a pay-as-you-go basis with your existing credits. <strong>Note:</strong> Once your subscription is cancelled, uncapped enrichment and verification will no longer be available. You will be charged 0.5 credits for every email processed through enrichment and verification.
               </p>
 
               <h3 className="text-xl font-semibold text-landing-heading mb-3">7.2 Termination by BillionVerifier</h3>

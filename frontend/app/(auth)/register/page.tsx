@@ -1,23 +1,30 @@
 "use client";
 
+import { useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { RegisterForm } from "@/components/auth/RegisterForm";
 import Link from "next/link";
 
+const REDIRECT_KEY = "bv_post_auth_redirect";
+
+function RedirectCapture() {
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const redirect = searchParams.get("redirect");
+    if (redirect) {
+      localStorage.setItem(REDIRECT_KEY, redirect);
+    }
+  }, [searchParams]);
+  return null;
+}
+
 export default function RegisterPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black py-12 px-4 sm:px-6 lg:px-8 relative">
-      {/* Subtle grid background */}
-      <div 
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)
-          `,
-          backgroundSize: "60px 60px",
-        }}
-      />
-      <div className="max-w-md w-full space-y-8 relative z-10">
+    <div className="min-h-screen flex items-center justify-center bg-black py-12 px-4 sm:px-6 lg:px-8">
+      <Suspense fallback={null}>
+        <RedirectCapture />
+      </Suspense>
+      <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-white">
             Create your account

@@ -46,11 +46,11 @@ class Settings(BaseSettings):
     OMNIVERIFIER_API_KEY: str
     OMNIVERIFIER_BASE_URL: str = "https://api.omniverifier.com"  # Base URL without /v1 (we add /v1 in paths)
 
-    # Stripe
-    STRIPE_SECRET_KEY: str = ""
-    STRIPE_PUBLISHABLE_KEY: str = ""
-    STRIPE_WEBHOOK_SECRET: str = ""  # Optional for now, needed for production webhooks
-    FRONTEND_URL: str = "http://localhost:3000"  # For redirect URLs
+    # Whop Payment Processing
+    WHOP_API_KEY: str = ""
+    WHOP_COMPANY_ID: str = ""
+    WHOP_WEBHOOK_SECRET: str = ""
+    FRONTEND_URL: str = "http://localhost:3000"
     
     # Apify API (Google Maps Scraper)
     APIFY_API_TOKEN: str = ""  # Apify API token for compass/crawler-google-places

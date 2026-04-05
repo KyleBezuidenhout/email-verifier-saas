@@ -13,4 +13,4 @@ httpx==0.25.2
 aiofiles==23.2.1
 python-dotenv==1.0.0
 boto3==1.29.7
-stripe==7.0.0
+standardwebhooks>=1.0.0
