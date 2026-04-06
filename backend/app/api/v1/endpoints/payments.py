@@ -240,6 +240,11 @@ def _handle_payment_succeeded(db: Session, data: dict, metadata: dict):
     payment_id = data.get("id", "")
     amount_dollars = Decimal(str(data.get("total", 0)))
 
+    existing = db.query(PaymentLog).filter(PaymentLog.whop_payment_id == payment_id).first()
+    if existing:
+        logger.info(f"Payment {payment_id} already processed in DB (log {existing.id}), skipping")
+        return
+
     old_balance = Decimal(str(user.credits))
 
     if payment_type == "topup":
@@ -398,8 +403,7 @@ def _handle_refund(db: Session, data: dict, metadata: dict):
         return
 
     payment_id = data.get("id", "")
-    amount_cents = data.get("amount", 0)
-    amount_dollars = Decimal(str(amount_cents)) / 100 if amount_cents > 100 else Decimal(str(amount_cents))
+    amount_dollars = Decimal(str(data.get("total", 0)))
     credits_to_remove = int(float(amount_dollars) / float(TOPUP_CREDIT_RATE))
 
     old_balance = Decimal(str(user.credits))
@@ -425,8 +429,7 @@ def _handle_dispute(db: Session, data: dict, metadata: dict):
         return
 
     payment_id = data.get("id", "")
-    amount_cents = data.get("amount", 0)
-    amount_dollars = Decimal(str(amount_cents)) / 100 if amount_cents > 100 else Decimal(str(amount_cents))
+    amount_dollars = Decimal(str(data.get("total", 0)))
 
     old_balance = Decimal(str(user.credits))
     user.subscription_status = "disputed"
