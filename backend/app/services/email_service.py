@@ -542,3 +542,145 @@ def send_credit_usage_alert_email(to_email: str, plan_name: str, credits_used: i
     except Exception as e:
         logger.error(f"Failed to send credit usage alert email to {to_email}: {e}")
         return False
+
+
+def send_unmatched_webhook_alert(
+    event_type: str,
+    membership_id: str,
+    whop_user_email: str,
+    whop_user_id: str,
+    metadata: dict,
+    raw_data: dict,
+) -> bool:
+    """Alert when a webhook event cannot be matched to a BillionVerifier user."""
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logger.warning("Gmail credentials not configured — cannot send unmatched webhook alert")
+        return False
+
+    import json as _json
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    safe_event = html.escape(event_type)
+    safe_membership = html.escape(membership_id or "N/A")
+    safe_email = html.escape(whop_user_email or "N/A")
+    safe_user_id = html.escape(whop_user_id or "N/A")
+    safe_metadata = html.escape(_json.dumps(metadata, indent=2, default=str))
+    plan_info = raw_data.get("plan", {})
+    safe_plan = html.escape(_json.dumps(plan_info, indent=2, default=str)) if plan_info else "N/A"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+            .container {{ max-width: 600px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
+            h1 {{ color: #ef4444; font-size: 22px; margin: 0 0 24px; }}
+            .meta-row {{ margin-bottom: 10px; font-size: 14px; color: #ccc; }}
+            .meta-label {{ color: #666; margin-right: 8px; }}
+            pre {{ background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; font-size: 12px; color: #ccc; overflow-x: auto; white-space: pre-wrap; }}
+            .warning-box {{ padding: 16px 20px; background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; margin-top: 20px; }}
+            .warning-box p {{ margin: 0; color: #f59e0b; font-size: 13px; line-height: 1.5; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Unmatched Webhook — Manual Action Required</h1>
+            <div class="meta-row"><span class="meta-label">Event type:</span>{safe_event}</div>
+            <div class="meta-row"><span class="meta-label">Membership ID:</span>{safe_membership}</div>
+            <div class="meta-row"><span class="meta-label">Whop user email:</span>{safe_email}</div>
+            <div class="meta-row"><span class="meta-label">Whop user ID:</span>{safe_user_id}</div>
+            <div class="meta-row"><span class="meta-label">Timestamp:</span>{timestamp}</div>
+            <p style="color:#999; font-size:13px; margin:16px 0 4px;">Metadata:</p>
+            <pre>{safe_metadata}</pre>
+            <p style="color:#999; font-size:13px; margin:16px 0 4px;">Plan info:</p>
+            <pre>{safe_plan}</pre>
+            <div class="warning-box">
+                <p>A <strong>{safe_event}</strong> webhook was received but could not be matched to any BillionVerifier user. The Whop email above may differ from the user's BV account email.</p>
+                <p style="margin-top:8px;">Action: Find the user in <a href="https://www.billionverifier.io/admin" style="color:#0099FF;">Admin</a> using the metadata or membership ID and manually update their plan.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"[BillionVerifier] Unmatched webhook: {event_type}"
+        msg["From"] = f'"Billion Verifier" <{GMAIL_USER}>'
+        msg["To"] = SUPPORT_RECIPIENT
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, SUPPORT_RECIPIENT, msg.as_string())
+
+        logger.info(f"Unmatched webhook alert sent for {event_type} (membership: {membership_id})")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send unmatched webhook alert for {event_type}: {e}")
+        return False
+
+
+def send_payment_notification(
+    user_email: str,
+    event_type: str,
+    plan_name: str,
+    amount_dollars: float,
+    credits_added: int,
+    new_balance: float,
+) -> bool:
+    """Notify support when a user makes a subscription payment or top-up."""
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logger.warning("Gmail credentials not configured — cannot send payment notification")
+        return False
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    safe_email = html.escape(user_email)
+    safe_event = html.escape(event_type)
+    safe_plan = html.escape(plan_name or "N/A")
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+            .container {{ max-width: 560px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
+            h1 {{ color: #22c55e; font-size: 22px; margin: 0 0 24px; }}
+            .meta-row {{ margin-bottom: 10px; font-size: 14px; color: #ccc; }}
+            .meta-label {{ color: #666; margin-right: 8px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Payment Received</h1>
+            <div class="meta-row"><span class="meta-label">User email:</span>{safe_email}</div>
+            <div class="meta-row"><span class="meta-label">Event type:</span>{safe_event}</div>
+            <div class="meta-row"><span class="meta-label">Plan:</span>{safe_plan}</div>
+            <div class="meta-row"><span class="meta-label">Amount:</span>${amount_dollars:.2f}</div>
+            <div class="meta-row"><span class="meta-label">Credits added:</span>{credits_added:,}</div>
+            <div class="meta-row"><span class="meta-label">New balance:</span>{new_balance:,.1f}</div>
+            <div class="meta-row"><span class="meta-label">Timestamp:</span>{timestamp}</div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"[BillionVerifier] {event_type}: {user_email} (${amount_dollars:.2f})"
+        msg["From"] = f'"Billion Verifier" <{GMAIL_USER}>'
+        msg["To"] = SUPPORT_RECIPIENT
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, SUPPORT_RECIPIENT, msg.as_string())
+
+        logger.info(f"Payment notification sent: {event_type} from {user_email} (${amount_dollars:.2f})")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send payment notification for {user_email}: {e}")
+        return False

@@ -26,6 +26,20 @@ export const PLANS: PlanDef[] = [
     support: "Email Support",
     enrichmentFree: false,
   },
+  // TEMPORARY: test plan — remove after verifying downgrades
+  {
+    id: "test_downgrade",
+    name: "Test Downgrade",
+    monthlyPrice: 1,
+    yearlyPrice: 10,
+    snLabel: 250,
+    creditPrice: 0.004,
+    perThousand: "$4.00",
+    cta: "Get started",
+    ctaHref: "/register?redirect=/get-credits",
+    support: "Email Support",
+    enrichmentFree: true,
+  },
   {
     id: "test",
     name: "Test",

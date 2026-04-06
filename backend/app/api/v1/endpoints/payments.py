@@ -27,6 +27,8 @@ from app.services.whop_client import (
 from app.services.email_service import (
     send_downgrade_notification_email,
     send_unmatched_payment_alert,
+    send_unmatched_webhook_alert,
+    send_payment_notification,
     send_dispute_alert,
     send_webhook_verification_failure_alert,
 )
@@ -261,6 +263,7 @@ def _handle_payment_succeeded(db: Session, data: dict, metadata: dict):
         )
         db.commit()
         logger.info(f"Topup: {user.email} +{credits_to_add} credits (${amount_dollars})")
+        send_payment_notification(user.email, "Top-Up", user.plan, float(amount_dollars), credits_to_add, float(user.credits))
     else:
         plan_id = metadata.get("bv_plan") or data.get("plan", {}).get("id")
         interval = metadata.get("bv_interval", "monthly")
@@ -319,11 +322,16 @@ def _handle_payment_succeeded(db: Session, data: dict, metadata: dict):
                 logger.warning(f"Failed to cancel old membership {old_membership_id}: {e}")
 
         logger.info(f"Subscription payment: {user.email} plan={plan_name}/{interval} +{credits_to_add} credits (drip 1/{'12' if interval == 'yearly' else '1'})")
+        send_payment_notification(user.email, "Subscription Payment", plan_name, float(amount_dollars), credits_to_add, float(user.credits))
 
 
 def _handle_payment_failed(db: Session, data: dict, metadata: dict):
     user = _resolve_user(db, metadata, data)
     if not user:
+        send_unmatched_webhook_alert(
+            "payment.failed", data.get("id", ""), data.get("user", {}).get("email", ""),
+            data.get("user", {}).get("id", ""), metadata, data,
+        )
         return
     user.subscription_status = "past_due"
     db.commit()
@@ -333,6 +341,10 @@ def _handle_payment_failed(db: Session, data: dict, metadata: dict):
 def _handle_membership_activated(db: Session, data: dict, metadata: dict):
     user = _resolve_user(db, metadata, data)
     if not user:
+        send_unmatched_webhook_alert(
+            "membership.activated", data.get("id", ""), data.get("user", {}).get("email", ""),
+            data.get("user", {}).get("id", ""), metadata, data,
+        )
         return
 
     membership_id = data.get("id", "")
@@ -363,6 +375,10 @@ def _handle_membership_deactivated(db: Session, data: dict, metadata: dict):
     """
     user = _resolve_user(db, metadata, data)
     if not user:
+        send_unmatched_webhook_alert(
+            "membership.deactivated", data.get("id", ""), data.get("user", {}).get("email", ""),
+            data.get("user", {}).get("id", ""), metadata, data,
+        )
         return
 
     deactivated_id = data.get("id", "")
@@ -389,6 +405,11 @@ def _handle_membership_deactivated(db: Session, data: dict, metadata: dict):
 def _handle_cancel_at_period_end(db: Session, data: dict, metadata: dict):
     user = _resolve_user(db, metadata, data)
     if not user:
+        send_unmatched_webhook_alert(
+            "membership.cancel_at_period_end_changed", data.get("id", ""),
+            data.get("user", {}).get("email", ""), data.get("user", {}).get("id", ""),
+            metadata, data,
+        )
         return
 
     cancel_at_period_end = data.get("cancel_at_period_end", False)

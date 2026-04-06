@@ -14,8 +14,8 @@ from decimal import Decimal
 from typing import Optional
 
 PLAN_NAMES = [
-    "trial", "test", "basic", "starter", "business", "business_plus",
-    "agency", "agency_plus", "enterprise", "custom",
+    "trial", "test_downgrade", "test", "basic", "starter", "business",
+    "business_plus", "agency", "agency_plus", "enterprise", "custom",
 ]
 
 PLANS = {
@@ -26,6 +26,16 @@ PLANS = {
         "monthly_price": 0,
         "yearly_price": 0,
         "sn_label": 2000,
+        "support": "Email Support",
+    },
+    # TEMPORARY: test plan — remove after verifying downgrades
+    "test_downgrade": {
+        "credit_price": Decimal("0.004"),
+        "sn_cost": Decimal("1"),
+        "enrichment_cost": Decimal("0"),
+        "monthly_price": 1,
+        "yearly_price": 10,
+        "sn_label": 250,
         "support": "Email Support",
     },
     "test": {
@@ -142,6 +152,7 @@ TOPUP_CREDIT_RATE = Decimal("0.005")
 # Maps Whop plan_id -> (internal_plan_name, billing_interval)
 WHOP_PLAN_MAP = {
     # Monthly plans (live)
+    "plan_McMRrFPETaE9m":  ("test_downgrade", "monthly"),  # TEMPORARY: remove after verifying downgrades
     "plan_sb5AjBy8y7x9P":  ("test", "monthly"),
     "plan_umRQyYI3wpbHI":  ("basic", "monthly"),
     "plan_rv5pWEfhAojcc":  ("starter", "monthly"),
@@ -159,6 +170,8 @@ REVERSE_PLAN_MAP = {v: k for k, v in WHOP_PLAN_MAP.items()}
 # Yearly entries equal the MONTHLY amount — yearly subscribers receive
 # 12 monthly drips (one per ~30 days) rather than all credits upfront.
 PLAN_CREDITS = {
+    ("test_downgrade", "monthly"):   250,  # TEMPORARY: remove after verifying downgrades
+    ("test_downgrade", "yearly"):    250,
     ("test", "monthly"):           1_000,
     ("test", "yearly"):            1_000,
     ("basic", "monthly"):         50_000,

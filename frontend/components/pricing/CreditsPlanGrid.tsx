@@ -190,7 +190,7 @@ export function CreditsPlanGrid({ currentPlanId, subscriptionStatus, manageUrl }
                   >
                     Manage Subscription
                   </button>
-                ) : plan.id === "trial" || isLower ? (
+                ) : plan.id === "trial" ? (
                   <button
                     type="button"
                     disabled

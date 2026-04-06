@@ -82,8 +82,17 @@ export function Header() {
         </h1>
       </div>
 
-      {/* Right side: Settings and user menu */}
+      {/* Right side: Plan badge, settings, and user menu */}
       <div className="flex items-center gap-3">
+        {user.plan && (
+          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
+            user.plan === "trial"
+              ? "bg-orange-500/15 text-orange-400 border-orange-500/30"
+              : "bg-dashboard-accent/15 text-dashboard-accent border-dashboard-accent/30"
+          }`}>
+            {user.plan === "trial" ? "Trial" : user.plan.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+          </span>
+        )}
         <Link
           href="/settings"
           className="p-2 rounded-lg hover:bg-dashboard-card text-dashboard-text-muted hover:text-dashboard-text transition-colors"
