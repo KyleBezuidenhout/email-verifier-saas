@@ -32,7 +32,7 @@ PLANS = {
     "test_downgrade": {
         "credit_price": Decimal("0.004"),
         "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0"),
+        "enrichment_cost": Decimal("0.5"),
         "monthly_price": 1,
         "yearly_price": 10,
         "sn_label": 250,
@@ -128,8 +128,8 @@ def get_enrichment_cost(plan: str) -> Decimal:
 
 
 def is_enrichment_free(plan: str) -> bool:
-    """True for all paid plans; False only for trial."""
-    return plan != "trial"
+    """True when the plan's enrichment_cost is zero."""
+    return PLANS.get(plan, PLANS["trial"])["enrichment_cost"] == Decimal("0")
 
 
 def get_credit_price(plan: str, custom_price: Optional[Decimal] = None) -> Decimal:

@@ -38,7 +38,7 @@ export const PLANS: PlanDef[] = [
     cta: "Get started",
     ctaHref: "/register?redirect=/get-credits",
     support: "Email Support",
-    enrichmentFree: true,
+    enrichmentFree: false,
   },
   {
     id: "test",
