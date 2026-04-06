@@ -28,6 +28,7 @@ from app.services.email_service import (
     send_downgrade_notification_email,
     send_unmatched_payment_alert,
     send_dispute_alert,
+    send_webhook_verification_failure_alert,
 )
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,7 @@ def create_subscription_checkout(
         raise HTTPException(status_code=400, detail=f"Unknown plan: {payload.plan_name}/{payload.interval}")
 
     old_membership_id = getattr(current_user, "whop_membership_id", None)
+    redirect_url = f"{settings.FRONTEND_URL}/get-credits"
 
     try:
         data = create_checkout_for_plan(
@@ -116,6 +118,7 @@ def create_subscription_checkout(
             plan_name=payload.plan_name,
             interval=payload.interval,
             old_membership_id=old_membership_id,
+            redirect_url=redirect_url,
         )
         url = data.get("purchase_url") or data.get("checkout_url") or data.get("url", "")
         if not url:
@@ -144,11 +147,14 @@ def create_topup_checkout(
 
     credits_to_add = int(payload.amount_dollars / float(TOPUP_CREDIT_RATE))
 
+    redirect_url = f"{settings.FRONTEND_URL}/get-credits"
+
     try:
         data = create_checkout_for_topup(
             user_id=str(current_user.id),
             amount_dollars=float(payload.amount_dollars),
             credits_to_add=credits_to_add,
+            redirect_url=redirect_url,
         )
         url = data.get("purchase_url") or data.get("checkout_url") or data.get("url", "")
         if not url:
@@ -177,6 +183,8 @@ async def whop_webhook(request: Request, db: Session = Depends(get_db)):
         payload = verify_webhook(body_str, headers_dict)
     except Exception as e:
         logger.error(f"Webhook verification failed: {e}")
+        source_ip = request.client.host if request.client else "unknown"
+        send_webhook_verification_failure_alert(str(e), source_ip)
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
     event_type = payload.get("event") or payload.get("type", "")
@@ -230,7 +238,9 @@ def _handle_payment_succeeded(db: Session, data: dict, metadata: dict):
 
     payment_type = metadata.get("type", "subscription")
     payment_id = data.get("id", "")
-    amount_cents = data.get("amount", 0)
+    raw_amount = data.get("amount", 0)
+    logger.info(f"Webhook payment raw amount={raw_amount} (type={type(raw_amount).__name__}) for payment_id={payment_id}")
+    amount_cents = raw_amount
     amount_dollars = Decimal(str(amount_cents)) / 100 if amount_cents > 100 else Decimal(str(amount_cents))
 
     old_balance = Decimal(str(user.credits))

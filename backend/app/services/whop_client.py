@@ -30,6 +30,7 @@ def create_checkout_for_plan(
     plan_name: str,
     interval: str,
     old_membership_id: Optional[str] = None,
+    redirect_url: Optional[str] = None,
 ) -> dict:
     """Create a Whop checkout configuration for a subscription plan.
     
@@ -48,6 +49,8 @@ def create_checkout_for_plan(
         "plan_id": whop_plan_id,
         "metadata": metadata,
     }
+    if redirect_url:
+        payload["redirect_url"] = redirect_url
 
     with httpx.Client(timeout=30) as client:
         resp = client.post(
@@ -65,6 +68,7 @@ def create_checkout_for_topup(
     user_id: str,
     amount_dollars: float,
     credits_to_add: int,
+    redirect_url: Optional[str] = None,
 ) -> dict:
     """Create a Whop checkout configuration for a one-time credit top-up.
     
@@ -84,6 +88,8 @@ def create_checkout_for_topup(
             "credits_to_add": str(credits_to_add),
         },
     }
+    if redirect_url:
+        payload["redirect_url"] = redirect_url
 
     with httpx.Client(timeout=30) as client:
         resp = client.post(

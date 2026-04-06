@@ -435,6 +435,61 @@ def send_dispute_alert(user_email: str, payment_id: str, amount: str, membership
         return False
 
 
+def send_webhook_verification_failure_alert(error_message: str, source_ip: str) -> bool:
+    """Alert when a Whop webhook fails signature verification."""
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logger.warning("Gmail credentials not configured — cannot send webhook failure alert")
+        return False
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+            .container {{ max-width: 560px; margin: 40px auto; padding: 32px; background-color: #141414; border: 1px solid #222; border-radius: 12px; }}
+            h1 {{ color: #ef4444; font-size: 22px; margin: 0 0 24px; }}
+            .meta-row {{ margin-bottom: 10px; font-size: 14px; color: #ccc; }}
+            .meta-label {{ color: #666; margin-right: 8px; }}
+            .warning-box {{ padding: 16px 20px; background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; margin-top: 20px; }}
+            .warning-box p {{ margin: 0; color: #f59e0b; font-size: 13px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Webhook Verification Failed</h1>
+            <div class="meta-row"><span class="meta-label">Error:</span>{html.escape(error_message)}</div>
+            <div class="meta-row"><span class="meta-label">Source IP:</span>{html.escape(source_ip)}</div>
+            <div class="meta-row"><span class="meta-label">Timestamp:</span>{timestamp}</div>
+            <div class="warning-box">
+                <p>A POST to /api/v1/payments/webhook failed signature verification. This could indicate a misconfigured WHOP_WEBHOOK_SECRET or a spoofed request.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "[BillionVerifier] Webhook verification failed"
+        msg["From"] = f'"Billion Verifier" <{GMAIL_USER}>'
+        msg["To"] = SUPPORT_RECIPIENT
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, SUPPORT_RECIPIENT, msg.as_string())
+
+        logger.info(f"Webhook verification failure alert sent (source: {source_ip})")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send webhook verification failure alert: {e}")
+        return False
+
+
 def send_credit_usage_alert_email(to_email: str, plan_name: str, credits_used: int, credits_total: int) -> bool:
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
         logger.warning("Gmail credentials not configured — cannot send credit usage alert email")
