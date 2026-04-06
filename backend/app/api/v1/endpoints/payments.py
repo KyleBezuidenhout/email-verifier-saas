@@ -230,7 +230,7 @@ def _handle_payment_succeeded(db: Session, data: dict, metadata: dict):
     user = _resolve_user(db, metadata, data)
     if not user:
         payment_id = data.get("id", "unknown")
-        amount = data.get("amount", 0)
+        amount = data.get("total", 0)
         email_attempted = data.get("user", {}).get("email", "none")
         logger.error(f"Unmatched payment {payment_id}, amount={amount}")
         send_unmatched_payment_alert(payment_id, amount, email_attempted)
@@ -238,10 +238,7 @@ def _handle_payment_succeeded(db: Session, data: dict, metadata: dict):
 
     payment_type = metadata.get("type", "subscription")
     payment_id = data.get("id", "")
-    raw_amount = data.get("amount", 0)
-    logger.info(f"Webhook payment raw amount={raw_amount} (type={type(raw_amount).__name__}) for payment_id={payment_id}")
-    amount_cents = raw_amount
-    amount_dollars = Decimal(str(amount_cents)) / 100 if amount_cents > 100 else Decimal(str(amount_cents))
+    amount_dollars = Decimal(str(data.get("total", 0)))
 
     old_balance = Decimal(str(user.credits))
 
@@ -260,7 +257,7 @@ def _handle_payment_succeeded(db: Session, data: dict, metadata: dict):
         db.commit()
         logger.info(f"Topup: {user.email} +{credits_to_add} credits (${amount_dollars})")
     else:
-        plan_id = metadata.get("bv_plan") or data.get("plan_id")
+        plan_id = metadata.get("bv_plan") or data.get("plan", {}).get("id")
         interval = metadata.get("bv_interval", "monthly")
         plan_name = metadata.get("bv_plan")
 
@@ -334,7 +331,7 @@ def _handle_membership_activated(db: Session, data: dict, metadata: dict):
         return
 
     membership_id = data.get("id", "")
-    plan_id = data.get("plan_id")
+    plan_id = data.get("plan", {}).get("id")
     manage_url = data.get("manage_url")
 
     if plan_id:
