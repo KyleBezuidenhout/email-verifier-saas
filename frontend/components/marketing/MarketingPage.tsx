@@ -733,8 +733,8 @@ export function MarketingPage() {
           </div>
         </section>
 
-        {/* SECTION 4: Integrations Showcase */}
-        <IntegrationsShowcase />
+        {/* SECTION 4: Integrations Showcase - TEMPORARILY HIDDEN until integrations are ready */}
+        {/* <IntegrationsShowcase /> */}
 
         {/* CTA: Schedule onboarding call */}
         <section className="bg-black py-16 relative">
