@@ -716,7 +716,7 @@ export function MarketingPage() {
         </section>
 
         {/* SECTION 2b: Pricing - Dashboard Style */}
-        <section id="pricing" className="py-24 lg:py-32 relative scroll-mt-20 bg-black">
+        <section id="pricing" className="pt-24 lg:pt-32 pb-12 lg:pb-16 relative scroll-mt-20 bg-black">
           <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
             {/* Header */}
             <div className="text-center mb-20">
@@ -735,6 +735,26 @@ export function MarketingPage() {
 
         {/* SECTION 4: Integrations Showcase - TEMPORARILY HIDDEN until integrations are ready */}
         {/* <IntegrationsShowcase /> */}
+
+        {/* SECTION: Security & Trust */}
+        <section className="bg-black py-24 lg:py-32 relative border-t border-white/[0.06]">
+          <div className="relative max-w-3xl mx-auto px-6 lg:px-8 text-center">
+            <h2 className="text-3xl md:text-4xl lg:text-[44px] font-bold text-white leading-[1.1] tracking-tight mb-10">
+              We Protect Your LinkedIn Account{" "}
+              <span className="text-landing-accent">While You Scale</span>
+            </h2>
+
+            {/* Security Statements */}
+            <div className="max-w-xl mx-auto text-center space-y-6">
+              <p className="text-lg text-zinc-300 leading-relaxed">
+                Our daily rate limits stay within LinkedIn&apos;s safe thresholds, keeping your account clean.
+              </p>
+              <p className="text-lg text-zinc-300 leading-relaxed">
+                We&apos;re 100% cloud based. We don&apos;t use any browser extensions, which means no footprint, no flags on your account, and no bans.
+              </p>
+            </div>
+          </div>
+        </section>
 
         {/* CTA: Schedule onboarding call */}
         <section className="bg-black py-16 relative">
