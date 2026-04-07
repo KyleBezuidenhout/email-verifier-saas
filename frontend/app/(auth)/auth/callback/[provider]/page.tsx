@@ -46,11 +46,11 @@ export default function OAuthCallbackPage() {
         setAuthUser(response.user);
         const user = response.user;
         if (!user.company_website) {
-          router.replace("/onboarding");
+          window.location.href = "/onboarding";
         } else {
           const redirect = localStorage.getItem("bv_post_auth_redirect") || "/sales-nav-scraper";
           localStorage.removeItem("bv_post_auth_redirect");
-          router.replace(redirect);
+          window.location.href = redirect;
         }
       } catch (err) {
         if (key) sessionStorage.removeItem(key);
