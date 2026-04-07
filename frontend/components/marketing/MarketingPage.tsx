@@ -658,7 +658,7 @@ export function MarketingPage() {
         {/* Trusted By Logos */}
         <section className="pt-8 lg:pt-10 pb-16 lg:pb-20 bg-black border-t border-b border-white/[0.06]">
           <h3 className="text-base uppercase tracking-widest text-landing-text mb-10 text-center animate-fade-in">
-            Trusted by thousands of industry leaders
+            TRUSTED BY HUNDREDS OF OUTBOUND TEAMS
           </h3>
           <div className="relative flex items-center justify-center gap-16 lg:gap-32 overflow-hidden mt-10 mb-10">
             {/* Left gradient fade */}
