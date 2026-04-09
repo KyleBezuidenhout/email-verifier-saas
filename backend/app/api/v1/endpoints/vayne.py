@@ -329,6 +329,8 @@ def create_order(
         logger.info(f"Creating queued order for user {current_user.id}")
         logger.info(f"   URL: {payload.sales_nav_url[:50]}...")
         logger.info(f"   Targeting: {payload.targeting or 'Untitled Order'}")
+
+        targeting = payload.targeting.strip() if payload.targeting and payload.targeting.strip() else None
         
         order = VayneOrder(
             user_id=current_user.id,
@@ -337,12 +339,17 @@ def create_order(
             sales_nav_url=payload.sales_nav_url,
             url=payload.sales_nav_url,
             linkedin_cookie=payload.linkedin_cookie or "",
-            targeting=payload.targeting or "Untitled Order",
+            targeting=targeting,
         )
         
         db.add(order)
         db.commit()
         db.refresh(order)
+
+        if not order.targeting:
+            order.targeting = str(order.id)
+            db.commit()
+            db.refresh(order)
         
         logger.info(f"✅ Order queued successfully - id: {order.id}, status: {order.status}")
         

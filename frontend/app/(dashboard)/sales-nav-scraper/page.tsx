@@ -100,7 +100,10 @@ export default function SalesNavScraperPage() {
 
   // Regex-only URL validation (no API call needed)
   const SALES_NAV_URL_REGEX = /^https?:\/\/(www\.)?linkedin\.com\/sales\/(search|lists|lead)/i;
+  const hasLinkedinCookie = Boolean(linkedinCookie.trim());
   const isUrlFormatValid = salesNavUrl.trim() ? SALES_NAV_URL_REGEX.test(salesNavUrl.trim()) : false;
+  const isStartScrapingDisabled = !hasLinkedinCookie || !isUrlFormatValid || creatingOrder;
+  const normalizedJobName = jobName.trim();
 
   // Load credits and history on mount
   useEffect(() => {
@@ -202,6 +205,12 @@ export default function SalesNavScraperPage() {
 
 
   const handleStartScraping = async () => {
+    if (!hasLinkedinCookie) {
+      setError("Please add your LinkedIn cookie before starting a scrape.");
+      setShowErrorModal(true);
+      return;
+    }
+
     if (!isUrlFormatValid) {
       setError("Please enter a valid Sales Navigator URL (e.g. linkedin.com/sales/search/...)");
       setShowErrorModal(true);
@@ -218,7 +227,7 @@ export default function SalesNavScraperPage() {
       const orderData: VayneOrderCreate = {
         sales_nav_url: salesNavUrl,
         linkedin_cookie: linkedinCookie.trim() || "",
-        targeting: jobName.trim() || "Billion Verifier Job ID",
+        targeting: normalizedJobName || undefined,
       };
       
       const response = await apiClient.createVayneOrder(orderData);
@@ -227,7 +236,7 @@ export default function SalesNavScraperPage() {
       const newOrder: VayneOrder = {
         id: response.order_id,
         status: "queued", // Orders start as queued until processed by queue worker
-        targeting: jobName.trim() || "Billion Verifier Job ID",
+        targeting: normalizedJobName || response.order_id,
         created_at: new Date().toISOString(),
         leads_found: 0,
         progress_percentage: 0,
@@ -641,7 +650,7 @@ export default function SalesNavScraperPage() {
       <div className="flex gap-3 mb-6">
         <button
           onClick={handleStartScraping}
-          disabled={!isUrlFormatValid || creatingOrder}
+          disabled={isStartScrapingDisabled}
           className="flex-1 px-6 py-3 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
         >
           {creatingOrder ? (
@@ -696,7 +705,9 @@ export default function SalesNavScraperPage() {
                 {scrapeHistoryOrders.map((order) => (
                   <tr key={order.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text">
-                      {order.targeting || order.vayne_order_id || order.id.slice(0, 8)}
+                      {order.targeting && order.targeting !== "Untitled Order"
+                        ? order.targeting
+                        : order.vayne_order_id || order.id}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                       {formatDate(order.created_at)}
