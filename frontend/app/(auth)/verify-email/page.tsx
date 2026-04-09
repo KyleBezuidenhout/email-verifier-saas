@@ -23,9 +23,8 @@ function VerifyEmailContent() {
       try {
         await apiClient.verifyEmail(token);
         setSuccess(true);
-        const redirect = localStorage.getItem("bv_post_auth_redirect") || "/sales-nav-scraper";
         localStorage.removeItem("bv_post_auth_redirect");
-        setTimeout(() => router.push(redirect), 2000);
+        setTimeout(() => router.push("/tutorial"), 2000);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Verification failed. The link may have expired.");
       } finally {

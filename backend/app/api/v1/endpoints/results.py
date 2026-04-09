@@ -5,6 +5,7 @@ from sqlalchemy import or_, text
 from typing import Optional, List
 import csv
 import io
+import logging
 import re
 import uuid
 
@@ -13,6 +14,8 @@ from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
 from app.api.dependencies import get_current_user, ADMIN_EMAIL
+
+logger = logging.getLogger(__name__)
 from app.schemas.lead import LeadResponse
 from app.core.security import decode_token
 
@@ -130,12 +133,28 @@ def download_results(
 
     # Pass 1: collect all distinct extra_data keys for consistent CSV headers
     # Cast to jsonb explicitly — the DB column may be json despite the model declaring JSONB
-    extra_keys_rows = db.execute(text(
-        "SELECT DISTINCT jsonb_object_keys(extra_data::jsonb) FROM leads "
-        "WHERE job_id = :jid AND is_final_result = TRUE "
-        "AND extra_data IS NOT NULL AND extra_data::text != '{}' "
-        "ORDER BY 1"
-    ), {"jid": str(job_uuid)}).fetchall()
+    job_id_str = str(job_uuid)
+    try:
+        extra_keys_rows = db.execute(text(
+            "SELECT DISTINCT jsonb_object_keys(extra_data::jsonb) FROM leads "
+            "WHERE job_id = :jid AND is_final_result = TRUE "
+            "AND extra_data IS NOT NULL AND extra_data::text != '{}' "
+            "ORDER BY 1"
+        ), {"jid": job_id_str}).fetchall()
+    except Exception:
+        db.rollback()
+        logger.warning("extra_data contains invalid characters for job %s — cleaning NUL bytes and retrying", job_id_str)
+        db.execute(text(
+            "UPDATE leads SET extra_data = replace(extra_data::text, '\\u0000', '')::jsonb "
+            "WHERE job_id = :jid AND extra_data::text LIKE '%%\\u0000%%'"
+        ), {"jid": job_id_str})
+        db.commit()
+        extra_keys_rows = db.execute(text(
+            "SELECT DISTINCT jsonb_object_keys(extra_data::jsonb) FROM leads "
+            "WHERE job_id = :jid AND is_final_result = TRUE "
+            "AND extra_data IS NOT NULL AND extra_data::text != '{}' "
+            "ORDER BY 1"
+        ), {"jid": job_id_str}).fetchall()
     extra_keys = [r[0] for r in extra_keys_rows]
 
     # Build filter kwargs to replay inside the generator's own session.

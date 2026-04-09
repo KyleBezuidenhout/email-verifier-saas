@@ -24,6 +24,7 @@ from app.schemas.job import JobResponse, JobUploadResponse, JobProgressResponse
 from app.services.permutation import generate_email_permutations, normalize_domain, clean_first_name
 from app.services.mailtester_client import MailTesterClient
 from app.core.config import settings
+from app.core.sanitize import sanitize_text
 from app.core.security import decode_token
 import boto3
 import redis
@@ -530,10 +531,10 @@ async def upload_file(
         extra_data = {}
         # If CSV has company_size column, keep it for reference in extra_data only
         if company_size_col in actual_columns and row.get(company_size_col):
-            extra_data['company_size'] = row.get(company_size_col, '').strip()
+            extra_data['company_size'] = sanitize_text(row.get(company_size_col, ''))
         for col, val in row.items():
             if col not in mapped_cols and val and str(val).strip():
-                extra_data[col] = str(val).strip()
+                extra_data[col] = sanitize_text(val)
         remapped_row['extra_data'] = extra_data
         
         remapped_rows.append(remapped_row)
@@ -816,7 +817,7 @@ async def upload_verify_file(
         extra_data = {}
         for col, val in row.items():
             if col not in mapped_cols and val and str(val).strip():
-                extra_data[col] = str(val).strip()
+                extra_data[col] = sanitize_text(val)
         remapped_row['extra_data'] = extra_data
         
         remapped_rows.append(remapped_row)
@@ -1568,7 +1569,7 @@ async def upload_catchall_file(
         extra_data = {}
         for col, val in row.items():
             if col != email_col and val and str(val).strip():
-                extra_data[col] = str(val).strip()
+                extra_data[col] = sanitize_text(val)
         parsed_rows.append({"email": e, "extra_data": extra_data})
 
     if not parsed_rows:

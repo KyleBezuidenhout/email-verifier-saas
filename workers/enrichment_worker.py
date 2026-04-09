@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from app.core.config import settings, ADMIN_EMAIL
 from app.core.plans import get_enrichment_cost, is_enrichment_free
+from app.core.sanitize import sanitize_text
 from app.models.job import Job
 from app.models.lead import Lead
 from app.models.user import User
@@ -544,10 +545,10 @@ def parse_csv_from_r2(
         extra_data = {}
         # Store company_size in extra_data (not used for pattern selection, just for reference)
         if company_size_col and row.get(company_size_col):
-            extra_data['company_size'] = row.get(company_size_col, '').strip()
+            extra_data['company_size'] = sanitize_text(row.get(company_size_col, ''))
         for col, val in row.items():
             if col not in mapped_cols and val and str(val).strip():
-                extra_data[col] = str(val).strip()
+                extra_data[col] = sanitize_text(val)
         remapped_row['extra_data'] = extra_data
         
         remapped_rows.append(remapped_row)
@@ -861,7 +862,7 @@ def process_verification_job(job_id: str) -> bool:
             extra_data = {}
             for col, val in row.items():
                 if col not in mapped_cols and val and str(val).strip():
-                    extra_data[col] = str(val).strip()
+                    extra_data[col] = sanitize_text(val)
             
             lead = Lead(
                 job_id=job.id,
