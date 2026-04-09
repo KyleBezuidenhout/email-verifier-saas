@@ -694,9 +694,6 @@ export default function SalesNavScraperPage() {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
-                    Progress
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -728,53 +725,6 @@ export default function SalesNavScraperPage() {
                          order.status === "pending" ? "Pending" :
                          order.status}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text">
-                      {order.status === "completed" ? (
-                        <div className="flex items-center gap-2">
-                          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          <span className="text-[#22c55e]">Complete</span>
-                        </div>
-                      ) : order.status === "queued" ? (
-                        <div className="flex items-center gap-2">
-                          <svg className="w-4 h-4 text-blue-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span className="text-blue-400">In Queue</span>
-                        </div>
-                      ) : order.status === "failed" ? (
-                        <div className="relative group flex items-center gap-2">
-                          <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                          <span className="text-red-400">Failed</span>
-                          {order.failure_reason && (
-                            <>
-                              <svg className="w-3.5 h-3.5 text-red-400/60 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              <div className="absolute left-0 top-full mt-2 z-50 hidden group-hover:block">
-                                <div className="bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-lg py-2 px-3 max-w-xs shadow-xl">
-                                  <div className="absolute -top-1 left-4 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 rotate-45"></div>
-                                  {order.failure_reason}
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 min-w-[120px]">
-                          <div className="flex-1 bg-dashboard-card rounded-full h-2 overflow-hidden">
-                            <div 
-                              className="bg-dashboard-accent h-2 rounded-full transition-all duration-500 ease-out"
-                              style={{ width: `${order.progress_percentage || 5}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-dashboard-text-muted w-8">{order.progress_percentage || 0}%</span>
-                        </div>
-                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-3">
