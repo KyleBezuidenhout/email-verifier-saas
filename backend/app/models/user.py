@@ -38,6 +38,7 @@ class User(Base):
     email_verified = Column(Boolean, default=False, nullable=False, server_default="true")
     email_verification_token = Column(String(255), nullable=True)
     email_verification_expires = Column(DateTime(timezone=True), nullable=True)
+    has_seen_tutorial = Column(Boolean, default=False, nullable=False, server_default="false")
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)

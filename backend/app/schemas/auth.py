@@ -68,6 +68,7 @@ class UserResponse(BaseModel):
     billing_period_end: Optional[str] = None
     manage_url: Optional[str] = None
     email_verified: bool = True
+    has_seen_tutorial: bool = False
     oauth_provider: Optional[str] = None
     created_at: str
 
@@ -79,6 +80,7 @@ class UserUpdate(BaseModel):
     catchall_verifier_api_key: Optional[str] = None
     company_website: Optional[str] = None
     referral_source: Optional[str] = None
+    has_seen_tutorial: Optional[bool] = None
 
     class Config:
         from_attributes = True

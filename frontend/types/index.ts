@@ -17,6 +17,7 @@ export interface User {
   manage_url?: string | null;
   email_verified?: boolean;
   email_notifications_enabled?: boolean;
+  has_seen_tutorial?: boolean;
   oauth_provider?: string;
   created_at: string;
 }

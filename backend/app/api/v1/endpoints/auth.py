@@ -44,6 +44,7 @@ def _build_user_response(user: User, **overrides) -> UserResponse:
         billing_period_end=user.billing_period_end.isoformat() if getattr(user, 'billing_period_end', None) else None,
         manage_url=getattr(user, 'manage_url', None),
         email_verified=getattr(user, 'email_verified', True),
+        has_seen_tutorial=getattr(user, 'has_seen_tutorial', True),
         oauth_provider=getattr(user, 'oauth_provider', None),
         created_at=user.created_at.isoformat(),
     )
@@ -184,6 +185,8 @@ def update_user_info(
         current_user.company_website = user_update.company_website
     if user_update.referral_source is not None:
         current_user.referral_source = user_update.referral_source
+    if user_update.has_seen_tutorial is not None:
+        current_user.has_seen_tutorial = user_update.has_seen_tutorial
 
     db.commit()
     db.refresh(current_user)

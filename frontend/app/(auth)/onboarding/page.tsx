@@ -46,8 +46,9 @@ export default function OnboardingPage() {
         referral_source: referralSource.trim(),
       });
       await refreshUser();
+      const redirect = localStorage.getItem("bv_post_auth_redirect") || "/sales-nav-scraper";
       localStorage.removeItem("bv_post_auth_redirect");
-      router.replace("/tutorial");
+      router.replace(redirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
