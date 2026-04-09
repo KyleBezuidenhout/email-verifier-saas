@@ -62,7 +62,6 @@ export default function TutorialPage() {
             preload="metadata"
             onEnded={() => setVideoEnded(true)}
             className="w-full rounded-lg"
-            poster="/images/video-poster.png"
             style={{ aspectRatio: "16 / 9", background: "#000" }}
           >
             <source src="/videos/onboarding-intro.mp4" type="video/mp4" />
