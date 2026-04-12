@@ -365,6 +365,10 @@ def _send_completion_email(db, job):
         if not user:
             return
 
+        if not getattr(user, 'email_notifications_enabled', True):
+            logger.info("User %s has email notifications disabled — skipping catchall completion email", user.email)
+            return
+
         valid = job.valid_emails_found or 0
         risky = job.catchall_emails_found or 0
         total = job.total_leads or 0

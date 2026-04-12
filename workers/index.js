@@ -2369,7 +2369,7 @@ async function processJobFromQueue(jobId) {
     
     // Get user info for error logging context
     const userResult = await pgPool.query(
-      'SELECT id, email FROM users WHERE id = $1',
+      'SELECT id, email, email_notifications_enabled FROM users WHERE id = $1',
       [jobData.user_id]
     );
     const userData = userResult.rows[0];
@@ -2675,9 +2675,9 @@ async function processJobFromQueue(jobId) {
         }
       }
       
-      // Plan-aware credit calculation: paid plans = free enrichment, trial = 0.5 per lead
+      // Plan-aware credit calculation: paid plans = free enrichment, trial = 0.1 per lead
       const planAtCreation = jobData.plan_at_creation || 'trial';
-      const costInCredits = planAtCreation === 'trial' ? processedCount * 0.5 : 0;
+      const costInCredits = planAtCreation === 'trial' ? processedCount * 0.1 : 0;
 
       await updateJobStatus(jobId, 'completed', {
         processed_leads: processedCount,
@@ -2701,8 +2701,8 @@ async function processJobFromQueue(jobId) {
         console.log(`Admin user - skipping credit deduction`);
       }
       
-      // Send job completion email notification
-      if (userEmailForNotification) {
+      // Send job completion email notification (respects user preference)
+      if (userEmailForNotification && userData?.email_notifications_enabled !== false) {
         try {
           await sendJobCompletionEmail(userEmailForNotification, 'verification', jobId, {
             validEmails: validCount,
@@ -3077,9 +3077,9 @@ async function processJobFromQueue(jobId) {
       }
     }
     
-    // Plan-aware credit calculation: paid plans = free enrichment, trial = 0.5 per lead
+    // Plan-aware credit calculation: paid plans = free enrichment, trial = 0.1 per lead
     const planAtCreation = jobData.plan_at_creation || 'trial';
-    const costInCredits = planAtCreation === 'trial' ? completedPeopleCount * 0.5 : 0;
+    const costInCredits = planAtCreation === 'trial' ? completedPeopleCount * 0.1 : 0;
 
     await updateJobStatus(jobId, 'completed', {
       processed_leads: jobData.total_leads,
@@ -3105,8 +3105,8 @@ async function processJobFromQueue(jobId) {
       console.log(`Admin user - skipping credit deduction`);
     }
     
-    // Send job completion email notification
-    if (userEmailForNotification) {
+    // Send job completion email notification (respects user preference)
+    if (userEmailForNotification && userData?.email_notifications_enabled !== false) {
       try {
         await sendJobCompletionEmail(userEmailForNotification, jobData.job_type || 'enrichment', jobId, {
           validEmails: validCount,
@@ -3115,7 +3115,6 @@ async function processJobFromQueue(jobId) {
         });
       } catch (emailError) {
         console.error(`Failed to send notification email: ${emailError.message}`);
-        // Don't fail the job for email errors
       }
     }
     

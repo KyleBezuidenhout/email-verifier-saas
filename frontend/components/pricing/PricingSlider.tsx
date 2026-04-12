@@ -18,7 +18,7 @@ function buildFeatures(plan: PlanDef): string[] {
   const features: string[] = [];
 
   if (plan.id === "trial") {
-    features.push("0.5 credits per email enrichment or verification");
+    features.push("0.1 credits per email enrichment/verification");
     features.push("1 credit per Sales Nav profile scraped");
   } else if (plan.id === "custom") {
     features.push("400,000+ Sales Navigator Profiles");

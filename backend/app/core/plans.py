@@ -22,7 +22,7 @@ PLANS = {
     "trial": {
         "credit_price": Decimal("0.0022"),
         "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0.5"),
+        "enrichment_cost": Decimal("0.1"),
         "monthly_price": 0,
         "yearly_price": 0,
         "sn_label": 2000,
@@ -32,7 +32,7 @@ PLANS = {
     "test_downgrade": {
         "credit_price": Decimal("0.004"),
         "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0.5"),
+        "enrichment_cost": Decimal("0.1"),
         "monthly_price": 1,
         "yearly_price": 10,
         "sn_label": 250,

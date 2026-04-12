@@ -230,6 +230,7 @@ async def startup_tasks():
         from migrate_add_whop_billing import run_migration as migrate_whop_billing
         from migrate_add_yearly_drip import run_migration as migrate_yearly_drip
         from migrate_add_has_seen_tutorial import run_migration as migrate_has_seen_tutorial
+        from migrate_add_email_notifications import run_migration as migrate_email_notifications
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -264,6 +265,7 @@ async def startup_tasks():
         migrate_whop_billing()
         migrate_yearly_drip()
         migrate_has_seen_tutorial()
+        migrate_email_notifications()
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)

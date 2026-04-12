@@ -145,25 +145,27 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="border-t border-dashboard-border pt-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-medium text-dashboard-text mb-2">Reset password</h2>
-              <p className="text-sm text-dashboard-text-muted">
-                Click the button below, and we&apos;ll send you an email to change your password.
-              </p>
+        {!user?.oauth_provider && (
+          <div className="border-t border-dashboard-border pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-medium text-dashboard-text mb-2">Reset password</h2>
+                <p className="text-sm text-dashboard-text-muted">
+                  Click the button below, and we&apos;ll send you an email to change your password.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSendPasswordReset}
+                disabled={sendingReset || !user?.email}
+                className="px-4 py-2 border border-[rgb(229,72,77)] text-[rgb(229,72,77)] bg-transparent rounded-lg hover:bg-[rgb(229,72,77)]/10 transition-colors disabled:opacity-50 flex items-center space-x-2 disabled:cursor-not-allowed"
+              >
+                {sendingReset && <LoadingSpinner size="sm" />}
+                <span>Reset</span>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleSendPasswordReset}
-              disabled={sendingReset || !user?.email}
-              className="px-4 py-2 border border-[rgb(229,72,77)] text-[rgb(229,72,77)] bg-transparent rounded-lg hover:bg-[rgb(229,72,77)]/10 transition-colors disabled:opacity-50 flex items-center space-x-2 disabled:cursor-not-allowed"
-            >
-              {sendingReset && <LoadingSpinner size="sm" />}
-              <span>Reset</span>
-            </button>
           </div>
-        </div>
+        )}
 
         <div className="border-t border-dashboard-border pt-6">
           <h2 className="text-lg font-medium text-dashboard-text mb-2">Billing</h2>

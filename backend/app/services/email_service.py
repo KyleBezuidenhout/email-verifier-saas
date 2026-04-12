@@ -298,7 +298,7 @@ def send_downgrade_notification_email(to_email: str, plan_name: str = "trial") -
         <div class="container">
             <h1>Your subscription has been downgraded</h1>
             <p>After multiple failed payment attempts, your Billion Verifier subscription has been moved to the <strong style="color: #ccc;">{html.escape(plan_name)}</strong> plan.</p>
-            <p>On this plan you will be charged <strong style="color: #ccc;">0.5 credits per email</strong> processed through verification and enrichment.</p>
+            <p>On this plan you will be charged <strong style="color: #ccc;">0.1 credits per email</strong> processed through verification and enrichment.</p>
             <p>If you'd like to re-subscribe to a plan with included credits, click below.</p>
             <p style="text-align: center; margin: 24px 0;">
                 <a href="https://www.billionverifier.io/get-credits" class="btn">Get More Credits</a>

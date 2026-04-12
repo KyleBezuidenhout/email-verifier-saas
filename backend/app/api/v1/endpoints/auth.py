@@ -45,6 +45,7 @@ def _build_user_response(user: User, **overrides) -> UserResponse:
         manage_url=getattr(user, 'manage_url', None),
         email_verified=getattr(user, 'email_verified', True),
         has_seen_tutorial=getattr(user, 'has_seen_tutorial', True),
+        email_notifications_enabled=getattr(user, 'email_notifications_enabled', True),
         oauth_provider=getattr(user, 'oauth_provider', None),
         created_at=user.created_at.isoformat(),
     )
@@ -187,6 +188,8 @@ def update_user_info(
         current_user.referral_source = user_update.referral_source
     if user_update.has_seen_tutorial is not None:
         current_user.has_seen_tutorial = user_update.has_seen_tutorial
+    if user_update.email_notifications_enabled is not None:
+        current_user.email_notifications_enabled = user_update.email_notifications_enabled
 
     db.commit()
     db.refresh(current_user)

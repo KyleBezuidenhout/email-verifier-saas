@@ -69,6 +69,7 @@ class UserResponse(BaseModel):
     manage_url: Optional[str] = None
     email_verified: bool = True
     has_seen_tutorial: bool = False
+    email_notifications_enabled: bool = True
     oauth_provider: Optional[str] = None
     created_at: str
 
@@ -81,6 +82,7 @@ class UserUpdate(BaseModel):
     company_website: Optional[str] = None
     referral_source: Optional[str] = None
     has_seen_tutorial: Optional[bool] = None
+    email_notifications_enabled: Optional[bool] = None
 
     class Config:
         from_attributes = True

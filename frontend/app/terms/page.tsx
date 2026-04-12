@@ -185,7 +185,7 @@ export default function TermsPage() {
               </h2>
               <h3 className="text-xl font-semibold text-landing-heading mb-3">7.1 Termination by You</h3>
               <p className="text-landing-text leading-relaxed mb-4">
-                You may terminate your account at any time through your account settings or by contacting support. Upon cancellation of your subscription, you will continue to have access to use your remaining credits, as <strong>credits never expire</strong>. You may continue using the Service on a pay-as-you-go basis with your existing credits. <strong>Note:</strong> Once your subscription is cancelled, uncapped enrichment and verification will no longer be available. You will be charged 0.5 credits for every email processed through enrichment and verification.
+                You may terminate your account at any time through your account settings or by contacting support. Upon cancellation of your subscription, you will continue to have access to use your remaining credits, as <strong>credits never expire</strong>. You may continue using the Service on a pay-as-you-go basis with your existing credits. <strong>Note:</strong> Once your subscription is cancelled, uncapped enrichment and verification will no longer be available. You will be charged 0.1 credits for every email processed through enrichment and verification.
               </p>
 
               <h3 className="text-xl font-semibold text-landing-heading mb-3">7.2 Termination by BillionVerifier</h3>

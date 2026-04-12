@@ -426,7 +426,8 @@ async def process_order(order_id: str):
             try:
                 user_result = db.execute(
                     text("""
-                        SELECT u.email, vo.targeting, vo.leads_found, vo.leads_qualified 
+                        SELECT u.email, vo.targeting, vo.leads_found, vo.leads_qualified,
+                               u.email_notifications_enabled
                         FROM users u 
                         JOIN vayne_orders vo ON u.id = vo.user_id 
                         WHERE vo.id = :order_id
@@ -434,7 +435,7 @@ async def process_order(order_id: str):
                     {"order_id": str(order_uuid)}
                 )
                 user_row = user_result.fetchone()
-                if user_row:
+                if user_row and user_row[4] is not False:
                     send_scraping_completion_email(
                         user_email=user_row[0],
                         order_id=str(order_uuid),

@@ -901,18 +901,20 @@ def _send_monitor_completion_email(db, order_id: UUID):
     try:
         row = db.execute(text("""
             SELECT u.email, vo.targeting, vo.estimated_leads,
-                   u.id as user_id, u.plan, u.credits
+                   u.id as user_id, u.plan, u.credits,
+                   u.email_notifications_enabled
             FROM users u
             JOIN vayne_orders vo ON u.id = vo.user_id
             WHERE vo.id = :order_id
         """), {"order_id": str(order_id)}).fetchone()
         if row:
-            send_scraping_completion_email(
-                user_email=row[0],
-                order_id=str(order_id),
-                results={"leads_found": row[2] or 0},
-                targeting=row[1],
-            )
+            if row[6] is not False:
+                send_scraping_completion_email(
+                    user_email=row[0],
+                    order_id=str(order_id),
+                    results={"leads_found": row[2] or 0},
+                    targeting=row[1],
+                )
             _check_credit_usage_alert(str(row[3]), row[0], row[4] or "trial", float(row[5] or 0))
     except Exception as email_error:
         log(f"Failed to send notification email: {email_error}", "error")
