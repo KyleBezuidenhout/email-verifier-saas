@@ -50,6 +50,9 @@ def _build_user_response(user: User, **overrides) -> UserResponse:
         email_verified=getattr(user, 'email_verified', True),
         has_seen_tutorial=getattr(user, 'has_seen_tutorial', True),
         email_notifications_enabled=getattr(user, 'email_notifications_enabled', True),
+        onboarding_completed=getattr(user, 'onboarding_completed', True),
+        job_role=getattr(user, 'job_role', None),
+        company_size=getattr(user, 'company_size', None),
         oauth_provider=getattr(user, 'oauth_provider', None),
         profile_picture_url=getattr(user, 'profile_picture_url', None),
         gravatar_url=gravatar_url,
@@ -75,10 +78,6 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
             existing_user.email_verification_expires = datetime.utcnow() + timedelta(hours=48)
             existing_user.hashed_password = get_password_hash(user_data.password)
             existing_user.full_name = user_data.full_name
-            existing_user.company_name = user_data.company_name
-            existing_user.company_website = user_data.company_website
-            existing_user.referral_source = user_data.referral_source
-            existing_user.daily_cold_emails = user_data.daily_cold_emails
             db.commit()
             send_verification_email(existing_user.email, token)
             return RegisterPendingResponse(
@@ -96,12 +95,9 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
         email=user_data.email,
         hashed_password=hashed_password,
         full_name=user_data.full_name,
-        company_name=user_data.company_name,
-        company_website=user_data.company_website,
-        referral_source=user_data.referral_source,
-        daily_cold_emails=user_data.daily_cold_emails,
         credits=2000,
         email_verified=False,
+        onboarding_completed=False,
         email_verification_token=token,
         email_verification_expires=datetime.utcnow() + timedelta(hours=48),
     )
@@ -114,10 +110,10 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     send_new_signup_notification(
         user_email=new_user.email,
         full_name=new_user.full_name,
-        company_name=new_user.company_name,
-        company_website=new_user.company_website,
-        referral_source=new_user.referral_source,
-        daily_cold_emails=new_user.daily_cold_emails,
+        company_name=None,
+        company_website=None,
+        referral_source=None,
+        daily_cold_emails=None,
         oauth_provider=getattr(new_user, "oauth_provider", None),
     )
 
@@ -186,6 +182,8 @@ def update_user_info(
     db: Session = Depends(get_db)
 ):
     """Update user information."""
+    import json as _json
+
     if user_update.catchall_verifier_api_key is not None:
         current_user.catchall_verifier_api_key = user_update.catchall_verifier_api_key
     if user_update.company_website is not None:
@@ -196,6 +194,16 @@ def update_user_info(
         current_user.has_seen_tutorial = user_update.has_seen_tutorial
     if user_update.email_notifications_enabled is not None:
         current_user.email_notifications_enabled = user_update.email_notifications_enabled
+    if user_update.job_role is not None:
+        current_user.job_role = user_update.job_role
+    if user_update.company_size is not None:
+        current_user.company_size = user_update.company_size
+    if user_update.daily_cold_emails is not None:
+        current_user.daily_cold_emails = user_update.daily_cold_emails
+    if user_update.onboarding_goals is not None:
+        current_user.onboarding_goals = _json.dumps(user_update.onboarding_goals)
+    if user_update.onboarding_completed is not None:
+        current_user.onboarding_completed = user_update.onboarding_completed
 
     db.commit()
     db.refresh(current_user)

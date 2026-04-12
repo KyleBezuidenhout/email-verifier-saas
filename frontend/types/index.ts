@@ -18,6 +18,9 @@ export interface User {
   email_verified?: boolean;
   email_notifications_enabled?: boolean;
   has_seen_tutorial?: boolean;
+  onboarding_completed?: boolean;
+  job_role?: string | null;
+  company_size?: string | null;
   oauth_provider?: string;
   profile_picture_url?: string | null;
   gravatar_url?: string | null;
@@ -99,10 +102,6 @@ export interface RegisterRequest {
   email: string;
   password: string;
   full_name: string;
-  company_name?: string;
-  company_website: string;
-  referral_source: string;
-  daily_cold_emails?: number;
 }
 
 export interface AuthResponse {

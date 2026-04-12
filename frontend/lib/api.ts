@@ -292,7 +292,7 @@ class ApiClient {
     return this.request<User>("/api/v1/auth/me");
   }
 
-  async updateUser(data: { catchall_verifier_api_key?: string; email_notifications_enabled?: boolean; company_website?: string; referral_source?: string; has_seen_tutorial?: boolean }): Promise<User> {
+  async updateUser(data: { catchall_verifier_api_key?: string; email_notifications_enabled?: boolean; company_website?: string; referral_source?: string; has_seen_tutorial?: boolean; job_role?: string; company_size?: string; daily_cold_emails?: number; onboarding_goals?: string[]; onboarding_completed?: boolean }): Promise<User> {
     return this.request<User>("/api/v1/auth/me", {
       method: "PUT",
       body: JSON.stringify(data),

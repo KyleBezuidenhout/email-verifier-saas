@@ -8,19 +8,13 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { OAuthButtons, OAuthDivider } from "@/components/auth/OAuthButtons";
 import { ApiError } from "@/lib/api";
 
-// Personal email domains that are blocked (except gmail.com which is allowed)
 const BLOCKED_EMAIL_DOMAINS = [
-  // Apple
   "icloud.com", "me.com", "mac.com",
-  // Microsoft
   "outlook.com", "hotmail.com", "live.com", "msn.com",
-  // Yahoo
   "yahoo.com", "ymail.com",
-  // Other personal providers
   "aol.com", "protonmail.com", "proton.me",
   "zoho.com", "mail.com", "gmx.com", "gmx.net",
   "inbox.com", "fastmail.com",
-  // ISP emails
   "att.net", "verizon.net", "comcast.net", "cox.net",
   "sbcglobal.net", "bellsouth.net", "earthlink.net",
 ];
@@ -28,11 +22,7 @@ const BLOCKED_EMAIL_DOMAINS = [
 const isEmailAllowed = (email: string): boolean => {
   const domain = email.toLowerCase().split("@")[1];
   if (!domain) return false;
-  
-  // Gmail is explicitly allowed
   if (domain === "gmail.com") return true;
-  
-  // Check if domain is in blocked list
   return !BLOCKED_EMAIL_DOMAINS.includes(domain);
 };
 
@@ -41,8 +31,6 @@ export function RegisterForm() {
     email: "",
     password: "",
     full_name: "",
-    company_website: "",
-    referral_source: "",
   });
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState("");
@@ -73,12 +61,6 @@ export function RegisterForm() {
       return;
     }
 
-    const wordCount = formData.referral_source.trim().split(/\s+/).filter(Boolean).length;
-    if (wordCount > 20) {
-      setError("Referral answer must be 20 words or less");
-      return;
-    }
-
     if (!acceptTerms) {
       setError("You must accept the terms of service");
       return;
@@ -91,8 +73,6 @@ export function RegisterForm() {
         email: formData.email,
         password: formData.password,
         full_name: formData.full_name,
-        company_website: formData.company_website,
-        referral_source: formData.referral_source,
       });
       router.push("/check-email?email=" + encodeURIComponent(formData.email));
     } catch (err) {
@@ -144,37 +124,6 @@ export function RegisterForm() {
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           className="glass-input w-full"
           placeholder="you@company.com"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="company_website" className="block text-sm font-medium text-white mb-2">
-          Company Website
-        </label>
-        <input
-          id="company_website"
-          type="text"
-          required
-          value={formData.company_website}
-          onChange={(e) => setFormData({ ...formData, company_website: e.target.value })}
-          className="glass-input w-full"
-          placeholder="yourcompany.com"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="referral_source" className="block text-sm font-medium text-white mb-2">
-          How Did You Hear About Us?
-        </label>
-        <input
-          id="referral_source"
-          type="text"
-          required
-          maxLength={150}
-          value={formData.referral_source}
-          onChange={(e) => setFormData({ ...formData, referral_source: e.target.value })}
-          className="glass-input w-full"
-          placeholder="John from Twitter, Google search, etc."
         />
       </div>
 

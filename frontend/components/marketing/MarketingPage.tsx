@@ -146,7 +146,7 @@ const howItWorksSticky = [
     number: "02",
     headline: "Extract Your Target Profiles",
     description:
-      "Extract your entire search at 1,000 profiles per 6 minutes.",
+      "Extract up to 15,000 profiles daily per Sales Navigator seat.",
     image: "/images/step-2-cookie.png",
   },
   {

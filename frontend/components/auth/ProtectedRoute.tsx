@@ -13,7 +13,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
-    } else if (!loading && user && user.oauth_provider && !user.company_website) {
+    } else if (!loading && user && !user.onboarding_completed) {
       router.push("/onboarding");
     } else if (!loading && user && !user.has_seen_tutorial && pathname !== "/tutorial") {
       router.push("/tutorial");
@@ -32,7 +32,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  if (user.oauth_provider && !user.company_website) {
+  if (!user.onboarding_completed) {
     return null;
   }
 
@@ -42,5 +42,3 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>;
 }
-
-

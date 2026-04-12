@@ -45,7 +45,7 @@ export default function OAuthCallbackPage() {
         const response = await apiClient.oauthCallback(provider, code, stateParam);
         setAuthUser(response.user);
         const user = response.user;
-        if (!user.company_website) {
+        if (!user.onboarding_completed) {
           window.location.href = "/onboarding";
         } else {
           const redirect = localStorage.getItem("bv_post_auth_redirect") || "/sales-nav-scraper";

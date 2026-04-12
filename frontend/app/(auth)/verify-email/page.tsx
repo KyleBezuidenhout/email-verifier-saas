@@ -21,11 +21,14 @@ function VerifyEmailContent() {
 
     const verify = async () => {
       try {
-        await apiClient.verifyEmail(token);
+        const response = await apiClient.verifyEmail(token);
         setSuccess(true);
-        const redirect = localStorage.getItem("bv_post_auth_redirect") || "/sales-nav-scraper";
-        localStorage.removeItem("bv_post_auth_redirect");
-        setTimeout(() => router.push(redirect), 2000);
+        const user = response.user;
+        const dest = (!user.onboarding_completed)
+          ? "/onboarding"
+          : (localStorage.getItem("bv_post_auth_redirect") || "/sales-nav-scraper");
+        if (user.onboarding_completed) localStorage.removeItem("bv_post_auth_redirect");
+        setTimeout(() => router.push(dest), 2000);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Verification failed. The link may have expired.");
       } finally {

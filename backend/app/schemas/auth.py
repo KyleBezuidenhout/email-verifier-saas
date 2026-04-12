@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 
 # Personal email domains that are blocked (except gmail.com which is allowed)
@@ -24,10 +24,6 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    company_name: Optional[str] = None
-    company_website: str
-    referral_source: str
-    daily_cold_emails: Optional[int] = None
 
     @field_validator("email")
     @classmethod
@@ -70,6 +66,9 @@ class UserResponse(BaseModel):
     email_verified: bool = True
     has_seen_tutorial: bool = False
     email_notifications_enabled: bool = True
+    onboarding_completed: bool = False
+    job_role: Optional[str] = None
+    company_size: Optional[str] = None
     oauth_provider: Optional[str] = None
     profile_picture_url: Optional[str] = None
     gravatar_url: Optional[str] = None
@@ -85,6 +84,11 @@ class UserUpdate(BaseModel):
     referral_source: Optional[str] = None
     has_seen_tutorial: Optional[bool] = None
     email_notifications_enabled: Optional[bool] = None
+    job_role: Optional[str] = None
+    company_size: Optional[str] = None
+    daily_cold_emails: Optional[int] = None
+    onboarding_goals: Optional[List[str]] = None
+    onboarding_completed: Optional[bool] = None
 
     class Config:
         from_attributes = True
