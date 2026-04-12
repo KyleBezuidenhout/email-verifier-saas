@@ -71,6 +71,8 @@ class UserResponse(BaseModel):
     has_seen_tutorial: bool = False
     email_notifications_enabled: bool = True
     oauth_provider: Optional[str] = None
+    profile_picture_url: Optional[str] = None
+    gravatar_url: Optional[str] = None
     created_at: str
 
     class Config:

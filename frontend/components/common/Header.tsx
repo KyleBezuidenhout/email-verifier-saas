@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { UserAvatar } from "./UserAvatar";
 
 export function Header() {
   const { user, logout } = useAuth();
@@ -61,18 +62,6 @@ export function Header() {
     return "Dashboard";
   };
 
-  // Get user initials for avatar
-  const getInitials = (name?: string, email?: string) => {
-    if (name) {
-      const parts = name.split(" ");
-      if (parts.length >= 2) {
-        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-      }
-      return name[0]?.toUpperCase() || "U";
-    }
-    return email?.[0]?.toUpperCase() || "U";
-  };
-
   return (
     <header className="h-[70px] bg-dashboard-surface/80 backdrop-blur-sm border-b border-dashboard-border flex items-center justify-between px-6">
       {/* Page Title / Breadcrumb */}
@@ -109,9 +98,13 @@ export function Header() {
             onClick={() => setShowMenu(!showMenu)}
             className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-dashboard-card transition-colors"
           >
-            <div className="w-8 h-8 rounded-full bg-dashboard-accent/20 flex items-center justify-center text-dashboard-accent font-semibold text-xs">
-              {getInitials(user.full_name, user.email)}
-            </div>
+            <UserAvatar
+              fullName={user.full_name}
+              email={user.email}
+              profilePictureUrl={user.profile_picture_url}
+              gravatarUrl={user.gravatar_url}
+              size={32}
+            />
             <span className="text-sm font-medium text-dashboard-text hidden md:block">
               {user.full_name || user.email.split("@")[0]}
             </span>

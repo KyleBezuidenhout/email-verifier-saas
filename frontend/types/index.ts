@@ -19,6 +19,8 @@ export interface User {
   email_notifications_enabled?: boolean;
   has_seen_tutorial?: boolean;
   oauth_provider?: string;
+  profile_picture_url?: string | null;
+  gravatar_url?: string | null;
   created_at: string;
 }
 

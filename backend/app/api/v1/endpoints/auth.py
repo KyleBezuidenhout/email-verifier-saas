@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 from datetime import timedelta, datetime
+import hashlib
 import secrets
 
 from app.db.session import get_db
@@ -26,6 +27,9 @@ security = HTTPBearer()
 
 
 def _build_user_response(user: User, **overrides) -> UserResponse:
+    email_hash = hashlib.md5(user.email.lower().strip().encode()).hexdigest()
+    gravatar_url = f"https://www.gravatar.com/avatar/{email_hash}?s=160&d=404"
+
     data = dict(
         id=user.id,
         email=user.email,
@@ -47,6 +51,8 @@ def _build_user_response(user: User, **overrides) -> UserResponse:
         has_seen_tutorial=getattr(user, 'has_seen_tutorial', True),
         email_notifications_enabled=getattr(user, 'email_notifications_enabled', True),
         oauth_provider=getattr(user, 'oauth_provider', None),
+        profile_picture_url=getattr(user, 'profile_picture_url', None),
+        gravatar_url=gravatar_url,
         created_at=user.created_at.isoformat(),
     )
     data.update(overrides)

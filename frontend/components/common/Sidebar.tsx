@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { UserAvatar } from "./UserAvatar";
 
 interface NavItem {
   name: string;
@@ -128,18 +129,6 @@ export function Sidebar() {
   const primaryNavItems = visibleNavItems.filter((item) => !bottomNavNames.has(item.name));
   const bottomNavItems = visibleNavItems.filter((item) => bottomNavNames.has(item.name));
 
-  // Get user initials for avatar
-  const getInitials = (name?: string, email?: string) => {
-    if (name) {
-      const parts = name.split(" ");
-      if (parts.length >= 2) {
-        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-      }
-      return name[0]?.toUpperCase() || "U";
-    }
-    return email?.[0]?.toUpperCase() || "U";
-  };
-
   const handleLogoClick = () => {
     window.location.href = "https://www.billionverifier.io/";
   };
@@ -262,9 +251,13 @@ export function Sidebar() {
 
             {/* User Profile */}
             <div className="flex items-center gap-3 p-3 rounded-lg bg-dashboard-card border border-dashboard-border">
-              <div className="w-10 h-10 rounded-full bg-dashboard-accent/20 flex items-center justify-center text-dashboard-accent font-semibold text-sm">
-                {getInitials(user.full_name, user.email)}
-              </div>
+              <UserAvatar
+                fullName={user.full_name}
+                email={user.email}
+                profilePictureUrl={user.profile_picture_url}
+                gravatarUrl={user.gravatar_url}
+                size={40}
+              />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-dashboard-text truncate">
                   {user.full_name || "User"}

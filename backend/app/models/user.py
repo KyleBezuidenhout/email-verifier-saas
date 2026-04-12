@@ -18,6 +18,7 @@ class User(Base):
     referral_source = Column(String(500), nullable=True)
     oauth_provider = Column(String(50), nullable=True)
     oauth_provider_id = Column(String(255), nullable=True)
+    profile_picture_url = Column(String(500), nullable=True)
     daily_cold_emails = Column(Integer, nullable=True)
     credits = Column(Numeric(12, 1), default=2000)
     plan = Column(String(20), default="trial", nullable=False, server_default="trial")

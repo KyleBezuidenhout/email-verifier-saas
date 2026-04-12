@@ -152,6 +152,7 @@ async def oauth_callback(provider: str, body: OAuthCallbackRequest, db: Session 
     email = user_info["email"].lower().strip()
     provider_id = user_info["sub"]
     full_name = user_info.get("name", "")
+    picture_url = user_info.get("picture", "") or None
 
     if not _is_email_allowed(email):
         raise HTTPException(
@@ -182,6 +183,8 @@ async def oauth_callback(provider: str, body: OAuthCallbackRequest, db: Session 
         existing_user.oauth_provider_id = provider_id
         if full_name and not existing_user.full_name:
             existing_user.full_name = full_name
+        if picture_url:
+            existing_user.profile_picture_url = picture_url
         db.commit()
         db.refresh(existing_user)
 
@@ -201,6 +204,7 @@ async def oauth_callback(provider: str, body: OAuthCallbackRequest, db: Session 
         full_name=full_name,
         oauth_provider=provider,
         oauth_provider_id=provider_id,
+        profile_picture_url=picture_url,
         email_verified=True,
         credits=2000,
     )
@@ -260,7 +264,7 @@ async def _exchange_google(code: str, redirect_uri: str) -> dict:
         if not email:
             raise HTTPException(status_code=400, detail="Google account does not have an email address.")
 
-        return {"email": email, "sub": info.get("sub", ""), "name": info.get("name", "")}
+        return {"email": email, "sub": info.get("sub", ""), "name": info.get("name", ""), "picture": info.get("picture", "")}
 
 
 async def _exchange_microsoft(code: str, redirect_uri: str) -> dict:
