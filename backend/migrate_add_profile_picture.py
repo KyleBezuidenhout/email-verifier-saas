@@ -14,11 +14,20 @@ def run_migration():
         try:
             conn.execute(text("""
                 ALTER TABLE users
-                ADD COLUMN IF NOT EXISTS profile_picture_url VARCHAR(500)
+                ADD COLUMN IF NOT EXISTS profile_picture_url TEXT
             """))
             print("  Added profile_picture_url column")
         except Exception as e:
             print(f"  Note: profile_picture_url might already exist: {e}")
+
+        try:
+            conn.execute(text("""
+                ALTER TABLE users
+                ALTER COLUMN profile_picture_url TYPE TEXT
+            """))
+            print("  Ensured profile_picture_url is TEXT")
+        except Exception as e:
+            print(f"  Note: profile_picture_url type change: {e}")
 
         conn.commit()
 
