@@ -77,6 +77,7 @@ export default function DashboardPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [orders, setOrders] = useState<VayneOrder[]>([]);
   const [downloadingOrderId, setDownloadingOrderId] = useState<string | null>(null);
+  const [downloadDropdownId, setDownloadDropdownId] = useState<string | null>(null);
 
   // Results modal state
   const [resultsModalOrder, setResultsModalOrder] = useState<VayneOrder | null>(null);
@@ -84,6 +85,16 @@ export default function DashboardPage() {
   const [loadingResults, setLoadingResults] = useState(false);
   const [resultsFilter, setResultsFilter] = useState<string>("all");
   const [mxFilter, setMxFilter] = useState<string>("all");
+
+  useEffect(() => {
+    if (!downloadDropdownId) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-download-dropdown]")) setDownloadDropdownId(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [downloadDropdownId]);
 
   const loadCredits = useCallback(async () => {
     try {
@@ -236,12 +247,14 @@ export default function DashboardPage() {
     }
   };
 
-  const handleDownloadCSV = async (order: VayneOrder) => {
+  const handleDownloadCSV = async (order: VayneOrder, statusFilter?: string[]) => {
     if (order.enrichment_job_id && order.enrichment_status === "completed") {
       const url = apiClient.getDownloadUrl(order.enrichment_job_id, {
+        status: statusFilter,
         filename: order.targeting || undefined,
       });
       window.open(url, "_blank");
+      setDownloadDropdownId(null);
       return;
     }
     setDownloadingOrderId(order.id);
@@ -499,7 +512,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Unified Job Table */}
-      <div className="glass-card p-6 mb-6">
+      <div className="glass-card p-6 mb-6 overflow-hidden">
         <h3 className="text-lg font-semibold text-dashboard-text mb-4">Jobs</h3>
         {orders.length === 0 ? (
           <p className="text-dashboard-text-muted text-center py-8">No jobs yet. Start a new job above.</p>
@@ -508,12 +521,12 @@ export default function DashboardPage() {
             <table className="min-w-full divide-y divide-dashboard-border">
               <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }}>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Job Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Created</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Leads</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Hit Rate</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Job Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Created</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Leads</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Hit Rate</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
@@ -523,20 +536,22 @@ export default function DashboardPage() {
                   const isEnrichmentComplete = order.auto_enrich && order.enrichment_status === "completed";
                   const isScrapingComplete = !order.auto_enrich && order.status === "completed";
                   const canViewResults = isEnrichmentComplete && order.enrichment_job_id;
-                  const canDownload = isEnrichmentComplete || isScrapingComplete;
+                  const canDownloadEnriched = isEnrichmentComplete && order.enrichment_job_id;
+                  const canDownloadRaw = isScrapingComplete;
+                  const jobName = order.targeting && order.targeting !== "Untitled Order" ? order.targeting : order.id.slice(0, 8);
 
                   return (
                     <tr key={order.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text">
-                        {order.targeting && order.targeting !== "Untitled Order" ? order.targeting : order.id.slice(0, 8)}
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text max-w-[250px] truncate" title={jobName}>
+                        {jobName}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                         {formatDate(order.created_at)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                         {(order.leads_found || 0).toLocaleString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-4 whitespace-nowrap">
                         <span className={`text-xs font-medium ${displayStatus.color}`}>
                           {displayStatus.label}
                         </span>
@@ -546,14 +561,14 @@ export default function DashboardPage() {
                           </p>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
                         {hitRate ? (
                           <span className="text-[#22c55e] font-medium">{hitRate}</span>
                         ) : (
                           <span className="text-dashboard-text-muted/50">&mdash;</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center gap-2">
                           {canViewResults && (
                             <button
@@ -563,7 +578,36 @@ export default function DashboardPage() {
                               View Results
                             </button>
                           )}
-                          {canDownload && (
+                          {canDownloadEnriched && (
+                            <div className="relative" data-download-dropdown>
+                              <button
+                                onClick={() => setDownloadDropdownId(downloadDropdownId === order.id ? null : order.id)}
+                                className="px-3 py-1.5 border border-dashboard-border text-dashboard-text-muted bg-transparent text-xs rounded-lg hover:bg-dashboard-card transition-colors flex items-center gap-1"
+                              >
+                                Download
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                              </button>
+                              {downloadDropdownId === order.id && (
+                                <div className="absolute right-0 top-full mt-1 z-50 w-36 rounded-lg border border-dashboard-border shadow-xl" style={{ background: 'rgba(13, 15, 18, 0.95)' }}>
+                                  {[
+                                    { label: "All Leads", filter: undefined },
+                                    { label: "Valid", filter: ["valid"] },
+                                    { label: "Catchall", filter: ["catchall"] },
+                                    { label: "Not Found", filter: ["not_found", "invalid"] },
+                                  ].map((opt) => (
+                                    <button
+                                      key={opt.label}
+                                      onClick={() => handleDownloadCSV(order, opt.filter)}
+                                      className="block w-full text-left px-3 py-2 text-xs text-dashboard-text-muted hover:bg-dashboard-card/50 hover:text-dashboard-text transition-colors first:rounded-t-lg last:rounded-b-lg"
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {canDownloadRaw && (
                             <button
                               onClick={() => handleDownloadCSV(order)}
                               disabled={downloadingOrderId === order.id}

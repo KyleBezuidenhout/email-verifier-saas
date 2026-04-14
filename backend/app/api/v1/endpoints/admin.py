@@ -9,7 +9,7 @@ Protected endpoints for admin dashboard:
 - Platform statistics
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, desc, text, update
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -331,27 +331,41 @@ def get_all_jobs(
                 },
             })
 
-    # Sales Nav orders
+    # Sales Nav orders (LEFT JOIN to get enrichment status from linked job)
     if job_type in (None, "sales_nav"):
-        vq = db.query(VayneOrder, User).join(User, VayneOrder.user_id == User.id)
+        EnrichJob = aliased(Job)
+        vq = (
+            db.query(VayneOrder, User, EnrichJob)
+            .join(User, VayneOrder.user_id == User.id)
+            .outerjoin(EnrichJob, VayneOrder.enrichment_job_id == EnrichJob.id)
+        )
         if status_filter:
-            mapped = "queued" if status_filter == "pending" else status_filter
-            vq = vq.filter(VayneOrder.status == mapped)
-        for order, user in vq.all():
+            vq = vq.filter(VayneOrder.status == status_filter)
+        for order, user, enrich_job in vq.all():
+            enrichment_status = enrich_job.status if enrich_job else None
+            enrichment_progress = None
+            if enrich_job and enrich_job.total_leads and enrich_job.total_leads > 0:
+                enrichment_progress = round(
+                    (enrich_job.processed_leads or 0) / enrich_job.total_leads * 100
+                )
             unified.append({
                 "id": str(order.id),
-                "status": "pending" if order.status == "queued" else order.status,
+                "status": order.status,
                 "job_type": "sales_nav",
                 "original_filename": order.targeting,
                 "total_leads": order.estimated_leads or 0,
                 "processed_leads": order.leads_found or 0,
-                "valid_emails_found": order.leads_found or 0,
-                "catchall_emails_found": 0,
+                "valid_emails_found": enrich_job.valid_emails_found if enrich_job else 0,
+                "catchall_emails_found": enrich_job.catchall_emails_found if enrich_job else 0,
                 "cost_in_credits": order.credits_charged or 0,
                 "created_at": order.created_at.isoformat() if order.created_at else None,
                 "completed_at": order.completed_at.isoformat() if order.completed_at else None,
                 "file_url": order.file_url,
                 "failure_reason": order.failure_reason,
+                "auto_enrich": order.auto_enrich,
+                "enrichment_job_id": str(order.enrichment_job_id) if order.enrichment_job_id else None,
+                "enrichment_status": enrichment_status,
+                "enrichment_progress_percentage": enrichment_progress,
                 "client": {
                     "id": str(user.id),
                     "email": user.email,

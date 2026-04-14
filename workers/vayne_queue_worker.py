@@ -82,6 +82,7 @@ SessionLocal = sessionmaker(bind=engine)
 redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 import boto3
+import httpx
 R2_BUCKET = settings.CLOUDFLARE_R2_BUCKET_NAME
 s3_client = boto3.client(
     's3',
@@ -909,11 +910,20 @@ async def monitor_slot(slot_idx: int, order_row):
 
 
 def _ensure_enrichment_triggered(db, order_id: UUID):
-    """Safety net: if n8n webhook completed but didn't create enrichment job, create it here."""
+    """Download CSV from file_url, upload to R2, and create enrichment job if needed.
+
+    Uses a lock-release-relock pattern to avoid holding a row lock during HTTP I/O.
+    Phase 1: Check preconditions under FOR UPDATE, grab file_url, release lock.
+    Phase 2: Download CSV from Vayne S3, upload to R2 (no lock held).
+    Phase 3: Re-acquire lock, re-verify no race, create Job + queue to Redis.
+    """
+    csv_key = f"vayne-orders/{order_id}/export.csv"
+
+    # --- Phase 1: Check preconditions, get file_url, release lock ---
     try:
         row = db.execute(text("""
-            SELECT vo.auto_enrich, vo.enrichment_job_id, vo.user_id, vo.targeting,
-                   vo.credits_charged, vo.leads_found, u.plan
+            SELECT vo.auto_enrich, vo.enrichment_job_id, vo.file_url, vo.user_id,
+                   vo.targeting, vo.credits_charged, vo.leads_found, u.plan
             FROM vayne_orders vo
             JOIN users u ON u.id = vo.user_id
             WHERE vo.id = :oid
@@ -921,30 +931,73 @@ def _ensure_enrichment_triggered(db, order_id: UUID):
         """), {"oid": str(order_id)}).fetchone()
 
         if not row or not row.auto_enrich or row.enrichment_job_id:
+            db.rollback()
             return
 
-        csv_key = f"vayne-orders/{order_id}/export.csv"
-        try:
-            s3_client.head_object(Bucket=R2_BUCKET, Key=csv_key)
-        except Exception:
-            log(f"CSV not in R2 for order {order_id}, n8n webhook will handle enrichment", "info")
+        file_url = row.file_url
+        user_id = row.user_id
+        targeting = row.targeting
+        credits_charged = row.credits_charged
+        plan = row.plan
+
+        db.rollback()  # release FOR UPDATE lock
+    except Exception as e:
+        log(f"Failed phase 1 for order {order_id}: {e}", "error")
+        db.rollback()
+        return
+
+    if not file_url:
+        log(f"No file_url in DB for order {order_id}, waiting for n8n", "info")
+        return
+
+    # --- Phase 2: Download CSV from Vayne S3, upload to R2 (unlocked) ---
+    try:
+        resp = httpx.get(file_url, timeout=120.0, follow_redirects=True)
+        if resp.status_code != 200:
+            log(f"Failed to download CSV for order {order_id}: HTTP {resp.status_code}", "error")
+            return
+        csv_data = resp.content
+        log(f"Downloaded CSV for order {order_id}: {len(csv_data)} bytes", "info")
+    except Exception as e:
+        log(f"Failed to download CSV from file_url for order {order_id}: {e}", "error")
+        return
+
+    try:
+        s3_client.put_object(Bucket=R2_BUCKET, Key=csv_key, Body=csv_data, ContentType="text/csv")
+        log(f"Uploaded CSV to R2 for order {order_id}: {csv_key}", "info")
+    except Exception as e:
+        log(f"Failed to upload CSV to R2 for order {order_id}: {e}", "error")
+        return
+
+    # --- Phase 3: Re-acquire lock, re-verify, create Job ---
+    try:
+        row2 = db.execute(text("""
+            SELECT vo.enrichment_job_id
+            FROM vayne_orders vo
+            WHERE vo.id = :oid
+            FOR UPDATE OF vo
+        """), {"oid": str(order_id)}).fetchone()
+
+        if row2 and row2.enrichment_job_id:
+            log(f"Order {order_id} already has enrichment job (race resolved), skipping", "info")
+            db.rollback()
             return
 
         from app.models.job import Job
         job = Job(
-            user_id=row.user_id,
+            user_id=user_id,
             status="pending",
             job_type="enrichment",
             source="Sales Nav",
             original_filename=f"sales-nav-{order_id}.csv",
-            job_name=row.targeting or str(order_id),
+            job_name=targeting or str(order_id),
             input_file_path=csv_key,
             total_leads=0,
             processed_leads=0,
             valid_emails_found=0,
             catchall_emails_found=0,
-            cost_in_credits=row.credits_charged or 0,
-            plan_at_creation=row.plan or "trial",
+            cost_in_credits=credits_charged or 0,
+            plan_at_creation=plan or "trial",
         )
         db.add(job)
         db.flush()
@@ -956,12 +1009,12 @@ def _ensure_enrichment_triggered(db, order_id: UUID):
 
         try:
             redis_client.rpush("enrichment-job-creation", str(job.id))
-            log(f"Safety net: created + queued enrichment job {job.id} for order {order_id}", "success")
+            log(f"Created + queued enrichment job {job.id} for order {order_id}", "success")
         except Exception as redis_err:
-            log(f"Safety net: created enrichment job {job.id} but Redis push failed: {redis_err}", "error")
+            log(f"Created enrichment job {job.id} but Redis push failed: {redis_err}", "error")
 
     except Exception as e:
-        log(f"Failed to ensure enrichment for order {order_id}: {e}", "error")
+        log(f"Failed phase 3 for order {order_id}: {e}", "error")
         db.rollback()
 
 
@@ -978,6 +1031,29 @@ def _check_completion_alerts(db, order_id: UUID):
             _check_credit_usage_alert(str(row[0]), row[1], row[2] or "trial", float(row[3] or 0))
     except Exception as e:
         log(f"Failed to check completion alerts: {e}", "error")
+
+
+def _recover_stuck_enrichment_orders(db):
+    """Startup sweep: find completed auto_enrich orders with file_url but no enrichment job."""
+    try:
+        rows = db.execute(text("""
+            SELECT id FROM vayne_orders
+            WHERE status = 'completed'
+            AND auto_enrich = true
+            AND enrichment_job_id IS NULL
+            AND file_url IS NOT NULL
+        """)).fetchall()
+
+        if not rows:
+            log("No stuck enrichment orders found", "info")
+            return
+
+        log(f"Found {len(rows)} stuck enrichment order(s), recovering...", "info")
+        for (oid,) in rows:
+            order_id = oid if isinstance(oid, UUID) else UUID(str(oid))
+            _ensure_enrichment_triggered(db, order_id)
+    except Exception as e:
+        log(f"Failed to recover stuck enrichment orders: {e}", "error")
 
 
 # ---------------------------------------------------------------------------
@@ -1052,6 +1128,7 @@ async def main():
             fail_stuck_vayne_orders(db)
             fail_stale_heartbeat_orders(db)
             fix_orphaned_queued_orders(db)
+            _recover_stuck_enrichment_orders(db)
         else:
             log("Another worker holds the recovery lock, skipping crash recovery", "info")
 

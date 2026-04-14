@@ -983,27 +983,53 @@ def process_verification_job(job_id: str) -> bool:
 
 
 def _recover_orphaned_salesnav_jobs():
-    """Re-queue pending Sales Nav enrichment jobs that never made it to Redis (safety net for RPUSH failures)."""
+    """Re-queue orphaned Sales Nav jobs that never made it to their target Redis queue.
+
+    Two distinct paths based on enrichment progress:
+    - total_leads = 0: job needs enrichment processing -> push to ENRICHMENT_QUEUE
+    - total_leads > 0: job already enriched, needs verification -> route to verification queue
+    """
     db = SessionLocal()
     try:
-        orphans = db.execute(text("""
+        needs_enrichment = db.execute(text("""
             SELECT j.id FROM jobs j
             WHERE j.source = 'Sales Nav'
             AND j.status = 'pending'
             AND j.total_leads = 0
-            AND j.created_at < NOW() - INTERVAL '5 minutes'
+            AND j.created_at < NOW() - INTERVAL '10 minutes'
         """)).fetchall()
 
-        if not orphans:
+        needs_verification = db.execute(text("""
+            SELECT j.id, j.user_id FROM jobs j
+            WHERE j.source = 'Sales Nav'
+            AND j.status = 'pending'
+            AND j.total_leads > 0
+            AND j.created_at < NOW() - INTERVAL '10 minutes'
+        """)).fetchall()
+
+        if not needs_enrichment and not needs_verification:
             return
 
-        logger.info(f"🔄 Found {len(orphans)} orphaned Sales Nav enrichment jobs, re-queuing...")
-        for (job_id,) in orphans:
-            try:
-                redis_client.rpush(ENRICHMENT_QUEUE, str(job_id))
-                logger.info(f"  Re-queued orphan job {job_id}")
-            except Exception as e:
-                logger.error(f"  Failed to re-queue orphan job {job_id}: {e}")
+        if needs_enrichment:
+            logger.info(f"Found {len(needs_enrichment)} orphaned Sales Nav jobs needing enrichment, re-queuing...")
+            for (job_id,) in needs_enrichment:
+                try:
+                    redis_client.rpush(ENRICHMENT_QUEUE, str(job_id))
+                    logger.info(f"  Re-queued orphan job {job_id} to enrichment queue")
+                except Exception as e:
+                    logger.error(f"  Failed to re-queue orphan job {job_id}: {e}")
+
+        if needs_verification:
+            logger.info(f"Found {len(needs_verification)} orphaned Sales Nav jobs needing verification, routing...")
+            for job_id, user_id in needs_verification:
+                try:
+                    verification_queue = get_verification_queue_for_user(db, user_id)
+                    if route_to_queue_or_waiting_room(redis_client, db, user_id, str(job_id), verification_queue):
+                        logger.info(f"  Routed orphan job {job_id} to verification queue '{verification_queue}'")
+                    else:
+                        logger.info(f"  Placed orphan job {job_id} in waiting room for user {user_id}")
+                except Exception as e:
+                    logger.error(f"  Failed to route orphan job {job_id}: {e}")
     except Exception as e:
         logger.error(f"Orphan recovery sweep failed: {e}")
     finally:

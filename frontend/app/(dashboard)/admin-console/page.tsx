@@ -84,6 +84,10 @@ interface AdminJob {
   completed_at: string | null;
   file_url: string | null;
   failure_reason: string | null;
+  auto_enrich?: boolean;
+  enrichment_job_id?: string | null;
+  enrichment_status?: string | null;
+  enrichment_progress_percentage?: number | null;
   client: {
     id: string;
     email: string;
@@ -568,50 +572,53 @@ export default function AdminConsolePage() {
             </div>
           )}
 
-          {/* Sales Nav Jobs Panel */}
+          {/* Sales Nav Pipeline Panel */}
           {(() => {
-            const salesNavActive = jobs.filter(j => j.job_type === "sales_nav" && j.status === "processing");
-            const salesNavQueued = jobs.filter(j => j.job_type === "sales_nav" && (j.status === "pending" || j.status === "queued"));
+            const salesNavJobs = jobs.filter(j => j.job_type === "sales_nav");
+            const scrapingActive = salesNavJobs.filter(j => ["initialization", "scraping", "segmenting", "pending"].includes(j.status));
+            const scrapingQueued = salesNavJobs.filter(j => j.status === "queued");
+            const enrichingActive = salesNavJobs.filter(j => j.enrichment_status === "processing");
+            const enrichingQueued = salesNavJobs.filter(j => j.enrichment_status === "pending" || (j.status === "completed" && j.auto_enrich && !j.enrichment_job_id));
+            const enrichingWaiting = salesNavJobs.filter(j => j.enrichment_status === "waiting");
             return (
               <div className="glass-card p-6">
-                <h2 className="text-lg font-semibold text-dashboard-text mb-4">Sales Nav Jobs</h2>
+                <h2 className="text-lg font-semibold text-dashboard-text mb-4">Sales Nav Pipeline</h2>
+
+                {/* Scraping Stage */}
+                <h3 className="text-xs font-medium text-dashboard-text-muted uppercase tracking-wider mb-3">Scraping</h3>
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-[#22c55e]">{salesNavActive.length}</div>
+                    <div className="text-2xl font-bold text-[#22c55e]">{scrapingActive.length}</div>
                     <div className="text-xs text-dashboard-text-muted mt-1">Active</div>
                   </div>
                   <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-yellow-400">{salesNavQueued.length}</div>
+                    <div className="text-2xl font-bold text-yellow-400">{scrapingQueued.length}</div>
                     <div className="text-xs text-dashboard-text-muted mt-1">Queued</div>
                   </div>
                 </div>
 
-                {salesNavActive.length > 0 && (
+                {scrapingActive.length > 0 && (
                   <div className="mb-4">
-                    <h3 className="text-sm font-medium text-dashboard-text-muted mb-2">Active</h3>
                     <div className="space-y-2">
-                      {salesNavActive.map((job) => (
+                      {scrapingActive.map((job) => (
                         <div key={job.id} className="flex items-center justify-between bg-dashboard-card/30 rounded-lg px-4 py-2 text-sm">
                           <div className="flex items-center gap-3">
                             <span className="w-2 h-2 bg-[#22c55e] rounded-full animate-pulse" />
                             <span className="text-dashboard-text">{job.client.email}</span>
                           </div>
-                          <div className="flex items-center gap-4">
-                            <span className="text-dashboard-text-muted text-xs">
-                              {job.processed_leads}/{job.total_leads} leads
-                            </span>
-                          </div>
+                          <span className="text-dashboard-text-muted text-xs">
+                            {job.processed_leads}/{job.total_leads} leads
+                          </span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {salesNavQueued.length > 0 && (
+                {scrapingQueued.length > 0 && (
                   <div className="mb-4">
-                    <h3 className="text-sm font-medium text-dashboard-text-muted mb-2">Queued</h3>
                     <div className="space-y-1">
-                      {salesNavQueued.map((job) => (
+                      {scrapingQueued.map((job) => (
                         <div key={job.id} className="flex items-center justify-between bg-dashboard-card/20 rounded px-4 py-1.5 text-sm">
                           <div className="flex items-center gap-3">
                             <span className="w-2 h-2 bg-yellow-400 rounded-full" />
@@ -624,8 +631,43 @@ export default function AdminConsolePage() {
                   </div>
                 )}
 
-                {salesNavActive.length === 0 && salesNavQueued.length === 0 && (
-                  <p className="text-dashboard-text-muted text-sm text-center py-4">No active or queued Sales Nav jobs</p>
+                {/* Enrichment Stage */}
+                <h3 className="text-xs font-medium text-dashboard-text-muted uppercase tracking-wider mb-3 mt-6 pt-4 border-t border-dashboard-border">Enrichment</h3>
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-[#22c55e]">{enrichingActive.length}</div>
+                    <div className="text-xs text-dashboard-text-muted mt-1">Active</div>
+                  </div>
+                  <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-yellow-400">{enrichingQueued.length}</div>
+                    <div className="text-xs text-dashboard-text-muted mt-1">Queued</div>
+                  </div>
+                  <div className="bg-dashboard-card/50 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-orange-400">{enrichingWaiting.length}</div>
+                    <div className="text-xs text-dashboard-text-muted mt-1">Waiting Room</div>
+                  </div>
+                </div>
+
+                {enrichingActive.length > 0 && (
+                  <div className="mb-4">
+                    <div className="space-y-2">
+                      {enrichingActive.map((job) => (
+                        <div key={job.id} className="flex items-center justify-between bg-dashboard-card/30 rounded-lg px-4 py-2 text-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" />
+                            <span className="text-dashboard-text">{job.client.email}</span>
+                          </div>
+                          <span className="text-dashboard-text-muted text-xs">
+                            {job.enrichment_progress_percentage || 0}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {scrapingActive.length === 0 && scrapingQueued.length === 0 && enrichingActive.length === 0 && enrichingQueued.length === 0 && enrichingWaiting.length === 0 && (
+                  <p className="text-dashboard-text-muted text-sm text-center py-4">No active Sales Nav pipeline jobs</p>
                 )}
               </div>
             );
@@ -925,14 +967,17 @@ export default function AdminConsolePage() {
                 {jobs.map((job) => {
                   const isSalesNav = job.job_type === "sales_nav";
                   const isCatchall = job.job_type === "catchall_verification";
-                  const isCompleted = job.status === "completed";
                   const isEnrichment = job.job_type === "enrichment";
+                  const isSalesNavEnrichComplete = isSalesNav && job.enrichment_status === "completed";
+                  const isCompleted = isSalesNavEnrichComplete || (!isSalesNav && job.status === "completed");
                   let hitRateDisplay = "--";
                   
-                  if (!isSalesNav && isCompleted && job.total_leads > 0) {
-                    const rawHitRate = isEnrichment
-                      ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100)
-                      : ((job.valid_emails_found) / job.total_leads * 100);
+                  if (isCompleted && job.total_leads > 0) {
+                    const validCount = job.valid_emails_found || 0;
+                    const catchallCount = job.catchall_emails_found || 0;
+                    const rawHitRate = (isEnrichment || isSalesNav)
+                      ? ((validCount + catchallCount) / job.total_leads * 100)
+                      : (validCount / job.total_leads * 100);
                     hitRateDisplay = `${Math.min(rawHitRate, 100).toFixed(1)}%`;
                   }
                   
@@ -971,7 +1016,7 @@ export default function AdminConsolePage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="relative group inline-block">
-                        <StatusBadge status={job.status} />
+                        <StatusBadge job={job} />
                         {job.status === "failed" && job.failure_reason && (
                           <>
                             <span className="ml-1 text-red-400 text-xs cursor-help">&#9432;</span>
@@ -1392,24 +1437,57 @@ function StatCard({ title, value, subtitle, color }: { title: string; value: num
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const statusClasses: Record<string, string> = {
+function getAdminDisplayStatus(job: {
+  status: string;
+  job_type?: string;
+  auto_enrich?: boolean;
+  enrichment_job_id?: string | null;
+  enrichment_status?: string | null;
+  enrichment_progress_percentage?: number | null;
+}): { label: string; cssClass: string } {
+  const classes = {
     completed: "bg-[#22c55e]/20 text-[#22c55e]",
+    scraping: "bg-yellow-500/20 text-yellow-400",
+    queued: "bg-blue-500/20 text-blue-400",
+    enriching: "bg-orange-500/20 text-orange-400",
     processing: "bg-blue-500/20 text-blue-400",
     pending: "bg-yellow-500/20 text-yellow-400",
-    queued: "bg-yellow-500/20 text-yellow-400",
     waiting: "bg-orange-500/20 text-orange-400",
     failed: "bg-red-500/20 text-red-400",
     cancelled: "bg-gray-500/20 text-gray-400",
   };
 
-  const displayLabel: Record<string, string> = {
-    waiting: "Waiting Room",
-  };
+  if (job.job_type === "sales_nav") {
+    if (job.auto_enrich) {
+      if (job.enrichment_status === "completed") return { label: "Completed", cssClass: classes.completed };
+      if (job.enrichment_status === "processing") {
+        const pct = job.enrichment_progress_percentage || 0;
+        return { label: `Enriching (${pct}%)`, cssClass: classes.enriching };
+      }
+      if (job.enrichment_status === "pending") return { label: "Enriching", cssClass: classes.enriching };
+      if (job.enrichment_status === "failed") return { label: "Failed", cssClass: classes.failed };
+      if (job.enrichment_status === "waiting") return { label: "Waiting Room", cssClass: classes.waiting };
+      if (job.status === "completed" && !job.enrichment_job_id) return { label: "Starting Enrichment", cssClass: classes.enriching };
+    }
+    if (job.status === "completed" && !job.auto_enrich) return { label: "Completed", cssClass: classes.completed };
+    if (job.status === "queued") return { label: "Queued", cssClass: classes.queued };
+    if (["initialization", "scraping", "segmenting", "pending", "processing"].includes(job.status)) {
+      return { label: "Scraping", cssClass: classes.scraping };
+    }
+    if (job.status === "failed") return { label: "Failed", cssClass: classes.failed };
+    if (job.status === "cancelled") return { label: "Cancelled", cssClass: classes.cancelled };
+    return { label: job.status, cssClass: classes.pending };
+  }
 
+  if (job.status === "waiting") return { label: "Waiting Room", cssClass: classes.waiting };
+  return { label: job.status, cssClass: classes[job.status as keyof typeof classes] || classes.pending };
+}
+
+function StatusBadge({ job }: { job: { status: string; job_type?: string; auto_enrich?: boolean; enrichment_job_id?: string | null; enrichment_status?: string | null; enrichment_progress_percentage?: number | null } }) {
+  const display = getAdminDisplayStatus(job);
   return (
-    <span className={`px-2 py-1 text-xs rounded ${statusClasses[status] || statusClasses.pending}`}>
-      {displayLabel[status] || status}
+    <span className={`px-2 py-1 text-xs rounded ${display.cssClass}`}>
+      {display.label}
     </span>
   );
 }
