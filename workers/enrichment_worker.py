@@ -463,6 +463,7 @@ def parse_csv_from_r2(
         'lastname': ['lastname', 'last', 'lname', 'surname', 'familyname', 'last_name'],
         'website': ['website', 'domain', 'companywebsite', 'companydomain', 'url', 'companyurl', 'company_website', 'corporatewebsite', 'corporate_website', 'corporate-website', 'primarydomain', 'organization_primary_domain', 'organizationprimarydomain'],
         'companysize': ['companysize', 'company_size', 'size', 'employees', 'employeecount', 'headcount', 'organizationsize', 'organization_size', 'orgsize', 'org_size', 'teamsize', 'team_size', 'staffcount', 'staff_count', 'numberofemployees', 'num_employees', 'employeesnumber', 'linkedincompanyemployeecount', 'linkedin_company_employee_count', 'linkedin-company-employee-count', 'linkedincompanyemployee', 'linkedin_company_employee', 'linkedin-company-employee'],
+        'email': ['email', 'emailaddress', 'email_address', 'e-mail', 'emailid', 'email_id'],
     }
     
     # Use manual mapping if provided AND column exists in CSV, otherwise auto-detect
@@ -498,8 +499,39 @@ def parse_csv_from_r2(
         if column_company_size:
             logger.warning(f"⚠️ Manual mapping '{column_company_size}' not found in CSV, falling back to auto-detect: '{company_size_col}'")
     
-    logger.info(f"🔗 Final column mapping: first_name='{first_name_col}', last_name='{last_name_col}', website='{website_col}', company_size='{company_size_col}'")
+    email_col = auto_detect_column(actual_columns, normalized_headers, 'email', COLUMN_VARIATIONS['email'])
+    if email_col:
+        logger.info(f"📋 Detected email column: '{email_col}'")
     
+    logger.info(f"🔗 Final column mapping: first_name='{first_name_col}', last_name='{last_name_col}', website='{website_col}', company_size='{company_size_col}', email='{email_col}'")
+    
+    # Personal email domains to filter out (keep gmail.com as exception)
+    PERSONAL_EMAIL_PREFIXES = [
+        'yahoo.', 'ymail.', 'hotmail.', 'live.', 'outlook.com',
+        'icloud.com', 'me.com', 'mac.com',
+        'aol.', 'zoho.', 'zohomail.',
+        'protonmail.com', 'proton.me', 'pm.me',
+        'yandex.', 'mail.com', 'gmx.', 'fastmail.',
+        'tutanota.com', 'tuta.io', 'hushmail.com',
+        'mailinator.com', 'guerrillamail.com',
+        'rediffmail.com', 'inbox.com', 'lycos.com',
+    ]
+
+    def _is_personal_non_gmail(email_addr: str) -> bool:
+        if not email_addr or '@' not in email_addr:
+            return False
+        domain = email_addr.split('@', 1)[1].lower().strip()
+        if domain == 'gmail.com':
+            return False
+        for prefix in PERSONAL_EMAIL_PREFIXES:
+            if prefix.endswith('.'):
+                if domain.startswith(prefix) or domain == prefix[:-1]:
+                    return True
+            else:
+                if domain == prefix:
+                    return True
+        return False
+
     # Track skip reasons for logging
     skip_reasons = {
         'empty_first_name': 0,
@@ -511,47 +543,59 @@ def parse_csv_from_r2(
         'website_is_linkedin': 0,
         'website_is_facebook': 0,
     }
+    scraped_email_stats = {'total': 0, 'kept': 0, 'filtered_personal': 0}
     
     # Remap rows to standard format with cleaning
     remapped_rows = []
-    for row_num, row in enumerate(rows, start=2):  # Start at 2 because row 1 is header
-        # Get raw values
+    for row_num, row in enumerate(rows, start=2):
         raw_first = row.get(first_name_col, '') or ''
         raw_last = row.get(last_name_col, '') or ''
         raw_website = row.get(website_col, '') or ''
         
-        # Validate and clean the row
         cleaned_first, cleaned_last, cleaned_website, skip_reason = validate_and_clean_row(
             raw_first, raw_last, raw_website
         )
         
-        # If row should be skipped, track reason and continue
         if skip_reason:
             skip_reasons[skip_reason] = skip_reasons.get(skip_reason, 0) + 1
             continue
         
-        # Build the remapped row
         remapped_row = {
             'first_name': cleaned_first,
             'last_name': cleaned_last,
             'website': cleaned_website,
         }
         
-        # Capture extra columns (including company_size if present)
         mapped_cols = {first_name_col, last_name_col, website_col}
         if company_size_col:
             mapped_cols.add(company_size_col)
+        if email_col:
+            mapped_cols.add(email_col)
         
         extra_data = {}
-        # Store company_size in extra_data (not used for pattern selection, just for reference)
         if company_size_col and row.get(company_size_col):
             extra_data['company_size'] = sanitize_text(row.get(company_size_col, ''))
+
+        # Process scraped email: keep company + gmail, filter personal non-gmail
+        if email_col:
+            raw_email = (row.get(email_col, '') or '').strip().lower()
+            if raw_email and '@' in raw_email:
+                scraped_email_stats['total'] += 1
+                if _is_personal_non_gmail(raw_email):
+                    scraped_email_stats['filtered_personal'] += 1
+                else:
+                    extra_data['scraped_email'] = raw_email
+                    scraped_email_stats['kept'] += 1
+
         for col, val in row.items():
             if col not in mapped_cols and val and str(val).strip():
                 extra_data[col] = sanitize_text(val)
         remapped_row['extra_data'] = extra_data
         
         remapped_rows.append(remapped_row)
+    
+    if scraped_email_stats['total'] > 0:
+        logger.info(f"📧 Scraped emails: {scraped_email_stats['total']} found, {scraped_email_stats['kept']} kept (company+gmail), {scraped_email_stats['filtered_personal']} personal filtered out")
     
     # Log skip statistics
     total_skipped = sum(skip_reasons.values())
@@ -611,14 +655,7 @@ def process_enrichment_job(job_id: str) -> bool:
         
         # company_size no longer used for pattern selection - using 8 fixed patterns
         
-        # Skip vayne orders - users upload CSV manually now
-        if job.input_file_path and job.input_file_path.startswith("vayne-order:"):
-            logger.warning(f"⚠️ Job {job_id} references vayne order - users should upload CSV manually. Skipping.")
-            job.status = "failed"
-            db.commit()
-            return False
-        
-        # Download CSV from R2 (for regular file uploads)
+        # Download CSV from R2
         try:
             response = s3_client.get_object(
                 Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
@@ -660,7 +697,9 @@ def process_enrichment_job(job_id: str) -> bool:
         is_admin = user.email == ADMIN_EMAIL or getattr(user, 'is_admin', False)
         job_plan = getattr(job, 'plan_at_creation', None) or getattr(user, 'plan', 'trial') or 'trial'
 
-        if not is_admin and not is_enrichment_free(job_plan):
+        is_sales_nav = getattr(job, 'source', None) == "Sales Nav"
+
+        if not is_admin and not is_sales_nav:
             enrichment_cost = get_enrichment_cost(job_plan)
             required = float(leads_count * enrichment_cost)
             if float(user.credits) < required:
@@ -943,10 +982,40 @@ def process_verification_job(job_id: str) -> bool:
         db.close()
 
 
+def _recover_orphaned_salesnav_jobs():
+    """Re-queue pending Sales Nav enrichment jobs that never made it to Redis (safety net for RPUSH failures)."""
+    db = SessionLocal()
+    try:
+        orphans = db.execute(text("""
+            SELECT j.id FROM jobs j
+            WHERE j.source = 'Sales Nav'
+            AND j.status = 'pending'
+            AND j.total_leads = 0
+            AND j.created_at < NOW() - INTERVAL '5 minutes'
+        """)).fetchall()
+
+        if not orphans:
+            return
+
+        logger.info(f"🔄 Found {len(orphans)} orphaned Sales Nav enrichment jobs, re-queuing...")
+        for (job_id,) in orphans:
+            try:
+                redis_client.rpush(ENRICHMENT_QUEUE, str(job_id))
+                logger.info(f"  Re-queued orphan job {job_id}")
+            except Exception as e:
+                logger.error(f"  Failed to re-queue orphan job {job_id}: {e}")
+    except Exception as e:
+        logger.error(f"Orphan recovery sweep failed: {e}")
+    finally:
+        db.close()
+
+
 def main():
     """Main worker loop - polls enrichment queue and processes jobs."""
     logger.info(f"🚀 Enrichment worker starting...")
     logger.info(f"📋 Listening to queue: {ENRICHMENT_QUEUE}")
+    
+    _recover_orphaned_salesnav_jobs()
     
     while True:
         try:

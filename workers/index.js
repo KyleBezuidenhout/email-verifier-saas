@@ -2036,9 +2036,46 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
   
   if (isNewFormat) {
     // ============================================
+    // PRE-VERIFY SCRAPED EMAIL (if present in extra_data)
+    // ============================================
+    const scrapedEmail = leadRecord.extra_data?.scraped_email;
+    if (scrapedEmail && !winningEmail) {
+      console.log(`  📧 Pre-verifying scraped email for ${personKey}: ${scrapedEmail}`);
+      try {
+        const result = await verifyEmail(scrapedEmail, 0, null, jobId);
+        apiCalls++;
+        if (result.status === 'valid') {
+          winningEmail = scrapedEmail;
+          winningPattern = 'scraped';
+          winningMx = result.mx || '';
+          winningProvider = result.provider || '';
+          resultType = 'valid';
+          validFound = 1;
+          finalLeadId = leadRecord.id;
+          savedCalls = 7;
+          console.log(`  ✓ SCRAPED EMAIL VALID for ${personKey} (${scrapedEmail})`);
+        } else if (result.status === 'catchall') {
+          winningEmail = scrapedEmail;
+          winningPattern = 'scraped';
+          winningMx = result.mx || '';
+          winningProvider = result.provider || '';
+          resultType = 'catchall';
+          catchallFound = 1;
+          finalLeadId = leadRecord.id;
+          savedCalls = 7;
+          console.log(`  ~ SCRAPED EMAIL CATCHALL for ${personKey} (${scrapedEmail})`);
+        } else {
+          console.log(`  ✗ SCRAPED EMAIL INVALID for ${personKey} (${scrapedEmail}), falling through to cache/permutations`);
+        }
+      } catch (scrapedErr) {
+        console.error(`  ✗ Scraped email verification error for ${personKey}: ${scrapedErr.message}`);
+      }
+    }
+
+    // ============================================
     // ENRICHMENT CACHE CHECK (before any permutations)
     // ============================================
-    if (cacheMap) {
+    if (!winningEmail && cacheMap) {
       const cacheKey = `${leadRecord.first_name.toLowerCase()}_${leadRecord.last_name.toLowerCase()}_${leadRecord.domain.toLowerCase()}`;
       const cached = cacheMap.get(cacheKey);
 
@@ -2675,9 +2712,9 @@ async function processJobFromQueue(jobId) {
         }
       }
       
-      // Plan-aware credit calculation: paid plans = free enrichment, trial = 0.1 per lead
-      const planAtCreation = jobData.plan_at_creation || 'trial';
-      const costInCredits = planAtCreation === 'trial' ? processedCount * 0.1 : 0;
+      const costInCredits = validCount + catchallCount;
+      const reservedCredits = jobData.cost_in_credits || 0;
+      const isSalesNav = jobData.source === 'Sales Nav';
 
       await updateJobStatus(jobId, 'completed', {
         processed_leads: processedCount,
@@ -2689,14 +2726,27 @@ async function processJobFromQueue(jobId) {
 
       const userEmailForNotification = userData?.email || null;
 
-      if (costInCredits > 0 && userEmailForNotification !== ADMIN_EMAIL) {
-        await pgPool.query(
-          'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
-          [costInCredits, jobData.user_id]
-        );
-        console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification} (plan: ${planAtCreation})`);
-      } else if (costInCredits === 0) {
-        console.log(`Paid plan (${planAtCreation}) - enrichment/verification is free, no credits deducted`);
+      if (userEmailForNotification !== ADMIN_EMAIL) {
+        if (isSalesNav && reservedCredits > 0) {
+          const refundAmount = Math.max(0, reservedCredits - costInCredits);
+          if (refundAmount > 0) {
+            await pgPool.query(
+              'UPDATE users SET credits = credits + $1 WHERE id = $2',
+              [refundAmount, jobData.user_id]
+            );
+            console.log(`Sales Nav job: refunded ${refundAmount} credits (reserved: ${reservedCredits}, actual cost: ${costInCredits})`);
+          } else {
+            console.log(`Sales Nav job: no refund needed (reserved: ${reservedCredits}, actual cost: ${costInCredits})`);
+          }
+        } else if (costInCredits > 0) {
+          await pgPool.query(
+            'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
+            [costInCredits, jobData.user_id]
+          );
+          console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification} (${validCount} valid + ${catchallCount} catchall)`);
+        } else {
+          console.log(`No valid/catchall emails found - no credits charged`);
+        }
       } else {
         console.log(`Admin user - skipping credit deduction`);
       }
@@ -3077,9 +3127,9 @@ async function processJobFromQueue(jobId) {
       }
     }
     
-    // Plan-aware credit calculation: paid plans = free enrichment, trial = 0.1 per lead
-    const planAtCreation = jobData.plan_at_creation || 'trial';
-    const costInCredits = planAtCreation === 'trial' ? completedPeopleCount * 0.1 : 0;
+    const costInCredits = validCount + catchallCount;
+    const reservedCredits = jobData.cost_in_credits || 0;
+    const isSalesNav = jobData.source === 'Sales Nav';
 
     await updateJobStatus(jobId, 'completed', {
       processed_leads: jobData.total_leads,
@@ -3093,14 +3143,27 @@ async function processJobFromQueue(jobId) {
 
     const userEmailForNotification = userData?.email || null;
 
-    if (costInCredits > 0 && userEmailForNotification !== ADMIN_EMAIL) {
-      await pgPool.query(
-        'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
-        [costInCredits, jobData.user_id]
-      );
-      console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification} (plan: ${planAtCreation})`);
-    } else if (costInCredits === 0) {
-      console.log(`Paid plan (${planAtCreation}) - enrichment is free, no credits deducted`);
+    if (userEmailForNotification !== ADMIN_EMAIL) {
+      if (isSalesNav && reservedCredits > 0) {
+        const refundAmount = Math.max(0, reservedCredits - costInCredits);
+        if (refundAmount > 0) {
+          await pgPool.query(
+            'UPDATE users SET credits = credits + $1 WHERE id = $2',
+            [refundAmount, jobData.user_id]
+          );
+          console.log(`Sales Nav job: refunded ${refundAmount} credits (reserved: ${reservedCredits}, actual cost: ${costInCredits})`);
+        } else {
+          console.log(`Sales Nav job: no refund needed (reserved: ${reservedCredits}, actual cost: ${costInCredits})`);
+        }
+      } else if (costInCredits > 0) {
+        await pgPool.query(
+          'UPDATE users SET credits = GREATEST(0, credits - $1) WHERE id = $2',
+          [costInCredits, jobData.user_id]
+        );
+        console.log(`Deducted ${costInCredits} credits from user ${userEmailForNotification} (${validCount} valid + ${catchallCount} catchall)`);
+      } else {
+        console.log(`No valid/catchall emails found - no credits charged`);
+      }
     } else {
       console.log(`Admin user - skipping credit deduction`);
     }

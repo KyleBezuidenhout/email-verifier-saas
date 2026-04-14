@@ -340,6 +340,7 @@ def create_order(
             url=payload.sales_nav_url,
             linkedin_cookie=payload.linkedin_cookie or "",
             targeting=targeting,
+            auto_enrich=True,
         )
         
         db.add(order)
@@ -356,7 +357,7 @@ def create_order(
         return {
             "success": True,
             "order_id": str(order.id),
-            "vayne_order_id": "",  # Not yet assigned - queue worker will set this
+            "vayne_order_id": "",
             "status": order.status,
             "message": "Order queued successfully. It will be processed when the scraper is available.",
         }
@@ -376,38 +377,61 @@ def list_orders(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all orders for current user from database (no Vayne API polling)"""
+    """List all orders for current user from database with enrichment job info for unified pipeline."""
     try:
-        query = db.query(VayneOrder).filter(VayneOrder.user_id == current_user.id)
+        from sqlalchemy.orm import aliased
+        
+        JobAlias = aliased(Job)
+        
+        query = db.query(VayneOrder, JobAlias).outerjoin(
+            JobAlias, VayneOrder.enrichment_job_id == JobAlias.id
+        ).filter(VayneOrder.user_id == current_user.id)
         
         if status:
             query = query.filter(VayneOrder.status == status)
         
-        # Get total count
         total = query.count()
         
-        # Get paginated results, newest first
-        orders = query.order_by(VayneOrder.created_at.desc()).offset(offset).limit(limit).all()
+        results = query.order_by(VayneOrder.created_at.desc()).offset(offset).limit(limit).all()
+        
+        order_list = []
+        for order, enrich_job in results:
+            enrich_total = enrich_job.total_leads if enrich_job else None
+            enrich_processed = enrich_job.processed_leads if enrich_job else None
+            enrich_progress = 0
+            if enrich_total and enrich_total > 0 and enrich_processed:
+                enrich_progress = round(enrich_processed / enrich_total * 100)
+            
+            display_completed_at = order.completed_at
+            if enrich_job and enrich_job.completed_at:
+                display_completed_at = enrich_job.completed_at
+            
+            order_list.append({
+                "id": str(order.id),
+                "user_id": str(order.user_id),
+                "vayne_order_id": order.vayne_order_id,
+                "status": order.status,
+                "targeting": getattr(order, 'targeting', None),
+                "leads_found": getattr(order, 'leads_found', 0) or 0,
+                "leads_qualified": getattr(order, 'leads_qualified', 0) or 0,
+                "progress_percentage": getattr(order, 'progress_percentage', 0) or 0,
+                "file_url": getattr(order, 'file_url', None),
+                "failure_reason": getattr(order, 'failure_reason', None),
+                "credits_charged": getattr(order, 'credits_charged', 0) or 0,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "completed_at": display_completed_at.isoformat() if display_completed_at else None,
+                "auto_enrich": getattr(order, 'auto_enrich', False),
+                "enrichment_job_id": str(order.enrichment_job_id) if order.enrichment_job_id else None,
+                "enrichment_status": enrich_job.status if enrich_job else None,
+                "enrichment_total_leads": enrich_total or 0,
+                "enrichment_processed_leads": enrich_processed or 0,
+                "enrichment_valid_emails_found": enrich_job.valid_emails_found if enrich_job else 0,
+                "enrichment_catchall_emails_found": enrich_job.catchall_emails_found if enrich_job else 0,
+                "enrichment_progress_percentage": enrich_progress,
+            })
         
         return {
-            "orders": [
-                {
-                    "id": str(order.id),
-                    "user_id": str(order.user_id),
-                    "vayne_order_id": order.vayne_order_id,
-                    "status": order.status,
-                    "targeting": getattr(order, 'targeting', None),
-                    "leads_found": getattr(order, 'leads_found', 0) or 0,
-                    "leads_qualified": getattr(order, 'leads_qualified', 0) or 0,
-                    "progress_percentage": getattr(order, 'progress_percentage', 0) or 0,
-                    "file_url": getattr(order, 'file_url', None),
-                    "failure_reason": getattr(order, 'failure_reason', None),
-                    "credits_charged": getattr(order, 'credits_charged', 0) or 0,
-                    "created_at": order.created_at.isoformat() if order.created_at else None,
-                    "completed_at": order.completed_at.isoformat() if order.completed_at else None,
-                }
-                for order in orders
-            ],
+            "orders": order_list,
             "total": total,
         }
     except Exception as e:
@@ -651,19 +675,32 @@ def download_order_csv(
         if order.status != "completed":
             raise HTTPException(status_code=400, detail="Order is not yet completed")
         
-        # Get file_url (set by n8n when order completes)
-        file_url = getattr(order, 'file_url', None)
-        if not file_url:
-            raise HTTPException(status_code=404, detail="CSV file not available yet. Please try again later.")
+        csv_content = None
         
-        # Fetch CSV from the file_url
+        # Try R2 first (n8n stores CSV here)
+        r2_key = f"vayne-orders/{order.id}/export.csv"
         try:
-            response = httpx.get(file_url, timeout=60.0)
-            response.raise_for_status()
-            csv_content = response.content
-        except Exception as e:
-            logger.error(f"Failed to fetch CSV from file_url: {str(e)}")
-            raise HTTPException(status_code=404, detail="Failed to download CSV file. Please try again later.")
+            r2_response = s3_client.get_object(
+                Bucket=settings.CLOUDFLARE_R2_BUCKET_NAME,
+                Key=r2_key
+            )
+            csv_content = r2_response['Body'].read()
+            logger.info(f"Downloaded CSV from R2: {r2_key}")
+        except Exception:
+            pass
+        
+        # Fall back to file_url if R2 didn't work
+        if not csv_content:
+            file_url = getattr(order, 'file_url', None)
+            if not file_url:
+                raise HTTPException(status_code=404, detail="CSV file not available yet. Please try again later.")
+            try:
+                response = httpx.get(file_url, timeout=60.0)
+                response.raise_for_status()
+                csv_content = response.content
+            except Exception as e:
+                logger.error(f"Failed to fetch CSV from file_url: {str(e)}")
+                raise HTTPException(status_code=404, detail="Failed to download CSV file. Please try again later.")
         
         targeting = getattr(order, 'targeting', None) or ''
         safe_targeting = "".join(c for c in targeting if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
@@ -764,12 +801,9 @@ async def n8n_csv_callback(
         if not order.completed_at:
             order.completed_at = datetime.utcnow()
         
-        if hasattr(order, 'csv_file_path'):
-            order.csv_file_path = csv_file_path
-        
         order.leads_found = actual_leads
         
-        # Reconcile credits: refund difference if actual < estimated
+        # Reconcile credits: refund difference between estimated and actual leads
         credits_charged = order.credits_charged or 0
         if credits_charged > 0 and actual_leads < credits_charged:
             refund_amount = credits_charged - actual_leads
@@ -779,16 +813,53 @@ async def n8n_csv_callback(
                 {"refund": refund_amount, "uid": str(order.user_id)}
             )
             order.credits_charged = actual_leads
-            logger.info(f"Reconciled credits: charged {credits_charged}, actual {actual_leads}, refunded {refund_amount}")
+            logger.info(f"Reconciled credits: reserved {credits_charged}, actual {actual_leads}, refunded {refund_amount}")
+        
+        # Auto-create enrichment job if this is a unified pipeline order
+        enrichment_job_id = None
+        if getattr(order, 'auto_enrich', False) and not order.enrichment_job_id:
+            try:
+                user_plan = getattr(user, 'plan', 'trial') or 'trial'
+                enrichment_job = Job(
+                    user_id=order.user_id,
+                    status="pending",
+                    job_type="enrichment",
+                    source="Sales Nav",
+                    original_filename=f"sales-nav-{order.id}.csv",
+                    job_name=order.targeting or str(order.id),
+                    input_file_path=csv_file_path,
+                    total_leads=0,
+                    processed_leads=0,
+                    valid_emails_found=0,
+                    catchall_emails_found=0,
+                    cost_in_credits=order.credits_charged or 0,
+                    plan_at_creation=user_plan,
+                )
+                db.add(enrichment_job)
+                db.flush()
+                order.enrichment_job_id = enrichment_job.id
+                enrichment_job_id = str(enrichment_job.id)
+                logger.info(f"Created enrichment job {enrichment_job.id} for order {order.id} (credits_reserved={order.credits_charged})")
+            except Exception as enrich_err:
+                logger.error(f"Failed to create enrichment job for order {order.id}: {enrich_err}")
         
         db.commit()
         db.refresh(order)
         
-        logger.info(f"CSV stored in R2 successfully")
+        # Queue enrichment job to Redis (outside DB transaction for idempotency)
+        if enrichment_job_id and redis_client:
+            try:
+                redis_client.rpush("enrichment-job-creation", enrichment_job_id)
+                logger.info(f"Queued enrichment job {enrichment_job_id} to Redis")
+            except Exception as redis_err:
+                logger.error(f"Failed to queue enrichment job {enrichment_job_id} to Redis: {redis_err}")
+        
+        logger.info(f"CSV stored in R2 successfully, order {order.id} completed")
         return {
             "status": "success",
             "message": "CSV processed and stored",
             "order_id": str(order.id),
+            "enrichment_job_id": enrichment_job_id,
         }
     except HTTPException:
         raise

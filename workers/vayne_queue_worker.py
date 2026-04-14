@@ -81,6 +81,16 @@ SessionLocal = sessionmaker(bind=engine)
 
 redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 
+import boto3
+R2_BUCKET = settings.CLOUDFLARE_R2_BUCKET_NAME
+s3_client = boto3.client(
+    's3',
+    endpoint_url=settings.CLOUDFLARE_R2_ENDPOINT_URL,
+    aws_access_key_id=settings.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    region_name='auto',
+)
+
 
 def _check_credit_usage_alert(user_id: str, user_email: str, plan: str, credits_remaining: float):
     """Send 90% credit usage alert once per billing cycle for paid plan users."""
@@ -861,7 +871,7 @@ async def monitor_slot(slot_idx: int, order_row):
                 return
 
             row = db.execute(text("""
-                SELECT status, file_url, estimated_leads
+                SELECT status, file_url, estimated_leads, auto_enrich, enrichment_job_id
                 FROM vayne_orders WHERE id = :oid
             """), {"oid": str(order_id)}).fetchone()
 
@@ -871,7 +881,8 @@ async def monitor_slot(slot_idx: int, order_row):
 
             if row.status == "completed":
                 log(f"[Slot {slot_idx}] Order {order_id} completed", "success")
-                _send_monitor_completion_email(db, order_id)
+                _ensure_enrichment_triggered(db, order_id)
+                _check_completion_alerts(db, order_id)
                 return
 
             if row.status in ("failed", "cancelled", "deleted"):
@@ -886,7 +897,8 @@ async def monitor_slot(slot_idx: int, order_row):
                     WHERE id = :oid AND status NOT IN ('completed', 'failed', 'cancelled', 'deleted')
                 """), {"oid": str(order_id)})
                 db.commit()
-                _send_monitor_completion_email(db, order_id)
+                _ensure_enrichment_triggered(db, order_id)
+                _check_completion_alerts(db, order_id)
                 return
 
             update_heartbeat(db, order_id)
@@ -896,28 +908,76 @@ async def monitor_slot(slot_idx: int, order_row):
         db.close()
 
 
-def _send_monitor_completion_email(db, order_id: UUID):
-    """Send completion email and credit usage alert after an order finishes."""
+def _ensure_enrichment_triggered(db, order_id: UUID):
+    """Safety net: if n8n webhook completed but didn't create enrichment job, create it here."""
     try:
         row = db.execute(text("""
-            SELECT u.email, vo.targeting, vo.estimated_leads,
-                   u.id as user_id, u.plan, u.credits,
-                   u.email_notifications_enabled
+            SELECT vo.auto_enrich, vo.enrichment_job_id, vo.user_id, vo.targeting,
+                   vo.credits_charged, vo.leads_found, u.plan
+            FROM vayne_orders vo
+            JOIN users u ON u.id = vo.user_id
+            WHERE vo.id = :oid
+            FOR UPDATE OF vo
+        """), {"oid": str(order_id)}).fetchone()
+
+        if not row or not row.auto_enrich or row.enrichment_job_id:
+            return
+
+        csv_key = f"vayne-orders/{order_id}/export.csv"
+        try:
+            s3_client.head_object(Bucket=R2_BUCKET, Key=csv_key)
+        except Exception:
+            log(f"CSV not in R2 for order {order_id}, n8n webhook will handle enrichment", "info")
+            return
+
+        from app.models.job import Job
+        job = Job(
+            user_id=row.user_id,
+            status="pending",
+            job_type="enrichment",
+            source="Sales Nav",
+            original_filename=f"sales-nav-{order_id}.csv",
+            job_name=row.targeting or str(order_id),
+            input_file_path=csv_key,
+            total_leads=0,
+            processed_leads=0,
+            valid_emails_found=0,
+            catchall_emails_found=0,
+            cost_in_credits=row.credits_charged or 0,
+            plan_at_creation=row.plan or "trial",
+        )
+        db.add(job)
+        db.flush()
+
+        db.execute(text(
+            "UPDATE vayne_orders SET enrichment_job_id = :jid WHERE id = :oid"
+        ), {"jid": str(job.id), "oid": str(order_id)})
+        db.commit()
+
+        try:
+            redis_client.rpush("enrichment-job-creation", str(job.id))
+            log(f"Safety net: created + queued enrichment job {job.id} for order {order_id}", "success")
+        except Exception as redis_err:
+            log(f"Safety net: created enrichment job {job.id} but Redis push failed: {redis_err}", "error")
+
+    except Exception as e:
+        log(f"Failed to ensure enrichment for order {order_id}: {e}", "error")
+        db.rollback()
+
+
+def _check_completion_alerts(db, order_id: UUID):
+    """Send credit usage alerts after scraping completes (no scraping email — enrichment email comes later)."""
+    try:
+        row = db.execute(text("""
+            SELECT u.id as user_id, u.email, u.plan, u.credits
             FROM users u
             JOIN vayne_orders vo ON u.id = vo.user_id
             WHERE vo.id = :order_id
         """), {"order_id": str(order_id)}).fetchone()
         if row:
-            if row[6] is not False:
-                send_scraping_completion_email(
-                    user_email=row[0],
-                    order_id=str(order_id),
-                    results={"leads_found": row[2] or 0},
-                    targeting=row[1],
-                )
-            _check_credit_usage_alert(str(row[3]), row[0], row[4] or "trial", float(row[5] or 0))
-    except Exception as email_error:
-        log(f"Failed to send notification email: {email_error}", "error")
+            _check_credit_usage_alert(str(row[0]), row[1], row[2] or "trial", float(row[3] or 0))
+    except Exception as e:
+        log(f"Failed to check completion alerts: {e}", "error")
 
 
 # ---------------------------------------------------------------------------

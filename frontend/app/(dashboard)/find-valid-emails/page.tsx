@@ -13,12 +13,19 @@ import { SalesNavModal } from "@/components/upload/SalesNavModal";
 import { formatFileSize } from "@/lib/utils";
 import { useSSE } from "@/hooks/useSSE";
 import { JobProgress } from "@/types";
+import { useAuth } from "@/context/AuthContext";
 
 export default function FindValidEmailsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const router = useRouter();
+  const { user } = useAuth();
+  useEffect(() => {
+    if (user && !user.is_admin) {
+      router.replace("/dashboard");
+    }
+  }, [user, router]);
   const searchParams = useSearchParams();
   const jobId = searchParams.get("jobId");
   

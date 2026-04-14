@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { VayneCredits, VayneDailyUsage, VayneOrder, VayneOrderCreate } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
+import { useAuth } from "@/context/AuthContext";
 
 export default function SalesNavScraperPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  useEffect(() => {
+    if (user && !user.is_admin) {
+      router.replace("/dashboard");
+    }
+  }, [user, router]);
+
   // Auth state (cookie required for each order)
   const [linkedinCookie, setLinkedinCookie] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);

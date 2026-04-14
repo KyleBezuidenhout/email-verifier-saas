@@ -3,11 +3,14 @@ Plan definitions and helpers for the billing system.
 
 Each user has a `plan` field (default "trial"). Plans determine:
   - credit_price: $/credit for top-ups
-  - sn_cost: credits consumed per Sales Nav profile scraped
-  - enrichment_cost: credits consumed per enrichment/verification email (0 = free)
+  - enrichment_cost: 1 credit per valid/catchall email found (all plans)
   - monthly_price / yearly_price: display prices (billing is admin-managed for now)
   - sn_label: marketing label for "profiles per month"
   - support: support tier description
+
+Unified pipeline: scraping is free (no credit deduction). Credits are reserved
+upfront based on estimated_leads, then reconciled after enrichment to charge
+only for valid + catchall emails found.
 """
 
 from decimal import Decimal
@@ -21,18 +24,15 @@ PLAN_NAMES = [
 PLANS = {
     "trial": {
         "credit_price": Decimal("0.0022"),
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0.1"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": 0,
         "yearly_price": 0,
         "sn_label": 2000,
         "support": "Email Support",
     },
-    # TEMPORARY: test plan — remove after verifying downgrades
     "test_downgrade": {
         "credit_price": Decimal("0.004"),
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0.1"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": 1,
         "yearly_price": 10,
         "sn_label": 250,
@@ -40,8 +40,7 @@ PLANS = {
     },
     "test": {
         "credit_price": Decimal("0.005"),
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": 5,
         "yearly_price": 50,
         "sn_label": 1_000,
@@ -49,8 +48,7 @@ PLANS = {
     },
     "basic": {
         "credit_price": Decimal("0.0039"),
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": 197,
         "yearly_price": 1970,
         "sn_label": 50_000,
@@ -58,8 +56,7 @@ PLANS = {
     },
     "starter": {
         "credit_price": Decimal("0.0029"),
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": 297,
         "yearly_price": 2970,
         "sn_label": 100_000,
@@ -67,8 +64,7 @@ PLANS = {
     },
     "business": {
         "credit_price": Decimal("0.0024"),
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": 497,
         "yearly_price": 4970,
         "sn_label": 200_000,
@@ -76,8 +72,7 @@ PLANS = {
     },
     "business_plus": {
         "credit_price": Decimal("0.0022"),
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": 897,
         "yearly_price": 8970,
         "sn_label": 400_000,
@@ -85,8 +80,7 @@ PLANS = {
     },
     "agency": {
         "credit_price": Decimal("0.0017"),
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": 1697,
         "yearly_price": 16970,
         "sn_label": 1_000_000,
@@ -94,8 +88,7 @@ PLANS = {
     },
     "agency_plus": {
         "credit_price": Decimal("0.0015"),
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": 2997,
         "yearly_price": 29970,
         "sn_label": 2_000_000,
@@ -103,8 +96,7 @@ PLANS = {
     },
     "enterprise": {
         "credit_price": Decimal("0.00099"),
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": 4997,
         "yearly_price": 49970,
         "sn_label": 5_000_000,
@@ -112,8 +104,7 @@ PLANS = {
     },
     "custom": {
         "credit_price": None,
-        "sn_cost": Decimal("1"),
-        "enrichment_cost": Decimal("0"),
+        "enrichment_cost": Decimal("1"),
         "monthly_price": None,
         "yearly_price": None,
         "sn_label": None,
@@ -123,12 +114,12 @@ PLANS = {
 
 
 def get_enrichment_cost(plan: str) -> Decimal:
-    """Credits consumed per enrichment/verification email for this plan."""
+    """Credits charged per valid/catchall email found after enrichment."""
     return PLANS.get(plan, PLANS["trial"])["enrichment_cost"]
 
 
 def is_enrichment_free(plan: str) -> bool:
-    """True when the plan's enrichment_cost is zero."""
+    """True when the plan's enrichment_cost is zero. Always false under unified pipeline."""
     return PLANS.get(plan, PLANS["trial"])["enrichment_cost"] == Decimal("0")
 
 

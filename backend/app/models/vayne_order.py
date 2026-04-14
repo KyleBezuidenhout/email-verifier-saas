@@ -22,12 +22,14 @@ class VayneOrder(Base):
     leads_found = Column(Integer)
     leads_qualified = Column(Integer)
     progress_percentage = Column(Integer)
-    credits_charged = Column(Integer)
+    credits_charged = Column(Integer)  # Credits reserved at submission, reconciled after enrichment
     file_url = Column(Text)  # URL to CSV file (set by n8n when order completes)
     targeting = Column(String(255))  # Job name/description
     failure_reason = Column(Text, nullable=True)  # Human-readable reason when status='failed'
     api_key_slot = Column(Integer, nullable=True)  # Which Vayne API key slot processed this order
     last_heartbeat = Column(DateTime(timezone=True), nullable=True)  # Worker liveness tracking for crash recovery
+    enrichment_job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True)
+    auto_enrich = Column(Boolean, default=False)  # True for unified pipeline orders; false for legacy
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     completed_at = Column(DateTime(timezone=True))
 

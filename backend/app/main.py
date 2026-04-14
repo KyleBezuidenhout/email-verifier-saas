@@ -233,6 +233,7 @@ async def startup_tasks():
         from migrate_add_email_notifications import run_migration as migrate_email_notifications
         from migrate_add_profile_picture import run_migration as migrate_profile_picture
         from migrate_add_onboarding_v2_fields import run_migration as migrate_onboarding_v2
+        from migrate_add_unified_pipeline import run_migration as migrate_unified_pipeline
 
         logger.info("Running database migrations on startup...")
         migrate_catchall_key()
@@ -270,6 +271,7 @@ async def startup_tasks():
         migrate_email_notifications()
         migrate_profile_picture()
         migrate_onboarding_v2()
+        migrate_unified_pipeline()  # Add enrichment_job_id + auto_enrich to vayne_orders for unified pipeline
         logger.info("✓ Migrations completed successfully!")
     except Exception as e:
         # Don't crash if migrations fail (columns might already exist)

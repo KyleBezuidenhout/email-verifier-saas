@@ -161,31 +161,32 @@ export interface VayneUrlCheck {
 export interface VayneOrder {
   id: string;
   status: 'queued' | 'pending' | 'processing' | 'completed' | 'failed' | 'initialization' | 'scraping' | 'segmenting';
-  scraping_status?: 'initialization' | 'scraping' | 'segmenting' | 'finished' | 'failed';  // Direct from Vayne API
-  sales_nav_url: string;
-  export_format: 'simple' | 'advanced';
-  only_qualified: boolean;
+  scraping_status?: 'initialization' | 'scraping' | 'segmenting' | 'finished' | 'failed';
+  sales_nav_url?: string;
+  export_format?: 'simple' | 'advanced';
+  only_qualified?: boolean;
   leads_found?: number;
   leads_qualified?: number;
   progress_percentage?: number;
   estimated_completion?: string;
   created_at: string;
   completed_at?: string;
-  csv_file_path?: string;  // Deprecated: kept for backwards compatibility
-  file_url?: string;  // Direct URL to CSV file from Vayne (for download)
-  vayne_order_id: string;  // Vayne's order ID (required for webhook matching)
-  targeting?: string;  // Job name/targeting description
-  failure_reason?: string;  // Human-readable reason when status is 'failed'
-  credits_charged?: number;  // Credits deducted for this order
+  file_url?: string;
+  vayne_order_id?: string;
+  targeting?: string;
+  failure_reason?: string;
+  credits_charged?: number;
+  auto_enrich?: boolean;
+  enrichment_job_id?: string;
+  enrichment_status?: 'pending' | 'processing' | 'completed' | 'failed' | null;
+  enrichment_total_leads?: number;
+  enrichment_processed_leads?: number;
+  enrichment_valid_emails_found?: number;
+  enrichment_catchall_emails_found?: number;
+  enrichment_progress_percentage?: number;
   exports?: {
-    simple?: {
-      status: string;
-      file_url?: string;
-    };
-    advanced?: {
-      status: string;
-      file_url?: string;
-    };
+    simple?: { status: string; file_url?: string };
+    advanced?: { status: string; file_url?: string };
   };
 }
 
