@@ -24,7 +24,7 @@ from uuid import UUID
 
 import redis
 import boto3
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path to import app modules
