@@ -2786,7 +2786,7 @@ async function processJobFromQueue(jobId) {
       console.log(`   Throughput: ${leadsPerMinute} leads/minute (${leadsPerSecond}/sec)`);
       console.log(`   Allocated keys: ${allocatedKeys.length}`);
       console.log(`----------------------------------------`);
-      console.log(`Credits charged: ${costInCredits} (plan: ${planAtCreation})`);
+      console.log(`Credits charged: ${costInCredits} (plan: ${jobData.plan_at_creation || 'unknown'})`);
       console.log(`========================================\n`);
       
       return {
@@ -3206,7 +3206,7 @@ async function processJobFromQueue(jobId) {
     console.log(`   Early exit savings: ${savedApiCalls} calls saved (${totalApiCalls + savedApiCalls > 0 ? Math.round((savedApiCalls / (totalApiCalls + savedApiCalls)) * 100) : 0}%)`);
     console.log(`   Cache hits: ${cacheMap.size}/${allPeople.length} (${cacheHitRate}%)`);
     console.log(`----------------------------------------`);
-    console.log(`Credits charged: ${costInCredits} (plan: ${planAtCreation})`);
+    console.log(`Credits charged: ${costInCredits} (plan: ${jobData.plan_at_creation || 'unknown'})`);
     console.log(`========================================\n`);
     
   } catch (error) {
