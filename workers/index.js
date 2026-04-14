@@ -44,13 +44,13 @@ async function sendJobCompletionEmail(userEmail, jobType, jobId, results) {
     return false;
   }
 
-  const jobTypeDisplay = jobType === 'enrichment' ? 'Enrichment' : 'Verification';
+  const jobTypeDisplay = jobType === 'enrichment' ? 'Enrichment' : jobType === 'scraping' ? 'Scraping' : 'Verification';
   const subject = `${jobTypeDisplay} complete: ${results.validEmails} valid emails found`;
-  
+
   const htmlContent = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; padding: 40px 20px;">
       <div style="background-color: #141414; border: 1px solid #222; border-radius: 12px; padding: 32px;">
-        <h2 style="margin: 0 0 16px 0; font-size: 22px; color: #0099FF;">Your Job is Complete!</h2>
+        <h2 style="margin: 0 0 16px 0; font-size: 22px; color: #0099FF;">Your ${jobTypeDisplay} Job is Complete!</h2>
         <p style="color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">Great news! Your <strong style="color: #ccc;">${jobTypeDisplay.toLowerCase()}</strong> job has finished processing.</p>
 
         <div style="background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; margin: 20px 0;">
@@ -62,7 +62,7 @@ async function sendJobCompletionEmail(userEmail, jobType, jobId, results) {
           </ul>
         </div>
 
-        <a href="${APP_URL}/results/${jobId}"
+        <a href="${APP_URL}/dashboard"
            style="display: inline-block; background-color: transparent; color: #0099FF; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; border: 1px solid #0099FF;">
           View & Download Results
         </a>

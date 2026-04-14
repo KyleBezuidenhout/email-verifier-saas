@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import { apiClient } from "@/lib/api";
 import { VayneCredits, VayneDailyUsage, VayneOrder, VayneOrderCreate, Lead } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
@@ -83,8 +84,8 @@ export default function DashboardPage() {
   const [resultsModalOrder, setResultsModalOrder] = useState<VayneOrder | null>(null);
   const [resultsLeads, setResultsLeads] = useState<Lead[]>([]);
   const [loadingResults, setLoadingResults] = useState(false);
-  const [resultsFilter, setResultsFilter] = useState<string>("all");
-  const [mxFilter, setMxFilter] = useState<string>("all");
+  const [statusFilters, setStatusFilters] = useState<string[]>(["all"]);
+  const [mxFilters, setMxFilters] = useState<string[]>([]);
 
   useEffect(() => {
     if (!downloadDropdownId) return;
@@ -272,8 +273,8 @@ export default function DashboardPage() {
     if (!order.enrichment_job_id) return;
     setResultsModalOrder(order);
     setLoadingResults(true);
-    setResultsFilter("all");
-    setMxFilter("all");
+    setStatusFilters(["all"]);
+    setMxFilters([]);
     try {
       const leads = await apiClient.getResults(order.enrichment_job_id);
       setResultsLeads(leads);
@@ -301,32 +302,53 @@ export default function DashboardPage() {
     return 'other';
   };
 
-  const filteredResults = resultsLeads.filter((lead) => {
-    if (resultsFilter !== "all") {
-      if (resultsFilter === "valid") {
-        const isValid = lead.verification_status === "valid" ||
-          lead.verification_tag === "valid-catchall" ||
-          lead.verification_tag === "catchall-verified";
-        if (!isValid) return false;
-      } else if (resultsFilter === "catchall") {
-        const isCatchall = lead.verification_status === "catchall" &&
-          lead.verification_tag !== "catchall-verified" &&
-          lead.verification_tag !== "valid-catchall";
-        if (!isCatchall) return false;
-      } else if (resultsFilter === "invalid") {
-        if (lead.verification_status !== "invalid" && lead.verification_status !== "not_found") return false;
-      } else {
-        if (lead.verification_status !== resultsFilter) return false;
-      }
-    }
-    if (mxFilter !== "all") {
-      const provider = getProviderFromMX(lead.mx_record, lead.mx_provider);
-      if (provider !== mxFilter) return false;
-    }
-    return true;
-  });
+  // Apply status filters (multi-select like results page)
+  const statusFilteredLeads =
+    statusFilters.includes("all") || statusFilters.length === 0
+      ? resultsLeads
+      : resultsLeads.filter((lead) => {
+          if (statusFilters.includes("valid") &&
+              (lead.verification_status === "valid" ||
+               lead.verification_tag === "valid-catchall" ||
+               lead.verification_tag === "catchall-verified")) {
+            return true;
+          }
+          if (statusFilters.includes("catchall") &&
+              lead.verification_status === "catchall" &&
+              lead.verification_tag !== "catchall-verified" &&
+              lead.verification_tag !== "valid-catchall") {
+            return true;
+          }
+          if (statusFilters.includes("invalid") &&
+              (lead.verification_status === "invalid" || lead.verification_status === "not_found")) {
+            return true;
+          }
+          return false;
+        });
 
-  const mxProviders = Array.from(new Set(resultsLeads.map((l) => getProviderFromMX(l.mx_record, l.mx_provider)))).sort();
+  // Apply MX provider filter (if any selected)
+  const filteredResults = mxFilters.length === 0
+    ? statusFilteredLeads
+    : statusFilteredLeads.filter((lead) => {
+        const provider = getProviderFromMX(lead.mx_record, lead.mx_provider);
+        return mxFilters.includes(provider);
+      });
+
+  // Stat counts from order object (real totals, not limited preview)
+  const totalLeadsCount = resultsModalOrder?.enrichment_total_leads || resultsLeads.length;
+  const validCount = resultsModalOrder?.enrichment_valid_emails_found || resultsLeads.filter(l =>
+    l.verification_status === "valid" ||
+    l.verification_tag === "valid-catchall" ||
+    l.verification_tag === "catchall-verified"
+  ).length;
+  const catchallCount = resultsModalOrder?.enrichment_catchall_emails_found || resultsLeads.filter(l =>
+    l.verification_status === "catchall" &&
+    l.verification_tag !== "catchall-verified" &&
+    l.verification_tag !== "valid-catchall"
+  ).length;
+  const notFoundCount = totalLeadsCount - validCount - catchallCount;
+
+  const PREVIEW_LIMIT = 10;
 
   if (initialLoading) {
     return (
@@ -554,7 +576,7 @@ export default function DashboardPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Leads</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Hit Rate</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Actions</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-dashboard-text-muted uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
@@ -573,11 +595,11 @@ export default function DashboardPage() {
                       <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-dashboard-text max-w-[250px] truncate" title={jobName}>
                         {jobName}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-dashboard-text">
                         {formatDate(order.created_at)}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-dashboard-text-muted">
-                        {(order.leads_found || 0).toLocaleString()}
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-dashboard-text">
+                        {(order.enrichment_total_leads || order.leads_found || 0).toLocaleString()}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <span className={`text-xs font-medium ${displayStatus.color}`}>
@@ -596,8 +618,8 @@ export default function DashboardPage() {
                           <span className="text-dashboard-text-muted/50">&mdash;</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center gap-2">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-center">
+                        <div className="flex items-center justify-center gap-2">
                           {canViewResults && (
                             <button
                               onClick={() => handleViewResults(order)}
@@ -610,7 +632,7 @@ export default function DashboardPage() {
                             <div className="relative" data-download-dropdown>
                               <button
                                 onClick={() => setDownloadDropdownId(downloadDropdownId === order.id ? null : order.id)}
-                                className="px-3 py-1.5 border border-dashboard-border text-dashboard-text-muted bg-transparent text-xs rounded-lg hover:bg-dashboard-card transition-colors flex items-center gap-1"
+                                className="px-3 py-1.5 border border-dashboard-accent text-dashboard-accent bg-transparent text-xs rounded-lg hover:bg-dashboard-accent/10 transition-colors flex items-center gap-1"
                               >
                                 Download
                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -657,21 +679,25 @@ export default function DashboardPage() {
 
       {/* Results Modal */}
       {resultsModalOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setResultsModalOrder(null)}>
+        <div className="fixed inset-0 md:left-[250px] z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setResultsModalOrder(null)}>
           <div
-            className="glass-card shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col mx-4"
+            className="glass-card shadow-2xl w-full max-w-5xl max-h-[85vh] overflow-hidden flex flex-col mx-4"
             style={{ background: 'rgba(13, 15, 18, 0.95)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
+            {/* Modal Header - Matching Results Page */}
             <div className="flex items-center justify-between p-6 border-b border-dashboard-border">
               <div>
-                <h2 className="text-xl font-semibold text-dashboard-text">
-                  {resultsModalOrder.targeting || resultsModalOrder.id.slice(0, 8)}
+                <Link
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); setResultsModalOrder(null); }}
+                  className="text-dashboard-accent hover:opacity-80 transition-opacity mb-2 inline-block text-sm"
+                >
+                  ← Back to Dashboard
+                </Link>
+                <h2 className="text-2xl font-bold text-dashboard-text">
+                  Results
                 </h2>
-                <p className="text-sm text-dashboard-text-muted mt-1">
-                  {resultsModalOrder.leads_found?.toLocaleString() || 0} leads scraped &middot; Completed {resultsModalOrder.completed_at ? formatDate(resultsModalOrder.completed_at) : ""}
-                </p>
               </div>
               <button onClick={() => setResultsModalOrder(null)} className="text-dashboard-text-muted hover:text-dashboard-text transition-colors p-1">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -685,136 +711,314 @@ export default function DashboardPage() {
                 <LoadingSpinner size="lg" />
               </div>
             ) : (
-              <>
-                {/* Stat Cards */}
-                <div className="grid grid-cols-4 gap-3 p-6 pb-0">
-                  <div className="glass-card p-3 text-center">
-                    <p className="text-2xl font-bold text-dashboard-accent">{resultsLeads.length}</p>
-                    <p className="text-xs text-dashboard-text-muted">Total</p>
-                  </div>
-                  <div className="glass-card p-3 text-center">
-                    <p className="text-2xl font-bold text-[#22c55e]">{resultsLeads.filter(l => l.verification_status === "valid" || l.verification_tag === "valid-catchall" || l.verification_tag === "catchall-verified").length}</p>
-                    <p className="text-xs text-dashboard-text-muted">Valid</p>
-                  </div>
-                  <div className="glass-card p-3 text-center">
-                    <p className="text-2xl font-bold text-yellow-400">{resultsLeads.filter(l => l.verification_status === "catchall" && l.verification_tag !== "catchall-verified" && l.verification_tag !== "valid-catchall").length}</p>
-                    <p className="text-xs text-dashboard-text-muted">Catchall</p>
-                  </div>
-                  <div className="glass-card p-3 text-center">
-                    <p className="text-2xl font-bold text-red-400">{resultsLeads.filter(l => l.verification_status === "invalid" || l.verification_status === "not_found").length}</p>
-                    <p className="text-xs text-dashboard-text-muted">Invalid</p>
-                  </div>
-                </div>
-
-                {/* Filters */}
-                <div className="flex items-center gap-3 px-6 pt-4 pb-2">
-                  <select
-                    value={resultsFilter}
-                    onChange={(e) => setResultsFilter(e.target.value)}
-                    className="apple-input text-sm py-1.5 px-3"
-                  >
-                    <option value="all">All Statuses</option>
-                    <option value="valid">Valid</option>
-                    <option value="catchall">Catchall</option>
-                    <option value="invalid">Invalid</option>
-                    <option value="not_found">Not Found</option>
-                  </select>
-                  <select
-                    value={mxFilter}
-                    onChange={(e) => setMxFilter(e.target.value)}
-                    className="apple-input text-sm py-1.5 px-3"
-                  >
-                    <option value="all">All MX Providers</option>
-                    {mxProviders.map((mx) => (
-                      <option key={mx} value={mx}>{mx}</option>
-                    ))}
-                  </select>
-                  <span className="text-xs text-dashboard-text-muted ml-auto">
-                    Showing {filteredResults.length} of {resultsLeads.length}
-                  </span>
-                </div>
-
-                {/* Results Table */}
-                <div className="overflow-y-auto flex-1 px-6 pb-6">
-                  <table className="min-w-full divide-y divide-dashboard-border">
-                    <thead>
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-dashboard-text-muted uppercase">Name</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-dashboard-text-muted uppercase">Email</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-dashboard-text-muted uppercase">Status</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-dashboard-text-muted uppercase">MX Provider</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-dashboard-border">
-                      {filteredResults.slice(0, 100).map((lead) => (
-                        <tr key={lead.id}>
-                          <td className="px-4 py-2 text-sm text-dashboard-text">
-                            {lead.first_name} {lead.last_name}
-                          </td>
-                          <td className="px-4 py-2 text-sm text-dashboard-text-muted font-mono">
-                            {lead.email || "—"}
-                          </td>
-                          <td className="px-4 py-2">
-                            {(() => {
-                              const isValid = lead.verification_status === "valid" || lead.verification_tag === "valid-catchall" || lead.verification_tag === "catchall-verified";
-                              const isCatchall = lead.verification_status === "catchall" && !isValid;
-                              const displayStatus = isValid ? "valid" : isCatchall ? "catchall" : lead.verification_status;
-                              return (
-                                <span className={`text-xs font-medium ${
-                                  isValid ? "text-[#22c55e]" :
-                                  isCatchall ? "text-yellow-400" :
-                                  "text-red-400"
-                                }`}>
-                                  {lead.verification_tag === "valid-catchall" ? "valid-catchall" : displayStatus}
-                                </span>
-                              );
-                            })()}
-                          </td>
-                          <td className="px-4 py-2 text-xs text-dashboard-text-muted">
-                            {getProviderFromMX(lead.mx_record, lead.mx_provider) || "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {filteredResults.length > 100 && (
-                    <p className="text-xs text-dashboard-text-muted text-center mt-3">
-                      Showing first 100 of {filteredResults.length} results. Download CSV for full data.
-                    </p>
-                  )}
-                </div>
-
-                {/* Modal Footer */}
-                <div className="flex items-center justify-end gap-3 p-6 border-t border-dashboard-border">
+              <div className="overflow-y-auto flex-1">
+                {/* Stats Blocks - Click to Filter (Multi-select) - Matching Results Page */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-6">
                   <button
                     onClick={() => {
-                      const statusParam = resultsFilter !== "all"
-                        ? (resultsFilter === "invalid" ? ["invalid", "not_found"] : [resultsFilter])
-                        : undefined;
-                      const mxParam = mxFilter !== "all" ? [mxFilter] : undefined;
-                      if (resultsModalOrder!.enrichment_job_id && resultsModalOrder!.enrichment_status === "completed") {
-                        const url = apiClient.getDownloadUrl(resultsModalOrder!.enrichment_job_id, {
-                          status: statusParam,
-                          mx: mxParam,
-                          filename: resultsModalOrder!.targeting || undefined,
-                        });
-                        window.open(url, "_blank");
+                      if (statusFilters.includes("all")) {
+                        setStatusFilters([]);
                       } else {
-                        handleDownloadCSV(resultsModalOrder!);
+                        setStatusFilters(["all"]);
                       }
                     }}
-                    className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors text-sm font-medium"
+                    className="text-left glass-card p-6 transition-all"
+                    style={{
+                      borderColor: statusFilters.includes("all") ? 'rgba(59,130,246,0.35)' : undefined,
+                      boxShadow: statusFilters.includes("all") ? '0 0 0 1px rgba(59,130,246,0.25)' : undefined,
+                    }}
                   >
-                    Download {resultsFilter !== "all" || mxFilter !== "all" ? "Filtered" : "All"} CSV
+                    <p className="text-sm text-dashboard-text-muted">Total Leads</p>
+                    <p className="text-2xl font-bold text-dashboard-text">{totalLeadsCount}</p>
                   </button>
                   <button
-                    onClick={() => setResultsModalOrder(null)}
-                    className="px-4 py-2 glass-card hover:bg-dashboard-card transition-colors text-sm"
+                    onClick={() => {
+                      let newFilters = statusFilters.filter(f => f !== "all");
+                      if (statusFilters.includes("valid")) {
+                        newFilters = newFilters.filter(f => f !== "valid");
+                      } else {
+                        newFilters.push("valid");
+                      }
+                      setStatusFilters(newFilters.length > 0 ? newFilters : ["all"]);
+                    }}
+                    className="text-left glass-card p-6 transition-all"
+                    style={{
+                      borderColor: statusFilters.includes("valid") ? 'rgba(59,130,246,0.35)' : undefined,
+                      boxShadow: statusFilters.includes("valid") ? '0 0 0 1px rgba(59,130,246,0.25)' : undefined,
+                    }}
                   >
-                    Close
+                    <p className="text-sm text-dashboard-text-muted">Valid Emails</p>
+                    <p className="text-2xl font-bold" style={{ color: '#22C55E' }}>
+                      {validCount}
+                    </p>
+                  </button>
+                  <button
+                    onClick={() => {
+                      let newFilters = statusFilters.filter(f => f !== "all");
+                      if (statusFilters.includes("catchall")) {
+                        newFilters = newFilters.filter(f => f !== "catchall");
+                      } else {
+                        newFilters.push("catchall");
+                      }
+                      setStatusFilters(newFilters.length > 0 ? newFilters : ["all"]);
+                    }}
+                    className="text-left glass-card p-6 transition-all"
+                    style={{
+                      borderColor: statusFilters.includes("catchall") ? 'rgba(59,130,246,0.35)' : undefined,
+                      boxShadow: statusFilters.includes("catchall") ? '0 0 0 1px rgba(59,130,246,0.25)' : undefined,
+                    }}
+                  >
+                    <p className="text-sm text-dashboard-text-muted">Catchall Emails</p>
+                    <p className="text-2xl font-bold" style={{ color: '#F5A623' }}>
+                      {catchallCount}
+                    </p>
+                  </button>
+                  <button
+                    onClick={() => {
+                      let newFilters = statusFilters.filter(f => f !== "all");
+                      if (statusFilters.includes("invalid")) {
+                        newFilters = newFilters.filter(f => f !== "invalid");
+                      } else {
+                        newFilters.push("invalid");
+                      }
+                      setStatusFilters(newFilters.length > 0 ? newFilters : ["all"]);
+                    }}
+                    className="text-left glass-card p-6 transition-all"
+                    style={{
+                      borderColor: statusFilters.includes("invalid") ? 'rgba(59,130,246,0.35)' : undefined,
+                      boxShadow: statusFilters.includes("invalid") ? '0 0 0 1px rgba(59,130,246,0.25)' : undefined,
+                    }}
+                  >
+                    <p className="text-sm text-dashboard-text-muted">Not Found</p>
+                    <p className="text-2xl font-bold" style={{ color: '#E5484D' }}>
+                      {notFoundCount}
+                    </p>
                   </button>
                 </div>
-              </>
+
+                {/* Table Section - Matching Results Page */}
+                <div className="px-6 pb-6">
+                  <div className="glass-card p-6">
+                    {/* Filter bar - Description + Download on left, MX Provider on right */}
+                    <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+                      {/* Left side - Description and Download */}
+                      <div className="flex flex-col gap-2">
+                        <div className="text-sm text-dashboard-text-muted">
+                          Showing <span className="font-medium text-dashboard-text">{Math.min(PREVIEW_LIMIT, filteredResults.length)}</span> of <span className="font-medium text-dashboard-text">{totalLeadsCount.toLocaleString()}</span>
+                          {!statusFilters.includes("all") && statusFilters.length > 0 && (
+                            <span> {statusFilters.join(" + ")}</span>
+                          )}
+                          {statusFilters.includes("all") && " leads"}
+                          {mxFilters.length > 0 && <span> • MX: {mxFilters.join(", ")}</span>}
+                        </div>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => {
+                              const statusParam = !statusFilters.includes("all") && statusFilters.length > 0
+                                ? statusFilters
+                                : undefined;
+                              const mxParam = mxFilters.length > 0 ? mxFilters : undefined;
+                              if (resultsModalOrder!.enrichment_job_id && resultsModalOrder!.enrichment_status === "completed") {
+                                const url = apiClient.getDownloadUrl(resultsModalOrder!.enrichment_job_id, {
+                                  status: statusParam,
+                                  mx: mxParam,
+                                  filename: resultsModalOrder!.targeting || `results-${resultsModalOrder!.id.slice(0, 8)}`,
+                                });
+                                window.open(url, "_blank");
+                              } else {
+                                handleDownloadCSV(resultsModalOrder!);
+                              }
+                            }}
+                            className="px-3 py-1.5 border border-dashboard-accent text-dashboard-accent bg-transparent text-xs rounded-lg hover:bg-dashboard-accent/10 transition-colors"
+                          >
+                            Download CSV
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Right side - MX Provider Filter */}
+                      <div className="flex flex-col items-start gap-2">
+                        <span className="text-sm font-medium text-dashboard-text">Filter by MX Provider</span>
+                        <div className="flex items-center justify-between w-full gap-3">
+                          <button
+                            onClick={() => {
+                              if (mxFilters.includes('outlook')) {
+                                setMxFilters(mxFilters.filter(f => f !== 'outlook'));
+                              } else {
+                                setMxFilters([...mxFilters, 'outlook']);
+                              }
+                            }}
+                            className={`p-2 rounded-md transition-all flex items-center justify-center ${
+                              mxFilters.includes('outlook')
+                                ? 'bg-dashboard-card ring-1 ring-[#3b82f6] shadow-[0_0_12px_rgba(59,130,246,0.6)]'
+                                : 'bg-dashboard-card shadow-[0_0_8px_rgba(59,130,246,0.25)]'
+                            }`}
+                            style={{ opacity: mxFilters.includes('outlook') ? 1 : 0.75 }}
+                            title="Outlook"
+                          >
+                            <img
+                              src="https://app.plusvibe.ai/v2/images/logos/microsoft.svg"
+                              alt="Outlook"
+                              className="h-5 w-auto"
+                            />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (mxFilters.includes('google')) {
+                                setMxFilters(mxFilters.filter(f => f !== 'google'));
+                              } else {
+                                setMxFilters([...mxFilters, 'google']);
+                              }
+                            }}
+                            className={`p-2 rounded-md transition-all flex items-center justify-center ${
+                              mxFilters.includes('google')
+                                ? 'bg-dashboard-card ring-1 ring-[#3b82f6] shadow-[0_0_12px_rgba(59,130,246,0.6)]'
+                                : 'bg-dashboard-card shadow-[0_0_8px_rgba(59,130,246,0.25)]'
+                            }`}
+                            style={{ opacity: mxFilters.includes('google') ? 1 : 0.75 }}
+                            title="Google Workspace"
+                          >
+                            <img
+                              src="https://app.plusvibe.ai/v2/images/logos/google-workspace.svg"
+                              alt="Google"
+                              className="h-5 w-auto"
+                            />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (mxFilters.includes('other')) {
+                                setMxFilters(mxFilters.filter(f => f !== 'other'));
+                              } else {
+                                setMxFilters([...mxFilters, 'other']);
+                              }
+                            }}
+                            className={`p-2 rounded-md transition-all flex items-center justify-center ${
+                              mxFilters.includes('other')
+                                ? 'bg-dashboard-card ring-1 ring-[#3b82f6] shadow-[0_0_12px_rgba(59,130,246,0.6)]'
+                                : 'bg-dashboard-card shadow-[0_0_8px_rgba(59,130,246,0.25)]'
+                            }`}
+                            style={{ opacity: mxFilters.includes('other') ? 1 : 0.75 }}
+                            title="Other"
+                          >
+                            <img
+                              src="https://app.plusvibe.ai/v2/images/logos/any-provider.svg"
+                              alt="Other"
+                              className="h-5 w-auto"
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Results Table - Matching Results Page Style */}
+                    <div className="overflow-x-auto mt-4">
+                      <table className="min-w-full divide-y divide-dashboard-border">
+                        <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }}>
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
+                              First name
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
+                              Last name
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
+                              Website
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
+                              Email
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
+                              Status
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-dashboard-text-muted">
+                              MX type
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
+                          {filteredResults.slice(0, PREVIEW_LIMIT).map((lead) => (
+                            <tr key={lead.id} className="hover:bg-dashboard-card/50 transition-colors">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
+                                {lead.first_name}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
+                                {lead.last_name}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
+                                {lead.domain}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
+                                {lead.email || "—"}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`text-xs font-medium ${
+                                      lead.verification_status === "valid" || lead.verification_tag === "valid-catchall"
+                                        ? "text-[#22c55e]"
+                                        : lead.verification_status === "catchall"
+                                        ? "text-yellow-400"
+                                        : "text-red-400"
+                                    }`}
+                                  >
+                                    {lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status?.replace(/_/g, ' ')}
+                                  </span>
+                                  {lead.verification_tag === "catchall-verified" && (
+                                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-dashboard-accent/20 text-dashboard-accent border border-dashboard-accent/30">
+                                      Catchall-Verified
+                                    </span>
+                                  )}
+                                  {lead.verification_tag === "valid-catchall" && (
+                                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-[#22c55e]/30 text-[#22c55e] border border-[#22c55e]/50">
+                                      Valid-Catchall
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: '#C8D2DC' }}>
+                                {(() => {
+                                  const mxType = getProviderFromMX(lead.mx_record, lead.mx_provider);
+                                  return mxType.charAt(0).toUpperCase() + mxType.slice(1);
+                                })()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {filteredResults.length > PREVIEW_LIMIT && (
+                      <div className="mt-4 p-4 glass-card-hover text-center">
+                        <p className="text-dashboard-text-muted text-sm">
+                          Showing {PREVIEW_LIMIT} of {totalLeadsCount.toLocaleString()} results.
+                          <button
+                            onClick={() => {
+                              const statusParam = !statusFilters.includes("all") && statusFilters.length > 0
+                                ? statusFilters
+                                : undefined;
+                              const mxParam = mxFilters.length > 0 ? mxFilters : undefined;
+                              if (resultsModalOrder!.enrichment_job_id && resultsModalOrder!.enrichment_status === "completed") {
+                                const url = apiClient.getDownloadUrl(resultsModalOrder!.enrichment_job_id, {
+                                  status: statusParam,
+                                  mx: mxParam,
+                                  filename: resultsModalOrder!.targeting || `results-${resultsModalOrder!.id.slice(0, 8)}`,
+                                });
+                                window.open(url, "_blank");
+                              } else {
+                                handleDownloadCSV(resultsModalOrder!);
+                              }
+                            }}
+                            className="ml-2 text-dashboard-accent hover:underline font-medium"
+                          >
+                            Download CSV
+                          </button>
+                          {" "}to view all results.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
