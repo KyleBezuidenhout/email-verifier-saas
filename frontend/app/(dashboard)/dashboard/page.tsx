@@ -292,13 +292,41 @@ export default function DashboardPage() {
     });
   };
 
+  const getProviderFromMX = (mxRecord?: string, mxProvider?: string): string => {
+    if (mxProvider) return mxProvider;
+    if (!mxRecord || mxRecord.trim() === '') return 'other';
+    const mxLower = mxRecord.toLowerCase();
+    if (mxLower.includes('mail.protection.outlook.com') || mxLower.includes('outlook.com')) return 'outlook';
+    if (mxLower.includes('.google.com') || mxLower.includes('.gmail.com')) return 'google';
+    return 'other';
+  };
+
   const filteredResults = resultsLeads.filter((lead) => {
-    if (resultsFilter !== "all" && lead.verification_status !== resultsFilter) return false;
-    if (mxFilter !== "all" && (lead.mx_provider || "unknown") !== mxFilter) return false;
+    if (resultsFilter !== "all") {
+      if (resultsFilter === "valid") {
+        const isValid = lead.verification_status === "valid" ||
+          lead.verification_tag === "valid-catchall" ||
+          lead.verification_tag === "catchall-verified";
+        if (!isValid) return false;
+      } else if (resultsFilter === "catchall") {
+        const isCatchall = lead.verification_status === "catchall" &&
+          lead.verification_tag !== "catchall-verified" &&
+          lead.verification_tag !== "valid-catchall";
+        if (!isCatchall) return false;
+      } else if (resultsFilter === "invalid") {
+        if (lead.verification_status !== "invalid" && lead.verification_status !== "not_found") return false;
+      } else {
+        if (lead.verification_status !== resultsFilter) return false;
+      }
+    }
+    if (mxFilter !== "all") {
+      const provider = getProviderFromMX(lead.mx_record, lead.mx_provider);
+      if (provider !== mxFilter) return false;
+    }
     return true;
   });
 
-  const mxProviders = Array.from(new Set(resultsLeads.map((l) => l.mx_provider || "unknown"))).sort();
+  const mxProviders = Array.from(new Set(resultsLeads.map((l) => getProviderFromMX(l.mx_record, l.mx_provider)))).sort();
 
   if (initialLoading) {
     return (
@@ -665,11 +693,11 @@ export default function DashboardPage() {
                     <p className="text-xs text-dashboard-text-muted">Total</p>
                   </div>
                   <div className="glass-card p-3 text-center">
-                    <p className="text-2xl font-bold text-[#22c55e]">{resultsLeads.filter(l => l.verification_status === "valid").length}</p>
+                    <p className="text-2xl font-bold text-[#22c55e]">{resultsLeads.filter(l => l.verification_status === "valid" || l.verification_tag === "valid-catchall" || l.verification_tag === "catchall-verified").length}</p>
                     <p className="text-xs text-dashboard-text-muted">Valid</p>
                   </div>
                   <div className="glass-card p-3 text-center">
-                    <p className="text-2xl font-bold text-yellow-400">{resultsLeads.filter(l => l.verification_status === "catchall").length}</p>
+                    <p className="text-2xl font-bold text-yellow-400">{resultsLeads.filter(l => l.verification_status === "catchall" && l.verification_tag !== "catchall-verified" && l.verification_tag !== "valid-catchall").length}</p>
                     <p className="text-xs text-dashboard-text-muted">Catchall</p>
                   </div>
                   <div className="glass-card p-3 text-center">
@@ -727,16 +755,23 @@ export default function DashboardPage() {
                             {lead.email || "—"}
                           </td>
                           <td className="px-4 py-2">
-                            <span className={`text-xs font-medium ${
-                              lead.verification_status === "valid" ? "text-[#22c55e]" :
-                              lead.verification_status === "catchall" ? "text-yellow-400" :
-                              "text-red-400"
-                            }`}>
-                              {lead.verification_status}
-                            </span>
+                            {(() => {
+                              const isValid = lead.verification_status === "valid" || lead.verification_tag === "valid-catchall" || lead.verification_tag === "catchall-verified";
+                              const isCatchall = lead.verification_status === "catchall" && !isValid;
+                              const displayStatus = isValid ? "valid" : isCatchall ? "catchall" : lead.verification_status;
+                              return (
+                                <span className={`text-xs font-medium ${
+                                  isValid ? "text-[#22c55e]" :
+                                  isCatchall ? "text-yellow-400" :
+                                  "text-red-400"
+                                }`}>
+                                  {lead.verification_tag === "valid-catchall" ? "valid-catchall" : displayStatus}
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-2 text-xs text-dashboard-text-muted">
-                            {lead.mx_provider || "—"}
+                            {getProviderFromMX(lead.mx_record, lead.mx_provider) || "—"}
                           </td>
                         </tr>
                       ))}
@@ -752,10 +787,25 @@ export default function DashboardPage() {
                 {/* Modal Footer */}
                 <div className="flex items-center justify-end gap-3 p-6 border-t border-dashboard-border">
                   <button
-                    onClick={() => handleDownloadCSV(resultsModalOrder)}
+                    onClick={() => {
+                      const statusParam = resultsFilter !== "all"
+                        ? (resultsFilter === "invalid" ? ["invalid", "not_found"] : [resultsFilter])
+                        : undefined;
+                      const mxParam = mxFilter !== "all" ? [mxFilter] : undefined;
+                      if (resultsModalOrder!.enrichment_job_id && resultsModalOrder!.enrichment_status === "completed") {
+                        const url = apiClient.getDownloadUrl(resultsModalOrder!.enrichment_job_id, {
+                          status: statusParam,
+                          mx: mxParam,
+                          filename: resultsModalOrder!.targeting || undefined,
+                        });
+                        window.open(url, "_blank");
+                      } else {
+                        handleDownloadCSV(resultsModalOrder!);
+                      }
+                    }}
                     className="px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors text-sm font-medium"
                   >
-                    Download CSV
+                    Download {resultsFilter !== "all" || mxFilter !== "all" ? "Filtered" : "All"} CSV
                   </button>
                   <button
                     onClick={() => setResultsModalOrder(null)}
