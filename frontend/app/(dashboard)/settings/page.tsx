@@ -151,14 +151,14 @@ export default function SettingsPage() {
               <div>
                 <h2 className="text-lg font-medium text-dashboard-text mb-2">Reset password</h2>
                 <p className="text-sm text-dashboard-text-muted">
-                  Click the button below, and we&apos;ll send you an email to change your password.
+                  We&apos;ll send a password reset link to your email.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleSendPasswordReset}
                 disabled={sendingReset || !user?.email}
-                className="px-4 py-2 border border-[rgb(229,72,77)] text-[rgb(229,72,77)] bg-transparent rounded-lg hover:bg-[rgb(229,72,77)]/10 transition-colors disabled:opacity-50 flex items-center space-x-2 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 border border-[rgb(229,72,77)] text-[rgb(229,72,77)] bg-transparent rounded-lg hover:bg-[rgb(229,72,77)]/10 transition-colors disabled:opacity-50 flex items-center space-x-2 disabled:cursor-not-allowed text-sm"
               >
                 {sendingReset && <LoadingSpinner size="sm" />}
                 <span>Reset</span>
@@ -187,7 +187,7 @@ export default function SettingsPage() {
           <button
             onClick={handleLogout}
             disabled={loading}
-            className="px-4 py-2 border border-[rgb(229,72,77)] text-[rgb(229,72,77)] bg-transparent rounded-lg hover:bg-[rgb(229,72,77)]/10 disabled:opacity-50 flex items-center space-x-2 transition-colors"
+            className="px-3 py-1.5 border border-[rgb(229,72,77)] text-[rgb(229,72,77)] bg-transparent rounded-lg hover:bg-[rgb(229,72,77)]/10 disabled:opacity-50 flex items-center space-x-2 transition-colors text-sm"
           >
             {loading && <LoadingSpinner size="sm" />}
             <span>Logout</span>

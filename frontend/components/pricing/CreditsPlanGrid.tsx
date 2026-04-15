@@ -15,25 +15,20 @@ function buildFeatures(plan: PlanDef): string[] {
   const features: string[] = [];
 
   if (plan.id === "trial") {
-    features.push("0.1 credits per email enrichment/verification");
-    features.push("1 credit per Sales Nav profile scraped");
+    features.push("1 credit per valid/catchall email found");
   } else if (plan.id === "custom") {
-    features.push("400,000+ Sales Navigator Profiles");
-    features.push("Dedicated Slack Support + Deliverability Consulting");
-    features.push("1 Enterprise Sales Nav Seat");
+    features.push("100,000+ emails per month");
+    features.push("Priority Slack Support + Deliverability Consulting");
   } else {
-    features.push(`${formatSnLabel(plan.snLabel!)} Sales Navigator Profiles`);
+    features.push(`${formatSnLabel(plan.snLabel!)} emails per month`);
     features.push(plan.support);
-    if (plan.id === "agency_plus") {
-      features.push("1 Enterprise Sales Nav Seat");
-    }
   }
 
   return features;
 }
 
 function getPlanVolume(plan: PlanDef): string {
-  if (plan.id === "custom") return "400k+";
+  if (plan.id === "custom") return "100k+";
   if (!plan.snLabel) return "N/A";
   return formatSnLabel(plan.snLabel);
 }
@@ -101,7 +96,7 @@ export function CreditsPlanGrid({ currentPlanId, subscriptionStatus, manageUrl }
   return (
     <div className="w-full">
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {PLANS.map((plan) => {
+        {PLANS.filter((p) => p.id !== "trial").map((plan) => {
           const isCurrentPlan = plan.id === currentPlanId;
           const isLower = currentPlanId ? isLowerTier(plan.id, currentPlanId) : false;
           const features = buildFeatures(plan);
@@ -156,7 +151,7 @@ export function CreditsPlanGrid({ currentPlanId, subscriptionStatus, manageUrl }
                   {plan.creditPrice && plan.id !== "trial" && (
                     <p className="text-sm mt-1">
                       <span className="text-dashboard-text">${plan.creditPrice.toFixed(4)}</span>
-                      <span className="text-dashboard-text-muted"> per profile scraped</span>
+                      <span className="text-dashboard-text-muted"> per email found</span>
                     </p>
                   )}
                 </div>

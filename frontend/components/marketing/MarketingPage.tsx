@@ -724,7 +724,7 @@ export function MarketingPage() {
                 Wholesale Pricing
               </h2>
               <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-                All paid plans include uncapped enrichment & verification, credits never expire
+                Only pay for the emails we find. Credits never expire.
               </p>
             </div>
 

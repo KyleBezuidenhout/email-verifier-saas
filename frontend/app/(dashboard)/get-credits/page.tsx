@@ -25,7 +25,7 @@ export default function GetCreditsPage() {
   const [topUpAmount, setTopUpAmount] = useState(50);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const CREDIT_PRICE = 0.005;
+  const CREDIT_PRICE = 0.015;
 
   const userPlan = user?.plan || "trial";
   const planDef = getPlanById(userPlan);
@@ -54,7 +54,7 @@ export default function GetCreditsPage() {
         <div className="max-w-7xl mx-auto">
           {/* Universal Policy Statement */}
           <p className="text-center text-white text-lg font-medium mb-12">
-            All plans include uncapped enrichment & verification. Credits never expire.
+            1 Credit = 1 Email Found.
           </p>
           <CreditsPlanGrid
             currentPlanId={userPlan}
@@ -119,7 +119,7 @@ export default function GetCreditsPage() {
               {/* Price Info */}
               <div className="text-center mb-6">
                 <p className="text-dashboard-text-muted text-sm">
-                  Price per credit: <span className="text-dashboard-text">${CREDIT_PRICE.toFixed(3)}</span>
+                  Price per email found: <span className="text-dashboard-text">${CREDIT_PRICE.toFixed(3)}</span>
                 </p>
               </div>
 

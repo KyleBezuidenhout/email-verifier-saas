@@ -9,27 +9,22 @@ interface PricingSliderProps {
   variant?: "marketing" | "dashboard";
 }
 
-const SLIDER_PLANS = PLANS.filter((p) => p.id !== "custom");
+const SLIDER_PLANS = PLANS.filter((p) => p.id !== "custom" && p.id !== "trial");
 const CUSTOM_PLAN = PLANS.find((p) => p.id === "custom")!;
-const REGULAR_PLAN_COUNT = SLIDER_PLANS.length; // 7 plans (trial through agency_plus)
-const TOTAL_STEPS = REGULAR_PLAN_COUNT; // 0..6 for regular plans, position 7 is custom
+const REGULAR_PLAN_COUNT = SLIDER_PLANS.length; // 5 plans (basic through agency)
+const TOTAL_STEPS = REGULAR_PLAN_COUNT; // 0..4 for regular plans, position 5 is custom
 
 function buildFeatures(plan: PlanDef): string[] {
   const features: string[] = [];
 
   if (plan.id === "trial") {
-    features.push("0.1 credits per email enrichment/verification");
-    features.push("1 credit per Sales Nav profile scraped");
+    features.push("1 credit per valid/catchall email found");
   } else if (plan.id === "custom") {
-    features.push("400,000+ Sales Navigator Profiles");
-    features.push("Dedicated Slack Support + Deliverability Consulting");
-    features.push("1 Enterprise Sales Nav Seat");
+    features.push("100,000+ emails per month");
+    features.push("Priority Slack Support + Deliverability Consulting");
   } else {
-    features.push(`${formatSnLabel(plan.snLabel!)} Sales Navigator Profiles`);
+    features.push(`${formatSnLabel(plan.snLabel!)} emails per month`);
     features.push(plan.support);
-    if (plan.id === "agency_plus") {
-      features.push("1 Enterprise Sales Nav Seat");
-    }
   }
   return features;
 }
@@ -148,9 +143,9 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
                   </span>
                   <span className="text-dashboard-text-muted text-lg">/mo</span>
                 </div>
-                {selectedPlan.perThousand && (
+                {selectedPlan.creditPrice && (
                   <p className="text-dashboard-text-muted text-sm mt-1">
-                    {selectedPlan.perThousand} per 1,000 profiles
+                    ${selectedPlan.creditPrice.toFixed(3)} per email
                   </p>
                 )}
               </div>
@@ -224,14 +219,12 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
             {/* Slider Scale Labels */}
             <div className="relative h-6 mb-6">
               {[
-                { label: "2k", position: 0 },
-                { label: "25k", position: 1 },
-                { label: "50k", position: 2 },
-                { label: "100k", position: 3 },
-                { label: "150k", position: 4 },
-                { label: "250k", position: 5 },
-                { label: "400k", position: 6 },
-                { label: "400k+", position: 7 },
+                { label: "5k", position: 0 },
+                { label: "15k", position: 1 },
+                { label: "30k", position: 2 },
+                { label: "50k", position: 3 },
+                { label: "100k", position: 4 },
+                { label: "100k+", position: 5 },
               ].map(({ label, position }) => (
                 <span
                   key={label}
