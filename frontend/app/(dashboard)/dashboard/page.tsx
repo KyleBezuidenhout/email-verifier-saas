@@ -363,7 +363,15 @@ export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-dashboard-text">Sales Nav Extractor</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-dashboard-text">Sales Nav Extractor</h1>
+          <a
+            href="/tutorial"
+            className="px-4 py-2 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors text-base font-medium mt-6"
+          >
+            Tutorial
+          </a>
+        </div>
         <p className="mt-2 text-dashboard-text-muted">Extract and enrich leads from Sales Navigator</p>
       </div>
 
@@ -475,7 +483,15 @@ export default function DashboardPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAuthModal(false)} />
           <div className="relative glass-card p-6 shadow-2xl max-w-md w-full mx-4" style={{ background: 'rgba(13, 15, 18, 0.9)' }}>
-            <h3 className="text-xl font-semibold text-dashboard-text mb-4">LinkedIn Authentication</h3>
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-xl font-semibold text-dashboard-text">LinkedIn Authentication</h3>
+              <a
+                href="/tutorial"
+                className="text-xs text-dashboard-accent hover:text-dashboard-accent/80 transition-colors"
+              >
+                Tutorial
+              </a>
+            </div>
             <p className="text-sm text-dashboard-text-muted mb-4">
               Enter your LinkedIn session cookie (<code className="bg-dashboard-card px-1 py-0.5 rounded">li_at</code>) for authentication.
             </p>
@@ -491,7 +507,7 @@ export default function DashboardPage() {
               className="apple-input w-full mb-4"
             />
             <div className="flex gap-3">
-              <button onClick={() => setShowAuthModal(false)} className="flex-1 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors">
+              <button onClick={() => setShowAuthModal(false)} className="flex-1 px-4 py-2 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors text-sm font-medium">
                 Save Cookie
               </button>
               <button onClick={() => setShowAuthModal(false)} className="px-4 py-2 glass-card hover:bg-dashboard-card transition-colors">
