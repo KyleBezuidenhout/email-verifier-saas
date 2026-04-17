@@ -366,7 +366,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-dashboard-text">Sales Nav Extractor</h1>
           <a
-            href="/tutorial"
+            href="/watch-tutorial"
             className="px-4 py-2 border border-dashboard-accent text-dashboard-accent bg-transparent rounded-lg hover:bg-dashboard-accent/10 transition-colors text-base font-medium mt-6"
           >
             Tutorial
@@ -486,7 +486,7 @@ export default function DashboardPage() {
             <div className="flex items-start justify-between mb-4">
               <h3 className="text-xl font-semibold text-dashboard-text">LinkedIn Authentication</h3>
               <a
-                href="/tutorial"
+                href="/watch-tutorial"
                 className="text-xs text-dashboard-accent hover:text-dashboard-accent/80 transition-colors"
               >
                 Tutorial
