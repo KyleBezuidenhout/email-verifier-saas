@@ -363,10 +363,8 @@ export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-dashboard-text">Dashboard</h1>
-        <p className="mt-2 text-dashboard-text-muted">
-          Scrape, enrich, and verify leads from Sales Navigator
-        </p>
+        <h1 className="text-2xl font-bold text-dashboard-text">Sales Nav Extractor</h1>
+        <p className="mt-2 text-dashboard-text-muted">Extract and enrich leads from Sales Navigator</p>
       </div>
 
       {/* Daily Scraping Limit */}
@@ -562,12 +560,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Unified Job Table */}
-      <div className="glass-card p-6 mb-6 overflow-hidden">
+      <div className="glass-card p-6 mb-6">
         <h3 className="text-lg font-semibold text-dashboard-text mb-4">Jobs</h3>
         {orders.length === 0 ? (
           <p className="text-dashboard-text-muted text-center py-8">No jobs yet. Start a new job above.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" style={{ overflow: 'visible' }}>
             <table className="min-w-full divide-y divide-dashboard-border">
               <thead style={{ background: 'rgba(13, 15, 18, 0.5)' }}>
                 <tr>
@@ -629,7 +627,7 @@ export default function DashboardPage() {
                             </button>
                           )}
                           {canDownloadEnriched && (
-                            <div className="relative" data-download-dropdown>
+                            <div className="relative inline-block" data-download-dropdown={order.id}>
                               <button
                                 onClick={() => setDownloadDropdownId(downloadDropdownId === order.id ? null : order.id)}
                                 className="px-3 py-1.5 border border-dashboard-accent text-dashboard-accent bg-transparent text-xs rounded-lg hover:bg-dashboard-accent/10 transition-colors flex items-center gap-1"
@@ -638,7 +636,7 @@ export default function DashboardPage() {
                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                               </button>
                               {downloadDropdownId === order.id && (
-                                <div className="absolute right-0 top-full mt-1 z-50 w-36 rounded-lg border border-dashboard-border shadow-xl" style={{ background: 'rgba(13, 15, 18, 0.95)' }}>
+                                <div className="absolute right-0 bottom-full mb-1 w-36 rounded-lg border border-dashboard-border shadow-2xl z-[999999]" style={{ background: 'rgba(13, 15, 18, 1)' }}>
                                   {[
                                     { label: "All Leads", filter: undefined },
                                     { label: "Valid", filter: ["valid"] },

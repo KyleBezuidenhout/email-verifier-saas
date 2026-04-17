@@ -26,7 +26,7 @@ export function Footer() {
               </Link>
             </div>
             <p className="text-sm text-dashboard-text-muted mb-4">
-              Scrape, enrich, and verify B2B leads - all in one place.
+              extract, enrich, and verify intent-targeted leads - all in one place.
             </p>
           </div>
 

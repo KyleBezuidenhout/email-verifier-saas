@@ -6,18 +6,9 @@ import { getPlanById } from "@/lib/plans";
 import { CreditsPlanGrid } from "@/components/pricing/CreditsPlanGrid";
 import { apiClient } from "@/lib/api";
 
-const glassCardStyle = {
-  background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(13,15,18,0.6) 100%)",
-  backdropFilter: "blur(24px) saturate(180%)",
-  WebkitBackdropFilter: "blur(24px) saturate(180%)",
-  border: "1px solid rgba(255,255,255,0.06)",
-  boxShadow: `
-    0 25px 50px -12px rgba(0,0,0,0.5),
-    0 0 0 1px rgba(255,255,255,0.05),
-    inset 0 1px 0 rgba(255,255,255,0.15),
-    inset 0 -1px 0 rgba(0,0,0,0.2),
-    0 4px 16px rgba(0,153,255,0.05)
-  `,
+const cardStyle = {
+  background: "#0a0a0a",
+  border: "1px solid rgba(255,255,255,0.12)",
 } as const;
 
 export default function GetCreditsPage() {
@@ -78,14 +69,11 @@ export default function GetCreditsPage() {
           </div>
 
           {/* Top Up Card */}
-          <div
-            className="relative p-6 lg:p-8 rounded-2xl overflow-hidden"
-            style={glassCardStyle}
-          >
-            {/* Decorative gradient */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-dashboard-accent/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-
-            <div className="relative">
+          <div className="relative rounded-2xl p-px bg-gradient-to-b from-white/[0.15] via-white/[0.05] to-transparent overflow-hidden">
+            <div
+              className="relative rounded-[15px] p-6 lg:p-8"
+              style={cardStyle}
+            >
               {/* Amount Display */}
               <div className="text-center mb-8">
                 <div className="text-5xl font-bold text-dashboard-text mb-2">

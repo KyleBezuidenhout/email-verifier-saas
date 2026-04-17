@@ -5,7 +5,7 @@ import { ThemeProvider } from '@/components/common/ThemeProvider'
 
 export const metadata: Metadata = {
   title: 'Billion Verifier',
-  description: 'Professional email verification service',
+  description: 'extract, enrich, and verify intent-targeted leads - all in one place.',
   icons: {
     icon: [
       { url: '/icon.svg', type: 'image/svg+xml' },

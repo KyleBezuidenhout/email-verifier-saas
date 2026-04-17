@@ -19,20 +19,42 @@ export function LandingHeader() {
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         scrolled
-          ? "bg-[#0D0F12]/95 backdrop-blur-sm border-b border-[#252A31]"
+          ? "bg-black/95 backdrop-blur-sm border-b border-white/[0.06]"
           : "bg-transparent"
       }`}
     >
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 h-20 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 h-20 grid grid-cols-3 items-center">
         {/* Logo */}
-        <Link href="/" className="flex items-center group">
+        <Link href="/" className="flex items-center group justify-self-start">
           <span className="text-landing-accent font-bold text-2xl tracking-tight">
             BillionVerifier
           </span>
         </Link>
 
-        {/* Navigation */}
-        <div className="flex items-center gap-6">
+        {/* Center Navigation */}
+        <nav className="hidden md:flex items-center gap-8 justify-self-center">
+          <Link
+            href="/#features"
+            className="text-landing-text/70 hover:text-landing-accent text-sm font-medium transition-colors"
+          >
+            Features
+          </Link>
+          <Link
+            href="/#pricing"
+            className="text-landing-text/70 hover:text-landing-accent text-sm font-medium transition-colors"
+          >
+            Pricing
+          </Link>
+          <Link
+            href="/blog"
+            className="text-landing-text/70 hover:text-landing-accent text-sm font-medium transition-colors"
+          >
+            Blog
+          </Link>
+        </nav>
+
+        {/* Right Navigation */}
+        <div className="flex items-center gap-6 justify-self-end">
           <Link
             href="/login"
             className="text-landing-text/70 hover:text-landing-accent text-sm font-semibold tracking-wide transition-all duration-300"
@@ -41,9 +63,9 @@ export function LandingHeader() {
           </Link>
           <Link
             href="/register"
-            className="inline-flex items-center gap-2 bg-landing-accent text-landing-bg px-6 py-3 font-semibold text-sm tracking-wide glow-accent hover-glow-accent transition-all duration-300 hover:bg-landing-accent/90"
+            className="inline-flex items-center gap-2 bg-blue-500 text-black px-6 py-3 rounded-lg font-semibold text-sm tracking-wide transition-all duration-300 hover:bg-blue-600"
           >
-            2,000 Free Credits
+            2,000 Credits
             <svg
               className="w-4 h-4"
               fill="none"
@@ -63,4 +85,3 @@ export function LandingHeader() {
     </header>
   );
 }
-

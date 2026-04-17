@@ -98,23 +98,23 @@ export function LoginForm() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center">
+      <div className="grid grid-cols-2 gap-4 items-center">
+        <div className="flex items-center gap-2">
           <input
             id="remember-me"
             type="checkbox"
             checked={rememberMe}
             onChange={(e) => setRememberMe(e.target.checked)}
-            className="h-4 w-4 text-[#0099FF] focus:ring-[#0099FF] border-white/10 rounded bg-white/5"
+            className="h-4 w-4 flex-shrink-0 text-[#0099FF] focus:ring-[#0099FF] border-white/10 rounded bg-white/5"
           />
-          <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-400">
+          <label htmlFor="remember-me" className="block text-sm text-gray-400 whitespace-nowrap">
             Remember me
           </label>
         </div>
 
         <Link
           href="/forgot-password"
-          className="text-sm text-[#0099FF] hover:text-[#0099FF]/80"
+          className="text-sm text-[#0099FF] hover:text-[#0099FF]/80 whitespace-nowrap text-right"
         >
           Forgot password?
         </Link>

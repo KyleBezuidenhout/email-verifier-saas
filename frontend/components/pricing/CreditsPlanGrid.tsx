@@ -43,19 +43,9 @@ function getCtaLabel(plan: PlanDef, isCurrentPlan: boolean): string {
   return "Get Started";
 }
 
-const glassCardStyle = {
-  background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(13,15,18,0.6) 100%)",
-  backdropFilter: "blur(24px) saturate(180%)",
-  WebkitBackdropFilter: "blur(24px) saturate(180%)",
-  border: "1px solid rgba(255,255,255,0.06)",
-  boxShadow: `
-    0 25px 50px -12px rgba(0,0,0,0.5),
-    0 0 0 1px rgba(255,255,255,0.05),
-    inset 0 1px 0 rgba(255,255,255,0.15),
-    inset 0 -1px 0 rgba(0,0,0,0.2),
-    0 4px 16px rgba(0,153,255,0.05)
-  `,
-  transform: "translateZ(0)",
+const cardStyle = {
+  background: "#0a0a0a",
+  border: "1px solid rgba(255,255,255,0.12)",
 } as const;
 
 const PLAN_ORDER = PLANS.map((p) => p.id);
@@ -106,30 +96,20 @@ export function CreditsPlanGrid({ currentPlanId, subscriptionStatus, manageUrl }
           return (
             <div
               key={plan.id}
-              className="relative p-6 lg:p-7 rounded-2xl overflow-hidden h-full"
-              style={glassCardStyle}
+              className="relative rounded-2xl p-px bg-gradient-to-b from-white/[0.15] via-white/[0.05] to-transparent overflow-hidden h-full"
             >
-              <div
-                className="absolute inset-x-0 top-0 h-px pointer-events-none"
-                style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)" }}
-              />
-              <div
-                className="absolute -top-20 -right-20 w-48 h-48 pointer-events-none"
-                style={{
-                  background: "radial-gradient(circle, rgba(0,153,255,0.12) 0%, transparent 70%)",
-                  filter: "blur(40px)",
-                }}
-              />
-
-              <div className="relative flex flex-col h-full">
-                {plan.id === "business_plus" && !isCurrentPlan && (
-                  <div className="absolute -top-2 -right-2">
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/20 border border-amber-500/30">
-                      <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                      <span className="text-xs font-semibold text-amber-400">Most Popular</span>
-                    </div>
+              {plan.id === "business_plus" && !isCurrentPlan && (
+                <div className="absolute top-3 right-3 z-10">
+                  <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/20 border border-amber-500/30">
+                    <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                    <span className="text-xs font-semibold text-amber-400">Most Popular</span>
                   </div>
-                )}
+                </div>
+              )}
+              <div
+                className="relative rounded-[15px] p-6 lg:p-7 h-full flex flex-col"
+                style={cardStyle}
+              >
 
                 <div className="flex items-start justify-between gap-3 mb-4">
                   <p className="text-dashboard-text text-xl font-semibold">{plan.name}</p>
