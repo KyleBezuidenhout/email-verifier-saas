@@ -11,6 +11,7 @@ import { Check, Users, Sparkles, ShieldCheck, ChevronDown } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const Globe = dynamic(() => import("./Globe"), { ssr: false });
+const SignalPopups = dynamic(() => import("./SignalPopups"), { ssr: false });
 
 function useDailyCounter(startValue: number, endValue: number) {
   const compute = () => {
@@ -676,14 +677,14 @@ export function MarketingPage() {
           <div className="relative max-w-6xl mx-auto px-6 lg:px-8 pt-16 lg:pt-24 pb-0">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
               <div className="animate-fade-in-up">
-                <h1 className="text-3xl md:text-4xl lg:text-[52px] font-bold text-white leading-tight tracking-tight mb-8">
-                  <span className="block">The All-in-One</span>
-                  <span className="block mt-3">Platform Behind</span>
-                  <span className="block mt-3">Predictable Pipeline</span>
+                <h1 className="text-3xl md:text-4xl lg:text-[52px] font-bold text-white leading-tight tracking-tight mb-12">
+                  <span className="block">The Data Extraction</span>
+                  <span className="block mt-2">Layer Behind Smarter</span>
+                  <span className="block mt-2">Pipeline Growth</span>
                 </h1>
 
                 <p className="text-lg md:text-xl text-gray-400 leading-relaxed mb-10 max-w-lg">
-                  Stop duct-taping five tools together. We turn intent signals from the world&apos;s largest professional network into campaign-ready leads.
+                  Built for outbound teams. Turn intent signals from the world&apos;s largest professional identity network into campaign-ready leads - in a single platform.
                 </p>
 
                 <div className="flex items-center gap-4 flex-wrap">
@@ -712,6 +713,7 @@ export function MarketingPage() {
                 <div className="w-[90%] h-[90%]">
                   <Globe />
                 </div>
+                <SignalPopups />
               </div>
             </div>
           </div>
@@ -722,7 +724,7 @@ export function MarketingPage() {
           <div className="max-w-5xl mx-auto px-6 lg:px-8 w-full">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-10 lg:gap-16 text-center items-center">
               <div className="flex flex-col items-center gap-2">
-                <span className="text-2xl md:text-3xl lg:text-4xl font-bold text-landing-text tabular-nums tracking-tight">
+                <span className="text-xl md:text-2xl lg:text-3xl font-bold text-landing-text tabular-nums tracking-tight">
                   {validEmails.toLocaleString()}
                 </span>
                 <span className="text-sm lg:text-base text-landing-muted uppercase tracking-wide">
@@ -730,7 +732,7 @@ export function MarketingPage() {
                 </span>
               </div>
               <div className="flex flex-col items-center gap-2">
-                <span className="text-2xl md:text-3xl lg:text-4xl font-bold text-landing-text tabular-nums tracking-tight">
+                <span className="text-xl md:text-2xl lg:text-3xl font-bold text-landing-text tabular-nums tracking-tight">
                   {bouncesPrevented.toLocaleString()}
                 </span>
                 <span className="text-sm lg:text-base text-landing-muted uppercase tracking-wide">
@@ -738,7 +740,7 @@ export function MarketingPage() {
                 </span>
               </div>
               <div className="flex flex-col items-center gap-2">
-                <span className="text-2xl md:text-3xl lg:text-4xl font-bold text-landing-text tabular-nums tracking-tight">
+                <span className="text-xl md:text-2xl lg:text-3xl font-bold text-landing-text tabular-nums tracking-tight">
                   {totalEmailsFound.toLocaleString()}
                 </span>
                 <span className="text-sm lg:text-base text-landing-muted uppercase tracking-wide">
@@ -975,6 +977,13 @@ export function MarketingPage() {
                 style={{ filter: 'brightness(0) invert(1) brightness(150%)' }}
               />
             </div>
+
+            {/* Logo 5 - Dell */}
+            <div className="flex items-center justify-center shrink-0 h-7 lg:h-9 mt-12">
+              <span className="text-white font-bold text-lg lg:text-xl tracking-wider italic">
+                DELL
+              </span>
+            </div>
           </div>
         </section>
 
@@ -990,9 +999,10 @@ export function MarketingPage() {
                 Pricing
               </h2>
               <p className="text-3xl md:text-4xl lg:text-5xl font-bold text-white max-w-4xl mx-auto leading-tight">
-                Only pay for the emails we find.
-                <br />
-                Credits never expire.
+                Only pay for the emails we find
+              </p>
+              <p className="text-xl md:text-2xl lg:text-3xl font-medium text-zinc-400 max-w-4xl mx-auto mt-4">
+                Credits never expire
               </p>
             </div>
 
