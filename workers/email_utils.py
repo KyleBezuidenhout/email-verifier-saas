@@ -163,6 +163,72 @@ def send_daily_limit_reached_email(
     return _send_html_email(user_email, subject, html)
 
 
+def send_admin_order_oversize_email(
+    order_id: str,
+    user_email: str,
+    estimated_leads,
+    slot_capacities,
+) -> bool:
+    """Notify admin that a queued Vayne order cannot fit on any slot's
+    remaining daily capacity today.
+
+    The order is NOT failed — it stays queued and will self-heal once a slot
+    with sufficient capacity frees up. This alert is fire-at-most-once per
+    order (guarded by Redis TTL upstream) so the admin isn't spammed every
+    polling tick.
+
+    `slot_capacities` is an iterable of (slot_idx, remaining_leads) tuples.
+    """
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    leads_str = f"{int(estimated_leads):,}" if estimated_leads else "unknown"
+    subject = "[BillionVerifier] Oversize Vayne order cannot fit any slot"
+
+    cap_rows = "".join(
+        f"<li style='margin: 4px 0; color: #999;'>Slot {idx}: "
+        f"<strong style='color: #ccc;'>{int(remaining):,}</strong> leads remaining</li>"
+        for idx, remaining in slot_capacities
+    ) or "<li style='color: #999;'>(no slot capacity information available)</li>"
+
+    html = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; padding: 40px 20px;">
+      <div style="background-color: #141414; border: 1px solid #222; border-radius: 12px; padding: 32px;">
+        <h2 style="margin: 0 0 16px 0; font-size: 22px; color: #f59e0b;">Oversize Vayne Order</h2>
+        <p style="color: #999; font-size: 14px; line-height: 1.6; margin: 0 0 16px 0;">
+          An order was created that requires more leads than any single Vayne account
+          slot has remaining today. The order will remain <strong style="color: #ccc;">queued</strong>
+          and self-heal once a slot frees up.
+        </p>
+
+        <div style="background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
+          <p style="margin: 0 0 8px 0; color: #ccc; font-size: 14px;">
+            <strong>Order ID:</strong> {order_id}
+          </p>
+          <p style="margin: 0 0 8px 0; color: #ccc; font-size: 14px;">
+            <strong>User:</strong> {user_email or "(unknown)"}
+          </p>
+          <p style="margin: 0 0 12px 0; color: #ccc; font-size: 14px;">
+            <strong>Estimated leads:</strong> {leads_str}
+          </p>
+          <p style="margin: 0 0 6px 0; color: #999; font-size: 13px;">Slot capacities:</p>
+          <ul style="margin: 0; padding-left: 18px;">{cap_rows}</ul>
+        </div>
+
+        <p style="color: #999; font-size: 13px; line-height: 1.6; margin: 0 0 16px 0;">
+          No action required unless this order needs to be delivered sooner than the
+          next daily limit reset — in which case reset the relevant user's daily usage
+          or top up a Vayne account.
+        </p>
+
+        <p style="color: #555; font-size: 12px; margin-top: 24px; margin-bottom: 0;">
+          Timestamp: {timestamp}
+        </p>
+      </div>
+    </div>
+    """
+
+    return _send_html_email(ADMIN_EMAIL, subject, html)
+
+
 def send_admin_credit_exhaustion_email(service: str, detail: str) -> bool:
     """Notify admin that a third-party service has run out of credits."""
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")

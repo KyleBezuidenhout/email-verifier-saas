@@ -7,6 +7,8 @@ from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel
 import httpx
+import re
+import time
 import redis
 import boto3
 import logging
@@ -28,11 +30,111 @@ from app.schemas.vayne import (
     CreateOrderRequest,
     CreateOrderResponse,
     OrderStatusResponse,
+    ValidateCookieRequest,
+    ValidateCookieResponse,
 )
-from app.services.vayne_client import get_vayne_client
+from app.services.vayne_client import (
+    get_vayne_client,
+    get_validation_client,
+    acquire_validation_lock,
+    release_validation_lock,
+)
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+# Same regex the frontend uses. Rejects anything that isn't a Sales Navigator
+# search / list / lead URL. The worker's validate_url call (which runs on a
+# real scraping slot) is what actually determines estimated_leads later.
+SALES_NAV_URL_REGEX = re.compile(
+    r"^https?://(www\.)?linkedin\.com/sales/(search|lists|lead)",
+    re.IGNORECASE,
+)
+
+
+def _validate_cookie_on_validation_slot(cookie: str) -> ValidateCookieResponse:
+    """Run the serialized PATCH + wait + GET sequence on the dedicated validation slot.
+
+    Returns a ValidateCookieResponse. Callers MUST treat `reason == "rejected"`
+    as "the user's cookie is bad" and `reason == "unavailable"` as "we couldn't
+    decide — tell the user to retry".
+
+    The Redis mutex guarantees that while we're mid-sequence no other request
+    can PATCH a different cookie onto the validation slot and corrupt our GET.
+    The token-based release additionally protects against a stale TTL causing
+    us to unlock someone else's newer acquisition.
+    """
+    cookie = (cookie or "").strip()
+    if not cookie:
+        return ValidateCookieResponse(valid=False, reason="rejected")
+
+    if not (settings.VAYNE_VALIDATION_API_KEY or "").strip():
+        logger.error("VAYNE_VALIDATION_API_KEY is not configured; cannot validate cookie")
+        return ValidateCookieResponse(valid=False, reason="unavailable")
+
+    lock_token = acquire_validation_lock()
+    if not lock_token:
+        logger.warning("Validation-slot mutex timeout; returning unavailable")
+        return ValidateCookieResponse(valid=False, reason="unavailable")
+
+    try:
+        client = get_validation_client()
+
+        # ---- PATCH ------------------------------------------------------
+        try:
+            client.update_linkedin_session(cookie)
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code if e.response is not None else None
+            if code == 422:
+                # Malformed cookie; Vayne rejected it outright.
+                return ValidateCookieResponse(valid=False, reason="rejected")
+            if code in (401, 403):
+                logger.error(f"Validation slot auth failure on PATCH: {e}")
+                return ValidateCookieResponse(valid=False, reason="unavailable")
+            # 429 already exhausted by VayneClient._request backoff; 5xx/other.
+            logger.error(f"Validation slot PATCH failed ({code}): {e}")
+            return ValidateCookieResponse(valid=False, reason="unavailable")
+        except Exception as e:
+            logger.error(f"Validation slot PATCH network error: {e}")
+            return ValidateCookieResponse(valid=False, reason="unavailable")
+
+        # ---- Wait for Vayne's async LinkedIn-side check ----------------
+        time.sleep(settings.VAYNE_AUTH_CHECK_INITIAL_WAIT_S)
+
+        # ---- GET --------------------------------------------------------
+        def _poll():
+            try:
+                return client.check_linkedin_auth()
+            except Exception as e:
+                logger.error(f"Validation slot GET failed: {e}")
+                return None
+
+        data = _poll()
+        if data is None:
+            return ValidateCookieResponse(valid=False, reason="unavailable")
+
+        state = (data.get("linkedin_authentication") or "").lower()
+        if state == "active":
+            return ValidateCookieResponse(valid=True)
+
+        if state == "checking":
+            # One retry — Vayne's side sometimes takes a few seconds longer.
+            time.sleep(settings.VAYNE_AUTH_CHECK_RETRY_WAIT_S)
+            data = _poll()
+            if data is None:
+                return ValidateCookieResponse(valid=False, reason="unavailable")
+            state = (data.get("linkedin_authentication") or "").lower()
+            if state == "active":
+                return ValidateCookieResponse(valid=True)
+            if state == "checking":
+                # Still indeterminate — do NOT default to "valid".
+                return ValidateCookieResponse(valid=False, reason="unavailable")
+
+        # Anything else ("invalid", "expired", "", ...) → rejected.
+        return ValidateCookieResponse(valid=False, reason="rejected")
+    finally:
+        release_validation_lock(lock_token)
 
 
 def verify_webhook_token(x_webhook_token: Optional[str] = Header(None, alias="X-Webhook-Token")):
@@ -123,11 +225,19 @@ def check_linkedin_auth(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Read status off the dedicated validation slot, never a scraping slot, so
+    # we don't race with active scraping jobs that already seated a different
+    # cookie. Mutex so we don't read mid-PATCH from another caller.
+    lock_token = acquire_validation_lock()
+    if not lock_token:
+        raise HTTPException(status_code=503, detail="Validation busy. Please try again.")
     try:
-        return get_vayne_client().check_linkedin_auth()
+        return get_validation_client().check_linkedin_auth()
     except Exception as e:
         logger.error(f"check_linkedin_auth failed: {e}")
         raise HTTPException(status_code=400, detail="Error. Please try again later.")
+    finally:
+        release_validation_lock(lock_token)
 
 
 @router.patch("/auth", response_model=LinkedInAuthStatus)
@@ -136,11 +246,33 @@ def update_linkedin_auth(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Route cookie PATCH to the dedicated validation slot + mutex so concurrent
+    # users can't clobber each other's session cookie on a real scraping slot.
+    lock_token = acquire_validation_lock()
+    if not lock_token:
+        raise HTTPException(status_code=503, detail="Validation busy. Please try again.")
     try:
-        return get_vayne_client().update_linkedin_session(payload.session_cookie)
+        return get_validation_client().update_linkedin_session(payload.session_cookie)
     except Exception as e:
         logger.error(f"update_linkedin_session failed: {e}")
         raise HTTPException(status_code=400, detail="Error. Please try again later.")
+    finally:
+        release_validation_lock(lock_token)
+
+
+@router.post("/validate-cookie", response_model=ValidateCookieResponse)
+def validate_cookie(
+    payload: ValidateCookieRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Live validation for the Save Cookie flow.
+
+    Synchronous: PATCHes the submitted cookie onto the dedicated validation
+    slot, waits for Vayne's async LinkedIn-side check, then GETs the status.
+    The entire sequence is serialized via a Redis mutex so concurrent validation
+    requests don't clobber each other.
+    """
+    return _validate_cookie_on_validation_slot(payload.linkedin_cookie)
 
 
 @router.get("/credits", response_model=CreditsResponse)
@@ -269,18 +401,35 @@ def validate_url(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Legacy endpoint. Vayne requires a valid cookie to be seated on the slot
+    # before validate_url succeeds, so we route to the validation slot under
+    # the same mutex that governs cookie PATCHes — otherwise a concurrent
+    # PATCH from another user could invalidate the seat mid-call.
+    lock_token = acquire_validation_lock()
+    if not lock_token:
+        raise HTTPException(status_code=503, detail="Validation busy. Please try again.")
     try:
-        return get_vayne_client().validate_url(payload.url)
+        return get_validation_client().validate_url(payload.url)
     except Exception as e:
         logger.error(f"validate_url failed: {e}")
         raise HTTPException(status_code=400, detail="Error. Please try again later.")
+    finally:
+        release_validation_lock(lock_token)
 
 
 @router.post("/url-check", response_model=UrlValidationResponse)
 def url_check(payload: UrlCheckRequest):
+    lock_token = acquire_validation_lock()
+    if not lock_token:
+        return {
+            "is_valid": False,
+            "url": payload.sales_nav_url,
+            "error": "Validation busy. Please try again.",
+            "suggestion": None,
+        }
     try:
         logger.info(f"URL check requested for: {payload.sales_nav_url}")
-        result = get_vayne_client().validate_url(payload.sales_nav_url)
+        result = get_validation_client().validate_url(payload.sales_nav_url)
         logger.info(f"URL check result: {result}")
         # Determine validity by checking if we got meaningful results from Vayne API
         is_valid = result.get('total') is not None and result.get('type') is not None
@@ -301,6 +450,8 @@ def url_check(payload: UrlCheckRequest):
             "error": "Error. Please try again later.",
             "suggestion": "Please check the URL and try again"
         }
+    finally:
+        release_validation_lock(lock_token)
 
 
 @router.post("/orders", response_model=CreateOrderResponse)
@@ -325,7 +476,42 @@ def create_order(
     try:
         if not payload.sales_nav_url:
             raise HTTPException(status_code=400, detail="Sales Navigator URL is required")
-        
+
+        # Format-check URL with the same regex the frontend uses. We do NOT
+        # call Vayne's validate_url here — estimated_leads is discovered later
+        # by the queue worker (which has to push the cookie onto its own slot
+        # anyway). Keeps this endpoint's latency budget down to the cookie
+        # validation round-trip.
+        if not SALES_NAV_URL_REGEX.search(payload.sales_nav_url.strip()):
+            raise HTTPException(
+                status_code=400,
+                detail="Please provide a valid LinkedIn Sales Navigator URL (search, list, or lead).",
+            )
+
+        # Full live cookie validation. No caching — every order creation
+        # treats the cookie as new, by explicit product decision. Belt-and-
+        # suspenders alongside the client-side Save Cookie flow: prevents
+        # orders from entering the queue with a stale / swapped-out cookie.
+        cookie_for_validation = (payload.linkedin_cookie or "").strip()
+        if not cookie_for_validation:
+            raise HTTPException(
+                status_code=400,
+                detail="LinkedIn cookie is required. Please save a valid cookie first.",
+            )
+
+        validation = _validate_cookie_on_validation_slot(cookie_for_validation)
+        if not validation.valid:
+            if validation.reason == "rejected":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Your LinkedIn session cookie was rejected. Please provide a valid LinkedIn cookie and try again.",
+                )
+            # "unavailable" or any other indeterminate outcome
+            raise HTTPException(
+                status_code=503,
+                detail="We couldn't validate your cookie right now. Please try again in a moment.",
+            )
+
         logger.info(f"Creating queued order for user {current_user.id}")
         logger.info(f"   URL: {payload.sales_nav_url[:50]}...")
         logger.info(f"   Targeting: {payload.targeting or 'Untitled Order'}")

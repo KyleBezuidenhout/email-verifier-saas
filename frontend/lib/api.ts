@@ -756,6 +756,21 @@ class ApiClient {
     });
   }
 
+  /**
+   * Live cookie validation for the Save Cookie flow. Backend PATCHes the
+   * cookie onto a dedicated Vayne validation slot (serialized via a Redis
+   * mutex), then polls Vayne for an "active" verdict. Returns:
+   *   - { valid: true }                     → cookie is good
+   *   - { valid: false, reason: "rejected" }    → cookie is bad
+   *   - { valid: false, reason: "unavailable" } → we couldn't decide, retry
+   */
+  async validateLinkedInCookie(linkedin_cookie: string): Promise<{ valid: boolean; reason?: string }> {
+    return this.request<{ valid: boolean; reason?: string }>("/api/v1/vayne/validate-cookie", {
+      method: "POST",
+      body: JSON.stringify({ linkedin_cookie }),
+    });
+  }
+
   async getVayneCredits(): Promise<VayneCredits> {
     return this.request("/api/v1/vayne/credits");
   }

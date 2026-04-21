@@ -20,6 +20,12 @@ export default function SalesNavScraperPage() {
   // Auth state (cookie required for each order)
   const [linkedinCookie, setLinkedinCookie] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
+  // Live cookie-validation state. "valid" means the backend confirmed the
+  // cookie against Vayne's /api/linkedin_authentication within this session.
+  // Start Scraping is gated on cookieStatus === "valid" so a user cannot
+  // submit a job with an unverified (or edited-since-verification) cookie.
+  type CookieStatus = "idle" | "validating" | "valid" | "rejected" | "unavailable";
+  const [cookieStatus, setCookieStatus] = useState<CookieStatus>("idle");
   
   // Credits state
   const [credits, setCredits] = useState<VayneCredits | null>(null);
@@ -112,7 +118,14 @@ export default function SalesNavScraperPage() {
   const SALES_NAV_URL_REGEX = /^https?:\/\/(www\.)?linkedin\.com\/sales\/(search|lists|lead)/i;
   const hasLinkedinCookie = Boolean(linkedinCookie.trim());
   const isUrlFormatValid = salesNavUrl.trim() ? SALES_NAV_URL_REGEX.test(salesNavUrl.trim()) : false;
-  const isStartScrapingDisabled = !hasLinkedinCookie || !isUrlFormatValid || creatingOrder;
+  // Start Scraping requires: cookie text present, cookie confirmed valid by
+  // the backend validate-cookie call, URL passes the regex format check, and
+  // we're not already creating an order.
+  const isStartScrapingDisabled =
+    !hasLinkedinCookie ||
+    cookieStatus !== "valid" ||
+    !isUrlFormatValid ||
+    creatingOrder;
   const normalizedJobName = jobName.trim();
 
   // Load credits and history on mount
@@ -555,15 +568,38 @@ export default function SalesNavScraperPage() {
             <svg className="w-6 h-6 text-[#0A66C2]" fill="currentColor" viewBox="0 0 24 24">
               <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
             </svg>
-            {linkedinCookie.trim() ? (
-              <div>
+            <div className="flex items-center gap-2">
+              {linkedinCookie.trim() ? (
                 <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie Set <span className="text-red-500">*</span></p>
-              </div>
-            ) : (
-              <div>
+              ) : (
                 <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie <span className="text-red-500">*</span></p>
-              </div>
-            )}
+              )}
+              {cookieStatus === "validating" && (
+                <span className="flex items-center gap-1.5 text-xs text-dashboard-text-muted">
+                  <LoadingSpinner size="sm" />
+                  Validating…
+                </span>
+              )}
+              {cookieStatus === "valid" && (
+                <span className="text-dashboard-accent text-xs font-medium">Connected</span>
+              )}
+              {cookieStatus === "rejected" && (
+                <span
+                  className="text-red-500 text-xs cursor-help underline decoration-dotted"
+                  title="Your LinkedIn session cookie was rejected. Please provide a valid LinkedIn cookie and try again."
+                >
+                  Rejected
+                </span>
+              )}
+              {cookieStatus === "unavailable" && (
+                <span
+                  className="text-amber-500 text-xs cursor-help underline decoration-dotted"
+                  title="We couldn't validate your cookie. Please try again. If this issue persists, contact support."
+                >
+                  Error
+                </span>
+              )}
+            </div>
           </div>
           <button
             onClick={() => setShowAuthModal(true)}
@@ -591,18 +627,53 @@ export default function SalesNavScraperPage() {
             <input
               type="text"
               value={linkedinCookie}
-              onChange={(e) => setLinkedinCookie(e.target.value)}
+              onChange={(e) => {
+                setLinkedinCookie(e.target.value);
+                // Any edit invalidates the previous verdict — user must
+                // Save Cookie again to re-enable Start Scraping.
+                if (cookieStatus !== "idle") setCookieStatus("idle");
+              }}
               placeholder="Paste your li_at cookie here"
               className="apple-input w-full mb-4"
             />
             <div className="flex gap-3">
               <button
-                onClick={() => {
-                  setShowAuthModal(false);
+                onClick={async () => {
+                  const trimmed = linkedinCookie.trim();
+                  if (!trimmed) {
+                    setCookieStatus("rejected");
+                    return;
+                  }
+                  setCookieStatus("validating");
+                  try {
+                    const res = await apiClient.validateLinkedInCookie(trimmed);
+                    if (res.valid) {
+                      setCookieStatus("valid");
+                      setShowAuthModal(false);
+                    } else if (res.reason === "unavailable") {
+                      setCookieStatus("unavailable");
+                    } else {
+                      setCookieStatus("rejected");
+                    }
+                  } catch (err) {
+                    console.error("validateLinkedInCookie failed:", err);
+                    // Network/HTTP error — validator couldn't give a verdict;
+                    // treat as "unavailable" so the UX points the user at
+                    // retrying rather than suggesting the cookie is bad.
+                    setCookieStatus("unavailable");
+                  }
                 }}
-                className="flex-1 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors"
+                disabled={cookieStatus === "validating" || !linkedinCookie.trim()}
+                className="flex-1 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Save Cookie
+                {cookieStatus === "validating" ? (
+                  <>
+                    <LoadingSpinner size="sm" />
+                    Validating…
+                  </>
+                ) : (
+                  "Save Cookie"
+                )}
               </button>
               <button
                 onClick={() => {

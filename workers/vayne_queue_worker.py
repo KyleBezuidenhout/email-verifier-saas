@@ -9,8 +9,10 @@ Key design decisions:
   - Each API key is a "slot". A slot is busy when a vayne_orders row has
     api_key_slot = N and status in active states.
   - The DB is the source of truth for slot occupancy (survives restarts).
-  - select_best_available_slot() picks the free slot with the most remaining
-    daily capacity on Vayne's side (same pattern as MailTester get_best_key).
+  - select_best_fit_slot() picks the free slot with the SMALLEST remaining
+    daily capacity that still fits the order (best-fit packing). Concentrates
+    work on one slot until depletion, reserving larger capacities for larger
+    orders.
   - Credit deduction uses an atomic UPDATE ... WHERE credits >= amount.
   - Daily limit checks use SELECT ... FOR UPDATE to serialize per-user.
   - When all Vayne keys are daily-exhausted, orders stay queued (not failed)
@@ -60,6 +62,7 @@ try:
     from app.services.vayne_client import (
         get_vayne_client, get_vayne_clients, VayneClient,
         is_slot_healthy, mark_slot_unhealthy, should_send_daily_limit_alert,
+        should_send_oversize_order_alert,
     )
     from app.core.config import ADMIN_EMAIL
     from app.models.vayne_order import VayneOrder
@@ -74,7 +77,12 @@ except ImportError as e:
         print(f"Backend directory exists: {os.listdir(backend_path)}", flush=True)
     raise
 
-from email_utils import send_job_failure_email, send_admin_daily_limit_email, send_daily_limit_reached_email
+from email_utils import (
+    send_job_failure_email,
+    send_admin_daily_limit_email,
+    send_daily_limit_reached_email,
+    send_admin_order_oversize_email,
+)
 
 engine = create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
@@ -555,16 +563,29 @@ def _check_all_slots_low_capacity(vayne_clients: List[VayneClient]) -> None:
         log(f"Sent low-capacity admin alert: {capacities}", "info")
 
 
-def select_best_available_slot(
+def select_best_fit_slot(
     vayne_clients: List[VayneClient],
     busy_slots: Set[int],
+    estimated_leads: Optional[int],
 ) -> Optional[Tuple[int, VayneClient, int]]:
-    """Pick the healthy free slot whose Vayne account has the most daily capacity.
+    """Pick the healthy free slot with the SMALLEST remaining daily capacity
+    that can still fit the order (best-fit packing).
 
-    Returns (slot_idx, client, daily_remaining) or None.
+    This replaces the previous "most remaining first" strategy so that we
+    concentrate work on a single slot until it's depleted, reserving larger
+    remaining capacities for larger orders.
+
+    `estimated_leads`:
+        - If known (> 0), require `remaining >= estimated_leads`.
+        - If None/0 (order's size not yet discovered), no size filter — we
+          just pick the smallest free slot with any remaining capacity. The
+          order's first processing pass on that slot will call
+          `validate_url` and persist estimated_leads. If the discovered size
+          doesn't fit, `process_queued_order` already handles requeueing.
+
+    Returns (slot_idx, client, daily_remaining) or None if nothing fits.
     """
-    best: Optional[Tuple[int, VayneClient]] = None
-    best_remaining = -1
+    candidates: List[Tuple[int, VayneClient, int]] = []
 
     for idx, client in enumerate(vayne_clients):
         if idx in busy_slots:
@@ -575,18 +596,87 @@ def select_best_available_slot(
         try:
             credits_info = client.get_credits()
             remaining = credits_info.get("daily_limit_leads", 0)
-            log(f"Slot {idx}: daily_limit_leads={remaining}", "info")
-            if remaining > best_remaining:
-                best_remaining = remaining
-                best = (idx, client)
         except Exception as e:
             log(f"Slot {idx}: failed to check credits: {e}", "error")
             mark_slot_unhealthy(idx, ttl=300)
             continue
 
-    if best and best_remaining > 0:
-        return (best[0], best[1], best_remaining)
-    return None
+        log(f"Slot {idx}: daily_limit_leads={remaining}", "info")
+
+        if remaining <= 0:
+            continue
+        if estimated_leads and remaining < estimated_leads:
+            # Can't fit; exclude from candidates.
+            continue
+
+        candidates.append((idx, client, remaining))
+
+    if not candidates:
+        return None
+
+    # Smallest remaining first → packs the smallest slot toward depletion.
+    candidates.sort(key=lambda c: c[2])
+    return candidates[0]
+
+
+def _collect_slot_capacities(vayne_clients: List[VayneClient]) -> List[Tuple[int, int]]:
+    """Best-effort snapshot of every slot's remaining daily leads, for admin
+    diagnostics. Failed/unhealthy slots are reported as 0 rather than omitted
+    so the admin sees the full picture."""
+    rows: List[Tuple[int, int]] = []
+    for idx, client in enumerate(vayne_clients):
+        try:
+            remaining = int(client.get_credits().get("daily_limit_leads", 0) or 0)
+        except Exception:
+            remaining = 0
+        rows.append((idx, remaining))
+    return rows
+
+
+def _maybe_alert_order_oversize(
+    db,
+    order,
+    vayne_clients: List[VayneClient],
+) -> None:
+    """Send a one-shot admin email when no slot has capacity to fit this
+    order today. Guarded by a 7-day Redis TTL so we don't spam the admin on
+    every polling tick while the order sits waiting for capacity to reset.
+
+    This does NOT modify the order's state — the order stays in `queued` and
+    will self-heal once daily limits reset or a slot frees up.
+    """
+    try:
+        if not should_send_oversize_order_alert(order.id):
+            return
+    except Exception as e:
+        log(f"Oversize-alert guard check failed for order {order.id}: {e}", "error")
+        return
+
+    try:
+        user_row = db.execute(
+            text("SELECT email FROM users WHERE id = :uid"),
+            {"uid": str(order.user_id)},
+        ).fetchone()
+        user_email = user_row.email if user_row else ""
+    except Exception:
+        user_email = ""
+
+    capacities = _collect_slot_capacities(vayne_clients)
+
+    try:
+        send_admin_order_oversize_email(
+            order_id=str(order.id),
+            user_email=user_email,
+            estimated_leads=order.estimated_leads,
+            slot_capacities=capacities,
+        )
+        log(
+            f"Sent oversize-order admin alert for order {order.id} "
+            f"(estimated_leads={order.estimated_leads}, slots={capacities})",
+            "info",
+        )
+    except Exception as e:
+        log(f"Failed to send oversize-order admin alert for {order.id}: {e}", "error")
 
 
 # ---------------------------------------------------------------------------
@@ -1198,7 +1288,6 @@ async def main():
                 db = SessionLocal()
                 try:
                     queued_orders = get_queued_orders(db, limit=free_slot_count)
-                    best = None
 
                     for order in queued_orders:
                         if is_shutting_down:
@@ -1206,10 +1295,33 @@ async def main():
                         if len(busy_slots) >= num_slots:
                             break
 
-                        if best is None:
-                            best = select_best_available_slot(vayne_clients, busy_slots)
+                        # Best-fit must be recomputed per order because each
+                        # assignment mutates busy_slots, and because order
+                        # sizes differ (a slot that fit the previous order may
+                        # not fit this one, and vice versa).
+                        best = select_best_fit_slot(
+                            vayne_clients,
+                            busy_slots,
+                            order.estimated_leads,
+                        )
 
                         if best is None:
+                            # Distinguish the two shapes of "no slot":
+                            #   a) estimated_leads is known and all free slots
+                            #      have < estimated_leads remaining today
+                            #      → order-specific oversize alert.
+                            #   b) estimated_leads is unknown (first poll) or
+                            #      every free slot is at 0 remaining
+                            #      → general "all slots exhausted" alert.
+                            if order.estimated_leads:
+                                log(
+                                    f"Order {order.id}: no free slot has enough capacity "
+                                    f"(needs ~{order.estimated_leads})",
+                                    "wait",
+                                )
+                                _maybe_alert_order_oversize(db, order, vayne_clients)
+                                continue  # Other orders with smaller size may still fit.
+
                             log("No available slots with daily capacity. Orders stay queued.", "wait")
                             if should_send_daily_limit_alert():
                                 send_admin_daily_limit_email(
@@ -1220,18 +1332,15 @@ async def main():
                             break
 
                         slot_idx, client, slot_capacity = best
-
-                        if order.estimated_leads and order.estimated_leads > slot_capacity:
-                            log(f"Order {order.id} needs ~{order.estimated_leads} leads "
-                                f"but best slot only has {slot_capacity} remaining — skipping until limits reset", "wait")
-                            continue
-
-                        log(f"Assigning order {order.id} to slot {slot_idx}", "info")
+                        log(
+                            f"Assigning order {order.id} to slot {slot_idx} "
+                            f"(remaining: {slot_capacity}, est: {order.estimated_leads or 'unknown'})",
+                            "info",
+                        )
                         active_tasks[slot_idx] = asyncio.create_task(
                             process_and_monitor_slot(slot_idx, client, order)
                         )
                         busy_slots.add(slot_idx)
-                        best = None
                 finally:
                     db.close()
 

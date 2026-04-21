@@ -15,6 +15,17 @@ class UpdateSessionRequest(BaseModel):
     session_cookie: str
 
 
+class ValidateCookieRequest(BaseModel):
+    linkedin_cookie: str
+
+
+class ValidateCookieResponse(BaseModel):
+    valid: bool
+    # "rejected"    → the cookie is definitively bad (auth failure / malformed)
+    # "unavailable" → we could not reach a verdict (Vayne unreachable, lock timeout, etc.)
+    reason: Optional[str] = None
+
+
 class CreditsResponse(BaseModel):
     # Fields that Vayne API actually returns
     credit_available: int

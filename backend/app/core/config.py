@@ -32,12 +32,16 @@ class Settings(BaseSettings):
     # Vayne (Sales Nav Scraper)
     VAYNE_API_KEYS: str = ""  # Comma-separated: "key1,key2"
     VAYNE_API_KEY: str = ""  # Legacy single key (fallback if VAYNE_API_KEYS is empty)
+    VAYNE_VALIDATION_API_KEY: str = ""  # Reserved Vayne key used only for cookie validation at upload time. Excluded from the scraping pool.
     VAYNE_API_BASE_URL: str = "https://www.vayne.io"
     VAYNE_PER_CLIENT_DAILY_LIMIT: int = 15000  # Max leads per client per rolling 24h window
     VAYNE_POLLING_INTERVAL_MS: int = 5000
     VAYNE_POLLING_MAX_INTERVAL_MS: int = 30000
     VAYNE_QUEUE_WORKER_POLL_INTERVAL: int = 30  # seconds
     VAYNE_QUEUE_WORKER_ACTIVE_CHECK_INTERVAL: int = 60  # seconds
+    VAYNE_AUTH_CHECK_INITIAL_WAIT_S: float = 5.0  # Seconds to wait after PATCH before GET /api/linkedin_authentication
+    VAYNE_AUTH_CHECK_RETRY_WAIT_S: float = 3.0   # Seconds to wait for the single retry if status is still "checking"
+    VAYNE_VALIDATION_LOCK_ACQUIRE_TIMEOUT_S: float = 15.0  # Max time a request will wait for the validation-slot mutex
     
     # Webhook authentication
     WEBHOOK_SECRET_TOKEN: str = ""  # Secret token for webhook authentication
