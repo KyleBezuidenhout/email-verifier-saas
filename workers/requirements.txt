@@ -1,5 +1,7 @@
 # Minimal requirements for workers (faster builds)
-# Backend-specific packages (fastapi, uvicorn, bcrypt, python-jose) are excluded
+# Backend-specific packages (fastapi, uvicorn, bcrypt) are excluded.
+# python-jose IS required here: the vayne queue worker mints signed reset-link
+# tokens for the daily-limit-reached email (see _generate_reset_token).
 
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
@@ -9,4 +11,5 @@ boto3==1.29.7
 pydantic==2.5.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
+python-jose[cryptography]==3.3.0
 

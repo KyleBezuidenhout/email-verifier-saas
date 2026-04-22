@@ -722,16 +722,24 @@ async def process_queued_order(order_row, slot_idx: int, client: VayneClient) ->
 
         if not is_admin:
             daily_limit = settings.VAYNE_PER_CLIENT_DAILY_LIMIT
+            # Exclude the current order from the usage sum: a prior requeue pass
+            # may have already persisted its estimated_leads on the row, and we
+            # don't want to count it against itself.
             usage_result = db.execute(text("""
                 SELECT COALESCE(SUM(estimated_leads), 0) as used
                 FROM vayne_orders
                 WHERE user_id = :uid
+                AND id != :current_oid
                 AND status != 'failed'
                 AND created_at >= GREATEST(
                     NOW() - INTERVAL '24 hours',
                     COALESCE(:reset_at, '1970-01-01'::timestamptz)
                 )
-            """), {"uid": str(order_row.user_id), "reset_at": user_reset_at})
+            """), {
+                "uid": str(order_row.user_id),
+                "reset_at": user_reset_at,
+                "current_oid": str(order_id),
+            })
             daily_used = int(usage_result.fetchone().used)
             if daily_used >= daily_limit:
                 db.commit()  # release FOR UPDATE lock
@@ -810,15 +818,25 @@ async def process_queued_order(order_row, slot_idx: int, client: VayneClient) ->
                     text("SELECT id FROM users WHERE id = :uid FOR UPDATE"),
                     {"uid": str(order_row.user_id)}
                 )
+                # Exclude the current order: its estimated_leads may already be
+                # persisted from a prior requeue pass, and we add `estimated_leads`
+                # to `daily_used` below — counting it in `daily_used` too would
+                # double-book the bucket against itself.
                 usage_result = db2.execute(text("""
                     SELECT COALESCE(SUM(estimated_leads), 0) as used
                     FROM vayne_orders
-                    WHERE user_id = :uid AND status != 'failed'
+                    WHERE user_id = :uid
+                    AND id != :current_oid
+                    AND status != 'failed'
                     AND created_at >= GREATEST(
                         NOW() - INTERVAL '24 hours',
                         COALESCE(:reset_at, '1970-01-01'::timestamptz)
                     )
-                """), {"uid": str(order_row.user_id), "reset_at": user_reset_at})
+                """), {
+                    "uid": str(order_row.user_id),
+                    "reset_at": user_reset_at,
+                    "current_oid": str(order_id),
+                })
                 daily_used = int(usage_result.fetchone().used)
                 if daily_used + estimated_leads > settings.VAYNE_PER_CLIENT_DAILY_LIMIT:
                     db2.commit()
