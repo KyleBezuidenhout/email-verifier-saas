@@ -1424,6 +1424,13 @@ async function getNextKey(jobId = null) {
  * Uses fair-share allocated keys when jobId is provided.
  */
 async function verifyEmail(email, totalAttempts = 0, forceKey = null, jobId = null) {
+  // Defense-in-depth: blank/non-string/no-"@" inputs should never reach MailTester.
+  // Without this guard they return 403 "Empty email param", burn retries, and
+  // poison per-key error counters.
+  if (typeof email !== 'string' || !email.includes('@')) {
+    return { status: 'unverified', message: 'Empty/invalid email (skipped)', mx: '', provider: '' };
+  }
+
   const MAX_TOTAL_ATTEMPTS = 3;
   const getBackoffMs = (attempt) => (attempt + 1) * 1000;
   
@@ -1672,6 +1679,100 @@ async function bulkCacheLookup(people) {
   }
 
   return cacheMap;
+}
+
+/**
+ * Dedupe enrichment-job leads by enrichment_key (lower(first)_lower(last)_lower(domain)).
+ *
+ * Duplicated rows are a correctness problem: processPersonWithEarlyExit's
+ * isNewFormat check requires personLeads.length === 1, so duplicates silently
+ * fall into the OLD FORMAT branch and send blank emails to MailTester — which
+ * returns 403 "Empty email param", burns retries, poisons per-key error
+ * counters, and marks the duplicated person as not_found without ever trying
+ * the 8 real permutations.
+ *
+ * For each group with >1 rows, picks a winner using:
+ *   1. Has extra_data.scraped_email containing "@" (highest priority)
+ *   2. Highest prevalence_score
+ *   3. Earliest created_at
+ *   4. Lowest id (deterministic tiebreak)
+ *
+ * Losing rows are HARD DELETED from the leads table so they also do not appear
+ * in the output CSV (results export filters by is_final_result = TRUE, but we
+ * want duplicates gone entirely, not marked not_found).
+ *
+ * Returns { deduped: Lead[], deleted: number }.
+ * Idempotent: running twice on an already-deduped job is a no-op.
+ */
+async function dedupeEnrichmentLeads(jobId, leads) {
+  if (!Array.isArray(leads) || leads.length === 0) {
+    return { deduped: leads || [], deleted: 0 };
+  }
+
+  const groups = new Map();
+  for (const lead of leads) {
+    const fn = (lead.first_name || '').toLowerCase();
+    const ln = (lead.last_name || '').toLowerCase();
+    const dom = (lead.domain || '').toLowerCase();
+    const key = `${fn}_${ln}_${dom}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(lead);
+  }
+
+  const qualityOf = (lead) => {
+    const se = lead?.extra_data?.scraped_email;
+    if (typeof se !== 'string' || !se) return 0;
+    return se.includes('@') ? 2 : 1;
+  };
+
+  const survivors = [];
+  const loserIds = [];
+
+  for (const [, groupLeads] of groups) {
+    if (groupLeads.length === 1) {
+      survivors.push(groupLeads[0]);
+      continue;
+    }
+
+    const sorted = [...groupLeads].sort((a, b) => {
+      const qa = qualityOf(a);
+      const qb = qualityOf(b);
+      if (qa !== qb) return qb - qa;
+
+      const pa = a.prevalence_score || 0;
+      const pb = b.prevalence_score || 0;
+      if (pa !== pb) return pb - pa;
+
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (ta !== tb) return ta - tb;
+
+      if (a.id < b.id) return -1;
+      if (a.id > b.id) return 1;
+      return 0;
+    });
+
+    survivors.push(sorted[0]);
+    for (let i = 1; i < sorted.length; i++) {
+      loserIds.push(sorted[i].id);
+    }
+  }
+
+  if (loserIds.length === 0) {
+    return { deduped: leads, deleted: 0 };
+  }
+
+  const BATCH_SIZE = 500;
+  for (let i = 0; i < loserIds.length; i += BATCH_SIZE) {
+    const chunk = loserIds.slice(i, i + BATCH_SIZE);
+    const placeholders = chunk.map((_, j) => `$${j + 2}`).join(',');
+    await pgPool.query(
+      `DELETE FROM leads WHERE job_id = $1 AND id IN (${placeholders})`,
+      [jobId, ...chunk]
+    );
+  }
+
+  return { deduped: survivors, deleted: loserIds.length };
 }
 
 // Update job status in database
@@ -1984,18 +2085,28 @@ async function pollSimpleQueue() {
   }
 }
 
-// Mark a single lead as final result
+// Mark a single lead as final result.
+// Also strips extra_data.scraped_email so it does not leak into the output CSV
+// (results export iterates jsonb_object_keys(extra_data) to build headers).
 async function markLeadAsFinal(leadId, jobId) {
   await pgPool.query(
-    'UPDATE leads SET is_final_result = true WHERE id = $1',
+    `UPDATE leads SET
+       is_final_result = true,
+       extra_data = (extra_data::jsonb - 'scraped_email')
+     WHERE id = $1`,
     [leadId]
   );
 }
 
-// Mark a lead as not_found
+// Mark a lead as not_found (and strip scraped_email, same reason as above).
 async function markLeadAsNotFound(leadId) {
   await pgPool.query(
-    'UPDATE leads SET email = $1, verification_status = $2, is_final_result = true WHERE id = $3',
+    `UPDATE leads SET
+       email = $1,
+       verification_status = $2,
+       is_final_result = true,
+       extra_data = (extra_data::jsonb - 'scraped_email')
+     WHERE id = $3`,
     ['', 'not_found', leadId]
   );
 }
@@ -2039,7 +2150,7 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
     // PRE-VERIFY SCRAPED EMAIL (if present in extra_data)
     // ============================================
     const scrapedEmail = leadRecord.extra_data?.scraped_email;
-    if (scrapedEmail && !winningEmail) {
+    if (typeof scrapedEmail === 'string' && scrapedEmail.includes('@') && !winningEmail) {
       console.log(`  📧 Pre-verifying scraped email for ${personKey}: ${scrapedEmail}`);
       try {
         const result = await verifyEmail(scrapedEmail, 0, null, jobId);
@@ -2186,7 +2297,10 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
       }
     } // end if (!winningEmail && !hitTimeout) -- permutation flow guard
     
-    // Update the single lead record with the result
+    // Update the single lead record with the result.
+    // Strip extra_data.scraped_email so it does not appear as a separate
+    // column in the output CSV (results export builds headers from
+    // jsonb_object_keys(extra_data) of finalized leads).
     if (winningEmail) {
       await pgPool.query(
         `UPDATE leads SET 
@@ -2195,7 +2309,8 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
           verification_status = $3, 
           mx_record = $4,
           mx_provider = $5,
-          is_final_result = true 
+          is_final_result = true,
+          extra_data = (extra_data::jsonb - 'scraped_email')
         WHERE id = $6`,
         [winningEmail, winningPattern, resultType, winningMx, winningProvider, leadRecord.id]
       );
@@ -2205,7 +2320,8 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
         `UPDATE leads SET 
           email = '', 
           verification_status = 'not_found', 
-          is_final_result = true 
+          is_final_result = true,
+          extra_data = (extra_data::jsonb - 'scraped_email')
         WHERE id = $1`,
         [leadRecord.id]
       );
@@ -2828,9 +2944,39 @@ async function processJobFromQueue(jobId) {
       );
     }
     
-    const leads = leadsResult.rows;
+    let leads = leadsResult.rows;
+
+    // ============================================
+    // DEDUPE: one row per (first_name, last_name, domain)
+    // ============================================
+    // Duplicate rows break processPersonWithEarlyExit's isNewFormat check
+    // (which requires personLeads.length === 1) and cause the OLD FORMAT
+    // branch to send blank emails to MailTester. Hard-delete losers so they
+    // also never appear in the output CSV. Idempotent on resume.
+    const dedupeResult = await dedupeEnrichmentLeads(jobId, leads);
+    if (dedupeResult.deleted > 0) {
+      console.log(`🧹 Dedupe: removed ${dedupeResult.deleted} duplicate row(s) for job ${jobId}`);
+      leads = dedupeResult.deduped;
+
+      // Recount to get the true unique-people total (covers both first-run
+      // and mid-run-crash resume cases, since on resume some rows may already
+      // be finalized and excluded from `leads`).
+      try {
+        const countRes = await pgPool.query(
+          'SELECT COUNT(*)::int AS n FROM leads WHERE job_id = $1',
+          [jobId]
+        );
+        const newTotal = (countRes.rows[0] && countRes.rows[0].n) || leads.length;
+        await pgPool.query('UPDATE jobs SET total_leads = $1 WHERE id = $2', [newTotal, jobId]);
+        jobData.total_leads = newTotal;
+        console.log(`📊 Updated jobs.total_leads to ${newTotal} after dedupe`);
+      } catch (err) {
+        console.error(`Failed to update jobs.total_leads after dedupe: ${err.message}`);
+      }
+    }
+
     const totalPermutations = leads.length;
-    
+
     // Get unique people count from job (not permutations)
     const uniquePeopleCount = jobData.total_leads;
     

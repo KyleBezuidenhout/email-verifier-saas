@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { canAccessEnrichVerify } from "@/lib/permissions";
 import { UserAvatar } from "./UserAvatar";
+
+const ENRICH_VERIFY_HREFS = new Set(["/find-valid-emails", "/verify-emails"]);
 
 interface NavItem {
   name: string;
@@ -127,7 +130,16 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const bottomNavNames = new Set(["Tutorial", "Support", "Get More Credits"]);
-  const visibleNavItems = navItems.filter((item) => !item.adminOnly || user?.is_admin);
+  const visibleNavItems = navItems.filter((item) => {
+    if (!item.adminOnly) return true;
+    if (user?.is_admin) return true;
+    // Enrich and Verify also allow a small non-admin allowlist (see
+    // canAccessEnrichVerify). All other adminOnly items remain admin-only.
+    if (item.href && ENRICH_VERIFY_HREFS.has(item.href)) {
+      return canAccessEnrichVerify(user);
+    }
+    return false;
+  });
   const primaryNavItems = visibleNavItems.filter((item) => !bottomNavNames.has(item.name));
   const bottomNavItems = visibleNavItems.filter((item) => bottomNavNames.has(item.name));
 

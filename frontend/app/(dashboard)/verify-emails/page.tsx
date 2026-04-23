@@ -13,6 +13,7 @@ import { formatFileSize } from "@/lib/utils";
 import { useSSE } from "@/hooks/useSSE";
 import { JobProgress } from "@/types";
 import { useAuth } from "@/context/AuthContext";
+import { canAccessEnrichVerify } from "@/lib/permissions";
 
 export default function VerifyEmailsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -21,7 +22,7 @@ export default function VerifyEmailsPage() {
   const router = useRouter();
   const { user } = useAuth();
   useEffect(() => {
-    if (user && !user.is_admin) {
+    if (user && !canAccessEnrichVerify(user)) {
       router.replace("/dashboard");
     }
   }, [user, router]);
