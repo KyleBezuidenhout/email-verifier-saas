@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     VAYNE_AUTH_CHECK_INITIAL_WAIT_S: float = 5.0  # Seconds to wait after PATCH before GET /api/linkedin_authentication
     VAYNE_AUTH_CHECK_RETRY_WAIT_S: float = 3.0   # Seconds to wait for the single retry if status is still "checking"
     VAYNE_VALIDATION_LOCK_ACQUIRE_TIMEOUT_S: float = 15.0  # Max time a request will wait for the validation-slot mutex
+    VAYNE_COOKIE_VALIDATION_ENABLED: bool = True  # Kill switch for live Save Cookie validation. Set "false" to bypass Vayne PATCH and hide validation UI.
     
     # Webhook authentication
     WEBHOOK_SECRET_TOKEN: str = ""  # Secret token for webhook authentication

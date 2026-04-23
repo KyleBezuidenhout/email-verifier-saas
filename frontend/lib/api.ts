@@ -771,6 +771,15 @@ class ApiClient {
     });
   }
 
+  /**
+   * Feature flags for the Vayne scraper UI. Fetched once on scraper-page
+   * mount; used to gate the live cookie-validation affordances behind the
+   * VAYNE_COOKIE_VALIDATION_ENABLED backend kill switch.
+   */
+  async getVayneConfig(): Promise<{ cookie_validation_enabled: boolean }> {
+    return this.request<{ cookie_validation_enabled: boolean }>("/api/v1/vayne/config");
+  }
+
   async getVayneCredits(): Promise<VayneCredits> {
     return this.request("/api/v1/vayne/credits");
   }

@@ -26,6 +26,9 @@ export default function SalesNavScraperPage() {
   // submit a job with an unverified (or edited-since-verification) cookie.
   type CookieStatus = "idle" | "validating" | "valid" | "rejected" | "unavailable";
   const [cookieStatus, setCookieStatus] = useState<CookieStatus>("idle");
+  // Kill switch fetched from backend. When false, validation UI is hidden
+  // and Start Scraping no longer requires a "valid" verdict.
+  const [validationEnabled, setValidationEnabled] = useState(true);
   
   // Credits state
   const [credits, setCredits] = useState<VayneCredits | null>(null);
@@ -83,6 +86,19 @@ export default function SalesNavScraperPage() {
     }
   }, []);
 
+  // Self-catching: a transient config fetch error must never brick the page.
+  // Default to "disabled" on failure so the kill-switch period can't strand
+  // users on a loading spinner.
+  const loadValidationFlag = useCallback(async () => {
+    try {
+      const cfg = await apiClient.getVayneConfig();
+      setValidationEnabled(cfg.cookie_validation_enabled);
+    } catch (err) {
+      console.error("Failed to fetch vayne config; defaulting to disabled:", err);
+      setValidationEnabled(false);
+    }
+  }, []);
+
   // Load all orders from database (no Vayne API polling)
   const loadScrapeHistory = useCallback(async () => {
     setLoadingScrapeHistory(true);
@@ -118,12 +134,12 @@ export default function SalesNavScraperPage() {
   const SALES_NAV_URL_REGEX = /^https?:\/\/(www\.)?linkedin\.com\/sales\/(search|lists|lead)/i;
   const hasLinkedinCookie = Boolean(linkedinCookie.trim());
   const isUrlFormatValid = salesNavUrl.trim() ? SALES_NAV_URL_REGEX.test(salesNavUrl.trim()) : false;
-  // Start Scraping requires: cookie text present, cookie confirmed valid by
-  // the backend validate-cookie call, URL passes the regex format check, and
-  // we're not already creating an order.
+  // Start Scraping requires: cookie text present, URL passes the regex format
+  // check, and we're not already creating an order. When the kill switch is
+  // on (validationEnabled === true), also require a "valid" backend verdict.
   const isStartScrapingDisabled =
     !hasLinkedinCookie ||
-    cookieStatus !== "valid" ||
+    (validationEnabled && cookieStatus !== "valid") ||
     !isUrlFormatValid ||
     creatingOrder;
   const normalizedJobName = jobName.trim();
@@ -133,7 +149,7 @@ export default function SalesNavScraperPage() {
     const loadInitialData = async () => {
       try {
         setInitialLoading(true);
-        await Promise.all([loadCredits(), loadScrapeHistory(), loadDailyUsage()]);
+        await Promise.all([loadCredits(), loadScrapeHistory(), loadDailyUsage(), loadValidationFlag()]);
       } catch (err) {
         console.error("Error loading initial data:", err);
         setError("Failed to load page data. Please refresh the page.");
@@ -143,7 +159,7 @@ export default function SalesNavScraperPage() {
       }
     };
     loadInitialData();
-  }, [loadCredits, loadScrapeHistory, loadDailyUsage]);
+  }, [loadCredits, loadScrapeHistory, loadDailyUsage, loadValidationFlag]);
 
   // Poll Vayne API for live status updates every 60 seconds (UI-only, does not update database)
   useEffect(() => {
@@ -574,16 +590,16 @@ export default function SalesNavScraperPage() {
               ) : (
                 <p className="text-sm font-medium text-dashboard-text">LinkedIn Cookie <span className="text-red-500">*</span></p>
               )}
-              {cookieStatus === "validating" && (
+              {validationEnabled && cookieStatus === "validating" && (
                 <span className="flex items-center gap-1.5 text-xs text-dashboard-text-muted">
                   <LoadingSpinner size="sm" />
                   Validating…
                 </span>
               )}
-              {cookieStatus === "valid" && (
+              {validationEnabled && cookieStatus === "valid" && (
                 <span className="text-dashboard-accent text-xs font-medium">Connected</span>
               )}
-              {cookieStatus === "rejected" && (
+              {validationEnabled && cookieStatus === "rejected" && (
                 <span
                   className="text-red-500 text-xs cursor-help underline decoration-dotted"
                   title="Your LinkedIn session cookie was rejected. Please provide a valid LinkedIn cookie and try again."
@@ -591,7 +607,7 @@ export default function SalesNavScraperPage() {
                   Rejected
                 </span>
               )}
-              {cookieStatus === "unavailable" && (
+              {validationEnabled && cookieStatus === "unavailable" && (
                 <span
                   className="text-amber-500 text-xs cursor-help underline decoration-dotted"
                   title="We couldn't validate your cookie. Please try again. If this issue persists, contact support."
@@ -640,8 +656,13 @@ export default function SalesNavScraperPage() {
               <button
                 onClick={async () => {
                   const trimmed = linkedinCookie.trim();
-                  if (!trimmed) {
-                    setCookieStatus("rejected");
+                  if (!trimmed) return;
+                  // Kill switch: when the backend flag is off, Save Cookie
+                  // just stashes the value and closes the modal silently —
+                  // no API call, no spinner, no badge. Start Scraping is
+                  // gated only on cookie text present + URL regex.
+                  if (!validationEnabled) {
+                    setShowAuthModal(false);
                     return;
                   }
                   setCookieStatus("validating");
@@ -666,7 +687,7 @@ export default function SalesNavScraperPage() {
                 disabled={cookieStatus === "validating" || !linkedinCookie.trim()}
                 className="flex-1 px-4 py-2 bg-dashboard-accent text-white rounded-lg hover:bg-dashboard-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {cookieStatus === "validating" ? (
+                {validationEnabled && cookieStatus === "validating" ? (
                   <>
                     <LoadingSpinner size="sm" />
                     Validating…

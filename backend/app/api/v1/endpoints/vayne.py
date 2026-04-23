@@ -260,6 +260,20 @@ def update_linkedin_auth(
         release_validation_lock(lock_token)
 
 
+@router.get("/config")
+def get_vayne_config(current_user: User = Depends(get_current_user)):
+    """Frontend feature flags for the Vayne scraper UI.
+
+    Fetched once on scraper-page mount (inside the page's initialLoading
+    spinner) so the UI knows whether to render the live cookie-validation
+    affordances. Toggled via the VAYNE_COOKIE_VALIDATION_ENABLED env var
+    as a kill switch when Vayne's PATCH rate limit is exhausted.
+    """
+    return {
+        "cookie_validation_enabled": settings.VAYNE_COOKIE_VALIDATION_ENABLED,
+    }
+
+
 @router.post("/validate-cookie", response_model=ValidateCookieResponse)
 def validate_cookie(
     payload: ValidateCookieRequest,
@@ -271,7 +285,13 @@ def validate_cookie(
     slot, waits for Vayne's async LinkedIn-side check, then GETs the status.
     The entire sequence is serialized via a Redis mutex so concurrent validation
     requests don't clobber each other.
+
+    When VAYNE_COOKIE_VALIDATION_ENABLED is false the call short-circuits with
+    reason="disabled". This is belt-and-suspenders: the frontend normally
+    doesn't call this endpoint when the flag is off, but a stale tab might.
     """
+    if not settings.VAYNE_COOKIE_VALIDATION_ENABLED:
+        return ValidateCookieResponse(valid=True, reason="disabled")
     return _validate_cookie_on_validation_slot(payload.linkedin_cookie)
 
 
@@ -499,18 +519,22 @@ def create_order(
                 detail="LinkedIn cookie is required. Please save a valid cookie first.",
             )
 
-        validation = _validate_cookie_on_validation_slot(cookie_for_validation)
-        if not validation.valid:
-            if validation.reason == "rejected":
+        # Kill switch: when VAYNE_COOKIE_VALIDATION_ENABLED is false we skip the
+        # live validation entirely so orders can flow while Vayne's PATCH rate
+        # limit is exhausted. Worker will catch bad cookies at scrape time.
+        if settings.VAYNE_COOKIE_VALIDATION_ENABLED:
+            validation = _validate_cookie_on_validation_slot(cookie_for_validation)
+            if not validation.valid:
+                if validation.reason == "rejected":
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Your LinkedIn session cookie was rejected. Please provide a valid LinkedIn cookie and try again.",
+                    )
+                # "unavailable" or any other indeterminate outcome
                 raise HTTPException(
-                    status_code=400,
-                    detail="Your LinkedIn session cookie was rejected. Please provide a valid LinkedIn cookie and try again.",
+                    status_code=503,
+                    detail="We couldn't validate your cookie right now. Please try again in a moment.",
                 )
-            # "unavailable" or any other indeterminate outcome
-            raise HTTPException(
-                status_code=503,
-                detail="We couldn't validate your cookie right now. Please try again in a moment.",
-            )
 
         logger.info(f"Creating queued order for user {current_user.id}")
         logger.info(f"   URL: {payload.sales_nav_url[:50]}...")
