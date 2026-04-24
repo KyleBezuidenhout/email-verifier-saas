@@ -34,6 +34,14 @@ import time
 from urllib.parse import urlparse
 
 
+# Credits charged per valid/catchall email found for jobs uploaded via the
+# CSV pages (/find-valid-emails and /verify-emails). Pre-reserved flows
+# (Sales Nav dashboard scraper, catchall upload) still use
+# get_enrichment_cost(plan) and charge 1 credit per hit so their
+# reservation/refund math stays correct.
+CSV_ENRICHMENT_COST = Decimal("0.1")
+
+
 # ============================================
 # QUEUE ROUTING HELPERS
 # ============================================
@@ -585,7 +593,7 @@ async def upload_file(
     user_plan = getattr(current_user, 'plan', 'trial') or 'trial'
 
     if not is_admin and not is_enrichment_free(user_plan):
-        enrichment_cost = get_enrichment_cost(user_plan)
+        enrichment_cost = CSV_ENRICHMENT_COST
         required = float(leads_count * enrichment_cost)
         if float(current_user.credits) < required:
             raise HTTPException(
@@ -731,7 +739,7 @@ async def upload_verify_file(
         is_admin = current_user.email == ADMIN_EMAIL or getattr(current_user, 'is_admin', False)
         user_plan = getattr(current_user, 'plan', 'trial') or 'trial'
         if not is_admin and not is_enrichment_free(user_plan):
-            enrichment_cost = get_enrichment_cost(user_plan)
+            enrichment_cost = CSV_ENRICHMENT_COST
             required = float(leads_count * enrichment_cost)
             if float(current_user.credits) < required:
                 raise HTTPException(
@@ -836,7 +844,7 @@ async def upload_verify_file(
     user_plan = getattr(current_user, 'plan', 'trial') or 'trial'
 
     if not is_admin and not is_enrichment_free(user_plan):
-        enrichment_cost = get_enrichment_cost(user_plan)
+        enrichment_cost = CSV_ENRICHMENT_COST
         required = float(leads_count * enrichment_cost)
         if float(current_user.credits) < required:
             raise HTTPException(

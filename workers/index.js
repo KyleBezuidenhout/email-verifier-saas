@@ -2828,9 +2828,19 @@ async function processJobFromQueue(jobId) {
         }
       }
       
-      const costInCredits = validCount + catchallCount;
+      const hits = validCount + catchallCount;
       const reservedCredits = jobData.cost_in_credits || 0;
       const isSalesNav = jobData.source === 'Sales Nav';
+      // CSV uploads from /find-valid-emails and /verify-emails never
+      // pre-reserve credits, so we identify them by reservedCredits === 0
+      // and charge the discounted CSV rate. Pre-reserved flows (Sales Nav
+      // dashboard scraper, catchall upload) keep charging 1 credit/hit so
+      // their reservation/refund math stays correct.
+      const CSV_RATE = 0.1;
+      const isCsvUpload = reservedCredits === 0;
+      const costInCredits = isCsvUpload
+        ? Math.round(hits * CSV_RATE * 10) / 10
+        : hits;
 
       await updateJobStatus(jobId, 'completed', {
         processed_leads: processedCount,
@@ -3273,9 +3283,19 @@ async function processJobFromQueue(jobId) {
       }
     }
     
-    const costInCredits = validCount + catchallCount;
+    const hits = validCount + catchallCount;
     const reservedCredits = jobData.cost_in_credits || 0;
     const isSalesNav = jobData.source === 'Sales Nav';
+    // CSV uploads from /find-valid-emails and /verify-emails never
+    // pre-reserve credits, so we identify them by reservedCredits === 0
+    // and charge the discounted CSV rate. Pre-reserved flows (Sales Nav
+    // dashboard scraper, catchall upload) keep charging 1 credit/hit so
+    // their reservation/refund math stays correct.
+    const CSV_RATE = 0.1;
+    const isCsvUpload = reservedCredits === 0;
+    const costInCredits = isCsvUpload
+      ? Math.round(hits * CSV_RATE * 10) / 10
+      : hits;
 
     await updateJobStatus(jobId, 'completed', {
       processed_leads: jobData.total_leads,
