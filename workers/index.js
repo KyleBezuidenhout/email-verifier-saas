@@ -2829,7 +2829,7 @@ async function processJobFromQueue(jobId) {
       }
       
       const hits = validCount + catchallCount;
-      const reservedCredits = jobData.cost_in_credits || 0;
+      const reservedCredits = Number(jobData.cost_in_credits ?? 0);
       const isSalesNav = jobData.source === 'Sales Nav';
       // CSV uploads from /find-valid-emails and /verify-emails never
       // pre-reserve credits, so we identify them by reservedCredits === 0
@@ -3284,7 +3284,7 @@ async function processJobFromQueue(jobId) {
     }
     
     const hits = validCount + catchallCount;
-    const reservedCredits = jobData.cost_in_credits || 0;
+    const reservedCredits = Number(jobData.cost_in_credits ?? 0);
     const isSalesNav = jobData.source === 'Sales Nav';
     // CSV uploads from /find-valid-emails and /verify-emails never
     // pre-reserve credits, so we identify them by reservedCredits === 0
