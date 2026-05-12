@@ -15,6 +15,7 @@ const ENRICH_VERIFY_ALLOWLIST: ReadonlySet<string> = new Set([
   "sander@zeetmedia.com",
   "sdavis@nplusglobal.com",
   "forumlurker67@gmail.com",
+  "nick@coreconversions.net",
 ]);
 
 /** Minimal user shape needed for permission checks. */
