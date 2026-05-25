@@ -32,6 +32,21 @@ def _verify_job_access(db: Session, job_uuid, current_user: User) -> Job:
     return job
 
 
+# Statuses where downstream consumers (results page, download CSV) are
+# allowed to read partial/final lead data. We accept failed and cancelled
+# in addition to completed so users can recover whatever was processed
+# before a terminal failure.
+_VIEWABLE_JOB_STATUSES = {"completed", "failed", "cancelled"}
+
+
+def _require_viewable_job(job: Job) -> None:
+    if (job.status or "") not in _VIEWABLE_JOB_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Results are not available until the job has finished processing.",
+        )
+
+
 def _parse_job_uuid(job_id: str):
     try:
         return uuid.UUID(job_id)
@@ -88,7 +103,8 @@ def get_results(
     db: Session = Depends(get_db),
 ):
     job_uuid = _parse_job_uuid(job_id)
-    _verify_job_access(db, job_uuid, current_user)
+    job = _verify_job_access(db, job_uuid, current_user)
+    _require_viewable_job(job)
 
     query = db.query(Lead).filter(Lead.job_id == job_uuid, Lead.is_final_result == True)
     if offset is not None:
@@ -129,7 +145,11 @@ def download_results(
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
-    safe_filename = re.sub(r'[^\w\s-]', '', filename or '').strip()[:50] or "results"
+    _require_viewable_job(job)
+
+    # Allow spaces, dashes and ampersands so filter suffixes like
+    # "results - test1 - valid & catchall" survive the sanitizer.
+    safe_filename = re.sub(r'[^\w\s&\-]', '', filename or '').strip()[:80] or "results"
 
     # Pass 1: collect all distinct extra_data keys for consistent CSV headers
     # Cast to jsonb explicitly — the DB column may be json despite the model declaring JSONB
@@ -170,7 +190,11 @@ def download_results(
     def _get_display_status(lead):
         if lead.verification_tag == "valid-catchall":
             return "valid-catchall"
-        return lead.verification_status or ""
+        raw = lead.verification_status or ""
+        # Display-only: enrichment writes "not_found" for leads where no
+        # email could be found; we surface that to users as "invalid" so
+        # downloaded CSVs match the UI labels. Stored value is unchanged.
+        return "invalid" if raw == "not_found" else raw
 
     def _get_mx_display(lead):
         provider = lead.mx_provider or "other"

@@ -27,7 +27,7 @@ PLANS = {
         "enrichment_cost": Decimal("1"),
         "monthly_price": 0,
         "yearly_price": 0,
-        "sn_label": 2000,
+        "sn_label": 500,
         "support": "Email Support",
     },
     "test_downgrade": {

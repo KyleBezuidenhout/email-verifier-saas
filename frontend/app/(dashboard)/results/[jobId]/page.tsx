@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { Lead, Job } from "@/types";
 import { apiClient } from "@/lib/api";
+import { buildResultsFilename } from "@/lib/utils";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import Link from "next/link";
 
@@ -132,14 +133,17 @@ export default function ResultsPage() {
   const handleDownload = () => {
     if (downloading) return;
     setDownloading(true);
-    const baseName = job?.job_name?.trim()
-      ? job.job_name.trim().replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "_").slice(0, 50)
-      : jobId;
     const statusParam = !statusFilters.includes("all") && statusFilters.length > 0 ? statusFilters : undefined;
+    const filename = buildResultsFilename({
+      jobName: job?.job_name,
+      originalFilename: job?.original_filename,
+      fallback: jobId,
+      filters: statusParam,
+    });
     const url = apiClient.getDownloadUrl(jobId, {
       status: statusParam,
       mx: mxFilters.length > 0 ? mxFilters : undefined,
-      filename: `results-${baseName}`,
+      filename,
     });
     window.location.href = url;
     setTimeout(() => setDownloading(false), 3000);
@@ -258,7 +262,7 @@ export default function ResultsPage() {
             boxShadow: statusFilters.includes("invalid") ? '0 0 0 1px rgba(59,130,246,0.25)' : undefined,
           }}
         >
-          <p className="text-sm text-dashboard-text-muted">Not Found</p>
+          <p className="text-sm text-dashboard-text-muted">Invalid</p>
           <p className="text-2xl font-bold" style={{ color: '#E5484D' }}>
             {notFoundCount}
           </p>
@@ -421,7 +425,11 @@ export default function ResultsPage() {
                             : "text-red-400"
                         }`}
                       >
-                        {lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status?.replace(/_/g, ' ')}
+                        {lead.verification_tag === "valid-catchall"
+                          ? "valid-catchall"
+                          : lead.verification_status === "not_found"
+                          ? "invalid"
+                          : lead.verification_status?.replace(/_/g, ' ')}
                       </span>
                       {lead.verification_tag === "catchall-verified" && (
                         <span className="px-2 py-1 text-xs font-semibold rounded-full bg-dashboard-accent/20 text-dashboard-accent border border-dashboard-accent/30">

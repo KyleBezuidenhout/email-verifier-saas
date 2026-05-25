@@ -17,6 +17,7 @@ from app.db.session import get_db, SessionLocal
 from app.models.user import User
 from app.models.job import Job
 from app.models.lead import Lead
+from app.models.vayne_order import VayneOrder
 from app.models.worker_config import WorkerConfig
 from app.api.dependencies import get_current_user, ADMIN_EMAIL
 from app.core.plans import get_enrichment_cost, is_enrichment_free
@@ -1003,7 +1004,19 @@ def get_jobs(
         # Filter by job_type if provided
         if job_type:
             query = query.filter(Job.job_type == job_type)
-        
+
+        # Hide enrichment jobs that were auto-created by a Sales Nav scrape
+        # order (the unified scrape->enrich pipeline). The dashboard's Sales
+        # Nav view is the source of truth for those; surfacing them again on
+        # /find-valid-emails causes duplicate-job confusion. Only filter when
+        # the caller is asking for enrichment-type jobs.
+        if (job_type or "") == "enrichment":
+            linked_enrichment_ids = (
+                db.query(VayneOrder.enrichment_job_id)
+                .filter(VayneOrder.enrichment_job_id.isnot(None))
+            )
+            query = query.filter(Job.id.notin_(linked_enrichment_ids))
+
         # NO status filtering - return all jobs including 'waiting_for_csv'
         jobs = query.order_by(desc(Job.created_at)).all()
         

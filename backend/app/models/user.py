@@ -20,7 +20,7 @@ class User(Base):
     oauth_provider_id = Column(String(255), nullable=True)
     profile_picture_url = Column(Text, nullable=True)
     daily_cold_emails = Column(Integer, nullable=True)
-    credits = Column(Numeric(12, 1), default=2000)
+    credits = Column(Numeric(12, 1), default=500)
     plan = Column(String(20), default="trial", nullable=False, server_default="trial")
     custom_credit_price = Column(Numeric(10, 5), nullable=True)
     whop_membership_id = Column(String(255), nullable=True, unique=True)

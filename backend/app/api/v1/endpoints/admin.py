@@ -301,6 +301,16 @@ def get_all_jobs(
     """Get all jobs across all clients with client info, including Sales Nav orders."""
     unified: list = []
 
+    # Build a set of enrichment job IDs that are linked from Sales Nav
+    # orders. We hide these from the merged list so admin doesn't see two
+    # rows for the same logical scrape->enrich pipeline; the sales_nav
+    # row below already carries enrichment status via LEFT JOIN.
+    linked_enrichment_ids = {
+        row[0] for row in db.query(VayneOrder.enrichment_job_id)
+        .filter(VayneOrder.enrichment_job_id.isnot(None))
+        .all()
+    }
+
     # Enrichment / verification jobs
     if job_type not in ("sales_nav",):
         q = db.query(Job, User).join(User, Job.user_id == User.id)
@@ -309,6 +319,8 @@ def get_all_jobs(
         if job_type:
             q = q.filter(Job.job_type == job_type)
         for job, user in q.all():
+            if job.id in linked_enrichment_ids:
+                continue
             unified.append({
                 "id": str(job.id),
                 "status": job.status,

@@ -18,7 +18,7 @@ export const PLANS: PlanDef[] = [
     name: "Trial",
     monthlyPrice: 0,
     yearlyPrice: 0,
-    snLabel: 2_000,
+    snLabel: 500,
     creditPrice: 0.0022,
     perThousand: null,
     cta: "Sign Up",

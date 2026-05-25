@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api";
+import { buildResultsFilename } from "@/lib/utils";
 import { VayneCredits, VayneDailyUsage, VayneOrder, VayneOrderCreate, Lead } from "@/types";
 import { ErrorModal } from "@/components/common/ErrorModal";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
@@ -279,9 +280,15 @@ export default function DashboardPage() {
 
   const handleDownloadCSV = async (order: VayneOrder, statusFilter?: string[]) => {
     if (order.enrichment_job_id && order.enrichment_status === "completed") {
+      const filename = buildResultsFilename({
+        jobName: order.targeting,
+        originalFilename: null,
+        fallback: `sales-nav-${order.id.slice(0, 8)}`,
+        filters: statusFilter,
+      });
       const url = apiClient.getDownloadUrl(order.enrichment_job_id, {
         status: statusFilter,
-        filename: order.targeting || undefined,
+        filename,
       });
       window.open(url, "_blank");
       setDownloadDropdownId(null);
@@ -402,6 +409,7 @@ export default function DashboardPage() {
           </a>
         </div>
         <p className="mt-2 text-dashboard-text-muted">Extract and enrich leads from Sales Navigator</p>
+        <p className="mt-1 text-xs text-dashboard-text-muted">One email found (valid or catchall) equals one credit.</p>
       </div>
 
       {/* Daily Scraping Limit */}
@@ -759,7 +767,7 @@ export default function DashboardPage() {
                                     { label: "All Leads", filter: undefined },
                                     { label: "Valid", filter: ["valid"] },
                                     { label: "Catchall", filter: ["catchall"] },
-                                    { label: "Not Found", filter: ["not_found", "invalid"] },
+                                    { label: "Invalid", filter: ["not_found", "invalid"] },
                                   ].map((opt) => (
                                     <button
                                       key={opt.label}
@@ -905,7 +913,7 @@ export default function DashboardPage() {
                       boxShadow: statusFilters.includes("invalid") ? '0 0 0 1px rgba(59,130,246,0.25)' : undefined,
                     }}
                   >
-                    <p className="text-sm text-dashboard-text-muted">Not Found</p>
+                    <p className="text-sm text-dashboard-text-muted">Invalid</p>
                     <p className="text-2xl font-bold" style={{ color: '#E5484D' }}>
                       {notFoundCount}
                     </p>
@@ -935,10 +943,16 @@ export default function DashboardPage() {
                                 : undefined;
                               const mxParam = mxFilters.length > 0 ? mxFilters : undefined;
                               if (resultsModalOrder!.enrichment_job_id && resultsModalOrder!.enrichment_status === "completed") {
+                                const filename = buildResultsFilename({
+                                  jobName: resultsModalOrder!.targeting,
+                                  originalFilename: null,
+                                  fallback: `sales-nav-${resultsModalOrder!.id.slice(0, 8)}`,
+                                  filters: statusParam,
+                                });
                                 const url = apiClient.getDownloadUrl(resultsModalOrder!.enrichment_job_id, {
                                   status: statusParam,
                                   mx: mxParam,
-                                  filename: resultsModalOrder!.targeting || `results-${resultsModalOrder!.id.slice(0, 8)}`,
+                                  filename,
                                 });
                                 window.open(url, "_blank");
                               } else {
@@ -1077,7 +1091,11 @@ export default function DashboardPage() {
                                         : "text-red-400"
                                     }`}
                                   >
-                                    {lead.verification_tag === "valid-catchall" ? "valid-catchall" : lead.verification_status?.replace(/_/g, ' ')}
+                                    {lead.verification_tag === "valid-catchall"
+                                      ? "valid-catchall"
+                                      : lead.verification_status === "not_found"
+                                      ? "invalid"
+                                      : lead.verification_status?.replace(/_/g, ' ')}
                                   </span>
                                   {lead.verification_tag === "catchall-verified" && (
                                     <span className="px-2 py-1 text-xs font-semibold rounded-full bg-dashboard-accent/20 text-dashboard-accent border border-dashboard-accent/30">
@@ -1114,10 +1132,16 @@ export default function DashboardPage() {
                                 : undefined;
                               const mxParam = mxFilters.length > 0 ? mxFilters : undefined;
                               if (resultsModalOrder!.enrichment_job_id && resultsModalOrder!.enrichment_status === "completed") {
+                                const filename = buildResultsFilename({
+                                  jobName: resultsModalOrder!.targeting,
+                                  originalFilename: null,
+                                  fallback: `sales-nav-${resultsModalOrder!.id.slice(0, 8)}`,
+                                  filters: statusParam,
+                                });
                                 const url = apiClient.getDownloadUrl(resultsModalOrder!.enrichment_job_id, {
                                   status: statusParam,
                                   mx: mxParam,
-                                  filename: resultsModalOrder!.targeting || `results-${resultsModalOrder!.id.slice(0, 8)}`,
+                                  filename,
                                 });
                                 window.open(url, "_blank");
                               } else {

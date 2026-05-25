@@ -51,10 +51,17 @@ export function JobTable({ jobs, onDelete, onCancel, hitRateHeader = "% found" }
     setCatchallWarning(null);
   };
 
+  const isViewable = (status: string) =>
+    status === "completed" || status === "failed" || status === "cancelled";
+
   const handleRowClick = (jobId: string, e: React.MouseEvent) => {
     // Don't navigate if clicking on action buttons or links
     const target = e.target as HTMLElement;
     if (target.closest('button') || target.closest('a')) {
+      return;
+    }
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job || !isViewable(job.status)) {
       return;
     }
     router.push(`/results/${jobId}`);
@@ -112,10 +119,11 @@ export function JobTable({ jobs, onDelete, onCancel, hitRateHeader = "% found" }
                 return '#22C55E';                     // Green for 61%+
               };
               
+              const rowViewable = isViewable(job.status);
               return (
               <tr 
                 key={job.id} 
-                className="hover:bg-dashboard-card/50 transition-colors cursor-pointer"
+                className={`transition-colors ${rowViewable ? "hover:bg-dashboard-card/50 cursor-pointer" : "cursor-default"}`}
                 onClick={(e) => handleRowClick(job.id, e)}
               >
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono" style={{ color: '#C8D2DC' }}>
@@ -178,13 +186,22 @@ export function JobTable({ jobs, onDelete, onCancel, hitRateHeader = "% found" }
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                  <Link
-                    href={`/results/${job.id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-dashboard-accent hover:opacity-80 transition-opacity"
-                  >
-                    View
-                  </Link>
+                  {rowViewable ? (
+                    <Link
+                      href={`/results/${job.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-dashboard-accent hover:opacity-80 transition-opacity"
+                    >
+                      View
+                    </Link>
+                  ) : (
+                    <span
+                      title="Results available once the job completes"
+                      className="text-dashboard-text-muted/60 cursor-not-allowed"
+                    >
+                      View
+                    </span>
+                  )}
                   {(job.status === 'pending' || job.status === 'processing' || job.status === 'waiting' || job.status === 'queued') && onCancel && (
                     <button
                       onClick={(e) => {

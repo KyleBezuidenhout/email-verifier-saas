@@ -45,6 +45,49 @@ export function calculateProgress(processed: number, total: number): number {
   return Math.round((processed / total) * 100);
 }
 
+/**
+ * Build the default download filename for a results CSV.
+ *
+ * Base name priority: user-supplied job name -> input filename (sans .csv)
+ * -> short job id fallback. Filter suffixes are appended when the user is
+ * downloading only a subset of statuses (e.g. catchall only, valid &
+ * catchall) so the file on disk reflects the slice they pulled.
+ */
+export function buildResultsFilename(opts: {
+  jobName?: string | null;
+  originalFilename?: string | null;
+  fallback: string;
+  filters?: string[];
+}): string {
+  const stripExt = (s: string) => s.replace(/\.csv$/i, "");
+  const sanitize = (s: string) =>
+    s.replace(/[^a-zA-Z0-9 _&-]/g, "").trim().slice(0, 60);
+
+  const rawBase =
+    (opts.jobName && opts.jobName.trim()) ||
+    (opts.originalFilename ? stripExt(opts.originalFilename) : "") ||
+    opts.fallback;
+  const base = sanitize(rawBase) || opts.fallback;
+
+  const filters = (opts.filters || []).filter((f) => f && f !== "all");
+  // The product surfaces three top-level buckets (valid, catchall, invalid).
+  // No suffix when the user has all three (or none) selected; that's a full
+  // export. Otherwise append a human suffix in canonical order.
+  const KNOWN = ["valid", "catchall", "invalid"] as const;
+  const known = filters.filter((f) => (KNOWN as readonly string[]).includes(f));
+  let suffix = "";
+  if (known.length > 0 && known.length < KNOWN.length) {
+    if (known.length === 1) {
+      suffix = ` - ${known[0]} only`;
+    } else {
+      const ordered = KNOWN.filter((s) => known.includes(s));
+      suffix = ` - ${ordered.join(" & ")}`;
+    }
+  }
+
+  return `results - ${base}${suffix}`;
+}
+
 export function estimateTimeRemaining(
   processed: number,
   total: number,

@@ -19,7 +19,7 @@ function buildFeatures(plan: PlanDef): string[] {
   const features: string[] = [];
 
   if (plan.id === "trial") {
-    features.push("2,000 emails");
+    features.push("500 emails");
     features.push("Email support");
   } else if (plan.id === "custom") {
     features.push("100,000+ emails per month");
@@ -52,7 +52,7 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
     ? "100k+"
     : selectedPlan.snLabel
       ? formatSnLabel(selectedPlan.snLabel)
-      : "2k";
+      : "500";
 
   return (
     <div className="w-full max-w-4xl mx-auto">
@@ -86,7 +86,7 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
             {selectedPlan.id === "trial" ? (
               <div className="mb-4">
                 <div className="text-3xl lg:text-4xl font-bold text-white">Free</div>
-                <p className="text-dashboard-text-muted mt-1">Get 2,000 Emails</p>
+                <p className="text-dashboard-text-muted mt-1">Get 500 Emails</p>
               </div>
             ) : isCustom ? (
               <div className="mb-4">
@@ -177,7 +177,7 @@ export function PricingSlider({ variant = "marketing" }: PricingSliderProps) {
             {/* Slider Scale Labels */}
             <div className="relative h-6 mb-6">
               {[
-                { label: "2k", position: 0 },
+                { label: "500", position: 0 },
                 { label: "5k", position: 1 },
                 { label: "15k", position: 2 },
                 { label: "30k", position: 3 },

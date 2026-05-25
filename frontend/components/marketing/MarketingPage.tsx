@@ -692,7 +692,7 @@ export function MarketingPage() {
                     href="/register"
                     className="inline-flex items-center gap-2 bg-blue-500 text-black px-6 py-3 rounded-lg font-semibold text-sm tracking-wide transition-all duration-300 hover:bg-blue-600"
                   >
-                    2,000 Credits
+                    500 Credits
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
@@ -899,7 +899,7 @@ export function MarketingPage() {
                   {[
                     { label: "Agency Plus · Nov 2025", status: "active", amount: "+400,000" },
                     { label: "Top-up · Aug 2024", status: "active", amount: "+50,000" },
-                    { label: "Trial · Jan 2024", status: "active", amount: "+2,000" },
+                    { label: "Trial · Jan 2024", status: "active", amount: "+500" },
                   ].map((tx) => (
                     <div key={tx.label} className="flex items-center justify-between px-5 py-3.5">
                       <div className="flex items-center gap-2">
