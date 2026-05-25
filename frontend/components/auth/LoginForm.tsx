@@ -30,7 +30,7 @@ export function LoginForm() {
 
     try {
       await login({ email, password, rememberMe });
-      router.push("/sales-nav-scraper");
+      router.push("/dashboard");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setError(err.detail);

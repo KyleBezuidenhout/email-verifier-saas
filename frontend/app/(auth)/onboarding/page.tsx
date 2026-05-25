@@ -21,7 +21,7 @@ export default function OnboardingPage() {
       if (!user.has_seen_tutorial) {
         router.replace("/tutorial");
       } else {
-        router.replace("/sales-nav-scraper");
+        router.replace("/dashboard");
       }
       return;
     }

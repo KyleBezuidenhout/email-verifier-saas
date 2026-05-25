@@ -26,7 +26,7 @@ function VerifyEmailContent() {
         const user = response.user;
         const dest = (!user.onboarding_completed)
           ? "/onboarding"
-          : (localStorage.getItem("bv_post_auth_redirect") || "/sales-nav-scraper");
+          : (localStorage.getItem("bv_post_auth_redirect") || "/dashboard");
         if (user.onboarding_completed) localStorage.removeItem("bv_post_auth_redirect");
         setTimeout(() => router.push(dest), 2000);
       } catch (err) {

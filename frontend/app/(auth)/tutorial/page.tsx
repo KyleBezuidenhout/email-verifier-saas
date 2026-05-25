@@ -19,7 +19,7 @@ export default function TutorialPage() {
       return;
     }
     if (!loading && user && user.has_seen_tutorial) {
-      router.replace("/sales-nav-scraper");
+      router.replace("/dashboard");
     }
   }, [user, loading, router]);
 
@@ -28,9 +28,9 @@ export default function TutorialPage() {
     try {
       await apiClient.updateUser({ has_seen_tutorial: true });
       await refreshUser();
-      router.replace("/sales-nav-scraper");
+      router.replace("/dashboard");
     } catch {
-      router.replace("/sales-nav-scraper");
+      router.replace("/dashboard");
     }
   };
 

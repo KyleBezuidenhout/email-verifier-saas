@@ -48,7 +48,7 @@ export default function OAuthCallbackPage() {
         if (!user.onboarding_completed) {
           window.location.href = "/onboarding";
         } else {
-          const redirect = localStorage.getItem("bv_post_auth_redirect") || "/sales-nav-scraper";
+          const redirect = localStorage.getItem("bv_post_auth_redirect") || "/dashboard";
           localStorage.removeItem("bv_post_auth_redirect");
           window.location.href = redirect;
         }
