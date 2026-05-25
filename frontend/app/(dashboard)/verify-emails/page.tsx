@@ -429,7 +429,7 @@ export default function VerifyEmailsPage() {
       )}
 
       {/* Job History */}
-      <JobTable jobs={filteredJobs} onDelete={handleDelete} onCancel={handleCancel} hitRateHeader="% Valid" />
+      <JobTable jobs={filteredJobs} onDelete={handleDelete} onCancel={handleCancel} hitRateHeader="% Valid + Catchall" />
 
       {/* Error Modal */}
       <ErrorModal

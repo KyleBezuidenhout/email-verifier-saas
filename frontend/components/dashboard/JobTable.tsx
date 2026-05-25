@@ -98,17 +98,20 @@ export function JobTable({ jobs, onDelete, onCancel, hitRateHeader = "% found" }
           </thead>
           <tbody style={{ background: 'rgba(13, 15, 18, 0.3)' }} className="divide-y divide-dashboard-border">
             {jobs.map((job) => {
-              // Only calculate hit rate after job is completed
-              // Enrichment: (valid + catchall) / total unique leads | Verification: valid / total
+              // Only calculate hit rate after job is completed.
+              // Enrichment + verification both count (valid + catchall) as a
+              // "hit" since both buckets are usable for outbound. Catchall
+              // verification still counts valid only because the whole point
+              // of that flow is filtering catchalls down to verified-valid.
               const isCompleted = job.status === "completed";
-              const isEnrichment = job.job_type === "enrichment";
+              const isCatchallVerification = job.job_type === "catchall_verification";
               let hitRateDisplay = "--";
               let hitRateValue = 0;
 
               if (isCompleted && job.total_leads > 0) {
-                hitRateValue = isEnrichment
-                  ? ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100)
-                  : ((job.valid_emails_found) / job.total_leads * 100);
+                hitRateValue = isCatchallVerification
+                  ? ((job.valid_emails_found) / job.total_leads * 100)
+                  : ((job.valid_emails_found + job.catchall_emails_found) / job.total_leads * 100);
                 hitRateDisplay = `${Math.min(hitRateValue, 100).toFixed(1)}%`;
               }
 
