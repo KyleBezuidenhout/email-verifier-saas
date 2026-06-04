@@ -568,22 +568,27 @@ def select_best_fit_slot(
     busy_slots: Set[int],
     estimated_leads: Optional[int],
 ) -> Optional[Tuple[int, VayneClient, int]]:
-    """Pick the healthy free slot with the SMALLEST remaining daily capacity
-    that can still fit the order (best-fit packing).
+    """Pick the healthy free slot with the SMALLEST effective capacity that
+    can still fit the order (best-fit packing).
+
+    A slot's effective capacity is min(daily_limit_leads, credit_available):
+    the order must fit under BOTH today's rate cap and the slot's standing
+    balance, so the smaller of the two is what actually binds.
 
     This replaces the previous "most remaining first" strategy so that we
     concentrate work on a single slot until it's depleted, reserving larger
     remaining capacities for larger orders.
 
     `estimated_leads`:
-        - If known (> 0), require `remaining >= estimated_leads`.
+        - If known (> 0), require `effective_capacity >= estimated_leads`.
         - If None/0 (order's size not yet discovered), no size filter — we
-          just pick the smallest free slot with any remaining capacity. The
-          order's first processing pass on that slot will call
-          `validate_url` and persist estimated_leads. If the discovered size
-          doesn't fit, `process_queued_order` already handles requeueing.
+          just pick the smallest free slot with any capacity. The order's
+          first processing pass on that slot will call `validate_url` and
+          persist estimated_leads. If the discovered size doesn't fit either
+          quota, `process_queued_order` requeues so the next dispatcher pass
+          can route it to a different slot.
 
-    Returns (slot_idx, client, daily_remaining) or None if nothing fits.
+    Returns (slot_idx, client, effective_capacity) or None if nothing fits.
     """
     candidates: List[Tuple[int, VayneClient, int]] = []
 
@@ -595,21 +600,32 @@ def select_best_fit_slot(
             continue
         try:
             credits_info = client.get_credits()
-            remaining = credits_info.get("daily_limit_leads", 0)
+            daily_remaining = int(credits_info.get("daily_limit_leads", 0) or 0)
+            wallet_available = int(credits_info.get("credit_available", 0) or 0)
         except Exception as e:
             log(f"Slot {idx}: failed to check credits: {e}", "error")
             mark_slot_unhealthy(idx, ttl=300)
             continue
 
-        log(f"Slot {idx}: daily_limit_leads={remaining}", "info")
+        # A slot can only take work it can both (a) scrape under today's
+        # rate cap (daily_limit_leads) and (b) pay for out of its standing
+        # balance (credit_available). The binding constraint is the smaller
+        # of the two — a fresh daily limit is meaningless if the balance is
+        # drained, and vice versa.
+        effective_capacity = min(daily_remaining, wallet_available)
+        log(
+            f"Slot {idx}: daily_limit_leads={daily_remaining}, "
+            f"credit_available={wallet_available}, effective_capacity={effective_capacity}",
+            "info",
+        )
 
-        if remaining <= 0:
+        if effective_capacity <= 0:
             continue
-        if estimated_leads and remaining < estimated_leads:
-            # Can't fit; exclude from candidates.
+        if estimated_leads and effective_capacity < estimated_leads:
+            # Can't fit under one or both quotas; exclude from candidates.
             continue
 
-        candidates.append((idx, client, remaining))
+        candidates.append((idx, client, effective_capacity))
 
     if not candidates:
         return None
@@ -788,11 +804,20 @@ async def process_queued_order(order_row, slot_idx: int, client: VayneClient) ->
                 return "failed"
 
             credits_info = client.get_credits()
-            daily_remaining = credits_info.get("daily_limit_leads", 0)
-            if estimated_leads > daily_remaining:
-                log(f"[Slot {slot_idx}] Estimated {estimated_leads} leads exceeds slot daily remaining {daily_remaining}", "info")
-                # Persist estimated_leads so the dispatcher can skip this order
-                # without re-pushing the cookie and re-validating the URL
+            daily_remaining = int(credits_info.get("daily_limit_leads", 0) or 0)
+            wallet_available = int(credits_info.get("credit_available", 0) or 0)
+            # Order must fit under BOTH the slot's daily rate cap and its
+            # standing balance. The smaller of the two is the real ceiling.
+            slot_capacity = min(daily_remaining, wallet_available)
+            if estimated_leads > slot_capacity:
+                log(
+                    f"[Slot {slot_idx}] Estimated {estimated_leads} leads exceeds slot capacity "
+                    f"(daily_limit_leads={daily_remaining}, credit_available={wallet_available}); requeueing",
+                    "info",
+                )
+                # Persist estimated_leads so the dispatcher can route this order
+                # to a slot that fits — without re-pushing the cookie and
+                # re-validating the URL on the next pass.
                 db.execute(text(
                     "UPDATE vayne_orders SET estimated_leads = :est WHERE id = :oid"
                 ), {"est": estimated_leads, "oid": str(order_id)})
@@ -944,6 +969,16 @@ async def process_queued_order(order_row, slot_idx: int, client: VayneClient) ->
 
         except Exception as e:
             log(f"Failed to create scraping order for {order_id}: {e}", "error")
+            # Race: the slot's balance can drain between the pre-flight capacity
+            # check and this submission. Treat a balance rejection as a slot-level
+            # condition — quarantine this slot and requeue so the next dispatcher
+            # pass routes the order to a slot that can still pay for it, rather
+            # than terminally failing the customer's job. The internal credit
+            # charge (Step 4) is idempotent, so the retry won't double-charge.
+            if "not enough credits" in str(e).lower():
+                mark_slot_unhealthy(slot_idx, ttl=300)
+                log(f"[Slot {slot_idx}] Balance exhausted at submission; quarantining slot and requeueing order {order_id}", "info")
+                return "requeue"
             mark_order_failed(db, order_id, "Failed to start the scraping job. Please try again later.")
             return "failed"
 
