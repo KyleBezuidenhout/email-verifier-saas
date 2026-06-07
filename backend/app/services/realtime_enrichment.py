@@ -67,22 +67,36 @@ async def _verify_with_fallback(
             return {"status": "unverified", "email": email, "message": "rate-limit timeout", "mx": ""}
 
         result = await client.verify_email(email, api_key=api_key)
+
+        # Dead key → bench immediately, don't count it as usage (no work was done).
+        if result.get("key_dead"):
+            await rate_limiter.mark_key_unhealthy(api_key)
+            return result
+
         await rate_limiter.track_api_usage(api_key)
 
-        if result.get("status") == "unverified" and "timeout" not in result.get("message", "").lower():
+        # Our-side failure (rate-limit/error exhaustion) counts against key health.
+        if result.get("status") == "unverified":
             await rate_limiter.track_key_error(api_key)
         return result
 
+    def _should_rotate(r: dict) -> bool:
+        # Rotate to another key when the answer is non-definitive:
+        #   key_dead     — key is broken
+        #   unverified   — our-side failure
+        #   inconclusive — timeout / spam block / mx error; a different IP may clear it
+        return bool(r.get("key_dead")) or r.get("status") in ("unverified", "inconclusive")
+
     result = await _attempt(preferred_key)
 
-    if result.get("status") == "unverified" and "timeout" not in result.get("message", "").lower():
+    if _should_rotate(result):
         for alt_key in rate_limiter.api_keys:
             if alt_key in keys_tried:
                 continue
             if not await rate_limiter.is_key_healthy(alt_key):
                 continue
             result = await _attempt(alt_key)
-            if result.get("status") != "unverified":
+            if not _should_rotate(result):
                 break
 
     return result
@@ -245,6 +259,8 @@ async def _enrich_inner(
         result.status = "not_found"
         return result
 
+    best_inconclusive = None  # (email, pattern, mx) fallback when no clean verdict
+
     for perm in perms:
         email = perm["email"]
         pattern = perm["pattern"]
@@ -271,13 +287,27 @@ async def _enrich_inner(
             await _insert_lead(db, user_id, first_name, last_name, domain, enrichment_key, result, loop)
             return result
 
-        if status == "unverified" and "timeout" in vr.get("message", "").lower():
-            result.status = "not_found"
-            result.email = ""
-            await _insert_lead(db, user_id, first_name, last_name, domain, enrichment_key, result, loop)
-            return result
+        # Inconclusive (timeout / spam block / mx error / limited): the server
+        # wouldn't give a clean answer. A single timeout used to abort the whole
+        # person as not_found — instead keep it as a fallback candidate and keep
+        # scanning the remaining permutations for a real valid/catchall.
+        if status == "inconclusive" and best_inconclusive is None:
+            best_inconclusive = (email, pattern, mx_raw)
+        # invalid / unverified → continue to the next permutation
 
-    # All permutations exhausted with no valid/catchall — not_found
+    # No confirmed valid/catchall. If any permutation was inconclusive, settle as
+    # a (re-verifiable) catchall rather than discarding the person as not_found.
+    if best_inconclusive is not None:
+        b_email, b_pattern, b_mx = best_inconclusive
+        result.email = b_email
+        result.status = "catchall"
+        result.pattern = b_pattern
+        result.mx_record = b_mx
+        result.mx_provider = extract_provider_from_mx(b_mx)
+        await _insert_lead(db, user_id, first_name, last_name, domain, enrichment_key, result, loop)
+        return result
+
+    # All permutations exhausted, all genuine negatives — not_found
     result.status = "not_found"
     result.email = ""
     await _insert_lead(db, user_id, first_name, last_name, domain, enrichment_key, result, loop)

@@ -1463,7 +1463,25 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null, jobId = nu
     }
     return { status: 'unverified', message: `${reason} - all retries exhausted`, mx: '', provider: '' };
   };
-  
+
+  // Inconclusive DESTINATION responses (Timeout, SPAM Block, Mx Error, Limited)
+  // are neither the key's fault nor a verdict. A different key = a different
+  // sending IP, which can clear SPAM Block / transient hiccups — so retry across
+  // keys, then settle as 'inconclusive'. The caller maps a lingering
+  // inconclusive to a (re-verifiable) catchall rather than discarding the person.
+  const retryInconclusive = async (reason, currentKey) => {
+    if (totalAttempts < MAX_TOTAL_ATTEMPTS - 1) {
+      const nextKey = await getNextHealthyKey(currentKey, keyPool);
+      if (nextKey) {
+        const backoffMs = getBackoffMs(totalAttempts);
+        console.log(`↻ Inconclusive (${reason}) for ${email}, retrying on a different key in ${backoffMs / 1000}s (attempt ${totalAttempts + 2}/${MAX_TOTAL_ATTEMPTS})...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        return verifyEmail(email, totalAttempts + 1, nextKey, jobId);
+      }
+    }
+    return { status: 'inconclusive', message: reason, mx: '', provider: '' };
+  };
+
   let apiKey = forceKey || await getNextKey(jobId);
   let acquired = false;
   const MAX_ACQUIRE_ATTEMPTS = 10;
@@ -1503,29 +1521,41 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null, jobId = nu
       timeout: 30000,
     });
     
-    await trackApiUsage(apiKey);
-    
     const code = response.data?.code || 'ko';
     const message = response.data?.message || '';
     const mx = response.data?.mx || '';
+    const limit = response.data?.limit;  // remaining daily quota for this key, when present
     const messageLower = message.toLowerCase();
-    
-    // Check for timeout responses - these indicate the mail server won't respond
-    // Don't retry timeouts - it's the destination server, not our API key
-    const isTimeout = messageLower.includes('timeout') || messageLower.includes('timed out');
-    
-    if (isTimeout) {
-      console.log(`⏱️ Timeout for ${email} - mail server unresponsive (no retry)`);
-      return { status: 'unverified', message: 'Email server timeout - unverifiable', mx: '', provider: '' };
-    }
-    
-    // Check for API errors in response body - these need retry, not marking as invalid
-    const isApiError = 
+
+    // ── KEY-LEVEL FAILURE (dead / disabled / expired / exhausted key) ──
+    // MailTester only returns a real email verdict with code ok|ko|mb. Anything
+    // else (e.g. code "--" + "Disabled Key"), or a key whose remaining quota is
+    // <= 0, means the KEY is broken — not the email. Bench it and retry the SAME
+    // email on another key. Never turn a dead-key response into an email verdict,
+    // and don't count it as usage (this is what silently nuked ~16% of results).
+    const knownVerdictCode = code === 'ok' || code === 'ko' || code === 'mb';
+    const keyIsDead =
+      !knownVerdictCode ||
+      (typeof limit === 'number' && limit <= 0) ||
+      messageLower.includes('disabled') ||
+      messageLower.includes('inactive') ||
       messageLower.includes('expired') ||
       messageLower.includes('invalid key') ||
       messageLower.includes('invalid api') ||
       messageLower.includes('unauthorized') ||
-      messageLower.includes('authentication') ||
+      messageLower.includes('authentication');
+
+    if (keyIsDead) {
+      console.warn(`🔑 Key ...${apiKey.slice(-4)} appears dead (code=${code}, limit=${limit}, msg="${message}") — benching & rotating`);
+      await markKeyUnhealthy(apiKey);
+      await trackKeyError(apiKey);
+      return retryWithFallback(`Dead key (${message || code})`, apiKey);
+    }
+
+    await trackApiUsage(apiKey);
+
+    // ── TRANSIENT SERVICE-SIDE ERRORS (rate limit / temporary) → retry, no verdict ──
+    const isApiError =
       messageLower.includes('rate limit') ||
       messageLower.includes('too many') ||
       messageLower.includes('quota') ||
@@ -1536,30 +1566,42 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null, jobId = nu
       messageLower.includes('limit exceeded') ||
       messageLower.includes('access denied') ||
       messageLower.includes('forbidden');
-    
+
     if (isApiError) {
-      // API error in response - retry with fallback
       await trackKeyError(apiKey);
       return retryWithFallback(`API error: ${message}`, apiKey);
     }
-    
-    // Definitive result from API
-    let status = 'invalid';
-    if (code === 'ok') {
-      status = 'valid';
-    } else if (code === 'mb' || messageLower.includes('catch')) {
-      status = 'catchall';
-    }
-    // else status remains 'invalid' - legitimate "email doesn't exist" response
-    
+
     const provider = extractProviderFromMX(mx);
-    
-    return {
-      status,
-      message,
-      mx,
-      provider,
-    };
+
+    // ── DEFINITIVE EMAIL VERDICTS ──
+    if (code === 'ok') {
+      return { status: 'valid', message, mx, provider };
+    }
+    if (code === 'mb' || messageLower.includes('catch')) {
+      return { status: 'catchall', message, mx, provider };
+    }
+
+    // ── INCONCLUSIVE DESTINATION RESPONSES (not a real negative) ──
+    // Limited (mailbox over quota / rate), Timeout (server didn't respond),
+    // SPAM Block (strong spam protection), Mx Error (mail server error).
+    // These are distinct from "No Mx" (no mail server) and "Rejected" (hard
+    // bounce), which ARE genuine invalids. A retry on a different key/IP can
+    // clear these, so route through retryInconclusive.
+    const isMxError = messageLower.includes('mx') && messageLower.includes('error');
+    const isInconclusive =
+      messageLower.includes('limited') ||
+      messageLower.includes('timeout') ||
+      messageLower.includes('timed out') ||
+      messageLower.includes('spam') ||
+      isMxError;
+
+    if (isInconclusive) {
+      return retryInconclusive(message || 'inconclusive', apiKey);
+    }
+
+    // Everything else (No Mx, Rejected, mailbox not found, ...) is a real negative.
+    return { status: 'invalid', message, mx, provider };
   } catch (error) {
     // Don't track usage for failed requests — the API didn't process them
     
@@ -1570,10 +1612,10 @@ async function verifyEmail(email, totalAttempts = 0, forceKey = null, jobId = nu
       error.message?.toLowerCase().includes('timeout');
     
     if (isHttpTimeout) {
-      // Don't retry HTTP timeouts - mail server is unresponsive
-      // Don't mark key unhealthy - it's not the key's fault
-      console.log(`⏱️ HTTP timeout for ${email} - mail server unresponsive (no retry)`);
-      return { status: 'unverified', message: 'Email server timeout - unverifiable', mx: '', provider: '' };
+      // Our request to MailTester timed out — treat as inconclusive and retry on
+      // another key (different IP can succeed). Not the key's fault, so don't
+      // penalize its health; not a verdict, so never mark the email invalid.
+      return retryInconclusive('HTTP timeout', apiKey);
     }
     
     // Non-timeout errors: track key error and retry
@@ -2119,11 +2161,13 @@ async function markLeadAsNotFound(leadId) {
 // 1. VALID: First valid email found = best result, skip remaining permutations
 // 2. CATCHALL: First catchall found = highest prevalence (leads sorted by prevalence), 
 //    all remaining permutations for this domain will also be catchalls with lower prevalence
-// 3. TIMEOUT: Mail server unresponsive = skip all remaining permutations (they'll all timeout too)
+// 3. INCONCLUSIVE: Timeout / SPAM Block / Mx Error / Limited are NOT terminal —
+//    we keep scanning the other permutations and, if nothing cleaner turns up,
+//    settle the person as a (re-verifiable) catchall instead of not_found.
 async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, cacheMap = null) {
   let foundValid = false;
   let bestCatchall = null;
-  let hitTimeout = false;  // Track if we hit a timeout (mail server unresponsive)
+  let bestInconclusive = null;  // Fallback when no clean valid/catchall is found
   let permutationsVerified = 0;
   let apiCalls = 0;
   let savedCalls = 0;
@@ -2226,7 +2270,7 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
     // ============================================
     // PERMUTATION FLOW (skipped if cache resolved this person)
     // ============================================
-    if (!winningEmail && !hitTimeout) {
+    if (!winningEmail) {
       console.log(`  📧 [NEW FORMAT] Generating 8 fixed permutations for ${personKey}`);
 
       const primaryEmails = generatePrimaryPermutations(
@@ -2242,21 +2286,9 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
           apiCalls++;
           permutationsVerified++;
 
-          const isTimeout = result.message && result.message.toLowerCase().includes('timeout');
-          if (isTimeout) {
-            hitTimeout = true;
-            finalLeadId = leadRecord.id;
-            resultType = 'not_found';
-            const remaining = primaryEmails.length - permutationsVerified;
-            savedCalls = remaining;
-            console.log(`  ⏱️ TIMEOUT for ${personKey} on permutation ${permutationsVerified}/${primaryEmails.length} - skipping ${remaining} remaining`);
-            break;
-          }
+          const st = result.status;
 
-          let finalStatus = result.status;
-          if (result.status === 'unverified') finalStatus = 'not_found';
-
-          if (finalStatus === 'valid') {
+          if (st === 'valid') {
             foundValid = true;
             validFound = 1;
             resultType = 'valid';
@@ -2269,7 +2301,7 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
             savedCalls = remaining;
             console.log(`  ✓ VALID found for ${personKey} on permutation ${permutationsVerified}/${primaryEmails.length} (${perm.pattern}) - skipping ${remaining} remaining`);
             break;
-          } else if (finalStatus === 'catchall') {
+          } else if (st === 'catchall') {
             bestCatchall = { email: perm.email, pattern: perm.pattern };
             resultType = 'catchall';
             catchallFound = 1;
@@ -2282,7 +2314,19 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
             savedCalls = remaining;
             console.log(`  ~ CATCHALL found for ${personKey} on permutation ${permutationsVerified}/${primaryEmails.length} (${perm.pattern}) - skipping ${remaining} remaining`);
             break;
+          } else if (st === 'inconclusive' && !bestInconclusive) {
+            // Server wouldn't give a clean answer (timeout / spam block / mx
+            // error / limited). Keep this as a fallback candidate but keep
+            // scanning the other permutations for a real valid/catchall.
+            bestInconclusive = {
+              email: perm.email,
+              pattern: perm.pattern,
+              mx: result.mx || '',
+              provider: result.provider || '',
+            };
+            console.log(`  … INCONCLUSIVE for ${personKey} on permutation ${permutationsVerified}/${primaryEmails.length} (${perm.pattern}) - keeping as fallback, continuing`);
           }
+          // invalid / unverified → just continue to the next permutation
         } catch (error) {
           console.error(`Error processing permutation ${perm.email}:`, error.message);
           apiCalls++;
@@ -2290,12 +2334,26 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
         }
       }
 
-      if (!foundValid && !bestCatchall && !hitTimeout) {
-        finalLeadId = leadRecord.id;
-        resultType = 'not_found';
-        console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${primaryEmails.length} permutations)`);
+      if (!foundValid && !bestCatchall) {
+        if (bestInconclusive) {
+          // No confirmed valid/catchall, but a permutation was inconclusive —
+          // settle as a (re-verifiable) catchall rather than discarding the
+          // person as not_found.
+          resultType = 'catchall';
+          catchallFound = 1;
+          finalLeadId = leadRecord.id;
+          winningEmail = bestInconclusive.email;
+          winningPattern = bestInconclusive.pattern;
+          winningMx = bestInconclusive.mx;
+          winningProvider = bestInconclusive.provider;
+          console.log(`  ~ CATCHALL (from inconclusive) for ${personKey} (${bestInconclusive.email})`);
+        } else {
+          finalLeadId = leadRecord.id;
+          resultType = 'not_found';
+          console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${primaryEmails.length} permutations)`);
+        }
       }
-    } // end if (!winningEmail && !hitTimeout) -- permutation flow guard
+    } // end if (!winningEmail) -- permutation flow guard
     
     // Update the single lead record with the result.
     // Strip extra_data.scraped_email so it does not appear as a separate
@@ -2339,25 +2397,21 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
         apiCalls++;
         permutationsVerified++;
 
-        const isTimeout = result.message && result.message.toLowerCase().includes('timeout');
-        if (isTimeout) {
-          hitTimeout = true;
-          finalLeadId = lead.id;
-          resultType = 'not_found';
+        const st = result.status;
 
-          const remaining = totalPermutations - permutationsVerified;
-          savedCalls = remaining;
-
-          console.log(`  ⏱️ TIMEOUT for ${personKey} - mail server unresponsive, skipping ${remaining} remaining permutations`);
-
-          for (let i = permutationsVerified; i < personLeads.length; i++) {
-            queueLeadUpdate(personLeads[i].id, 'not_found', '', '');
+        if (st === 'inconclusive') {
+          // Inconclusive permutation — record as a fallback candidate and keep
+          // scanning for a real valid/catchall. Mark this row not_found for now;
+          // if the person ends up settling on inconclusive it is promoted below.
+          if (!bestInconclusive) {
+            bestInconclusive = { lead, mx: result.mx || '', provider: result.provider || '' };
           }
-          break;
+          queueLeadUpdate(lead.id, 'not_found', '', '');
+          continue;
         }
 
-        let finalStatus = result.status;
-        if (result.status === 'unverified') {
+        let finalStatus = st;
+        if (st === 'unverified') {
           finalStatus = 'not_found';
         }
 
@@ -2396,10 +2450,20 @@ async function processPersonWithEarlyExit(personKey, personLeads, jobId = null, 
       }
     }
 
-    if (!foundValid && !bestCatchall && !hitTimeout) {
-      finalLeadId = personLeads[0].id;
-      resultType = 'not_found';
-      console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${totalPermutations} permutations)`);
+    if (!foundValid && !bestCatchall) {
+      if (bestInconclusive) {
+        // No confirmed valid/catchall, but a permutation was inconclusive —
+        // settle as a (re-verifiable) catchall rather than not_found.
+        resultType = 'catchall';
+        catchallFound = 1;
+        finalLeadId = bestInconclusive.lead.id;
+        queueLeadUpdate(bestInconclusive.lead.id, 'catchall', bestInconclusive.mx, bestInconclusive.provider);
+        console.log(`  ~ CATCHALL (from inconclusive) for ${personKey} (${bestInconclusive.lead.email})`);
+      } else {
+        finalLeadId = personLeads[0].id;
+        resultType = 'not_found';
+        console.log(`  ✗ NOT_FOUND for ${personKey} (verified all ${totalPermutations} permutations)`);
+      }
     }
   }
 
@@ -2693,11 +2757,15 @@ async function processJobFromQueue(jobId) {
           } else {
             const result = await verifyEmail(lead.email, 0, null, jobId);
             
-            // Map 'unverified' status based on job type
-            // This section handles verification jobs, so: unverified -> invalid
+            // Map non-verdict statuses for verification jobs:
+            //   unverified   -> invalid (our-side failure / dead-key exhaustion)
+            //   inconclusive -> catchall (Timeout / SPAM Block / Mx Error / Limited
+            //                   are re-verifiable, not hard negatives)
             let finalStatus = result.status;
             if (result.status === 'unverified') {
               finalStatus = 'invalid';
+            } else if (result.status === 'inconclusive') {
+              finalStatus = 'catchall';
             }
             
             queueLeadUpdate(lead.id, finalStatus, result.mx, result.provider);
